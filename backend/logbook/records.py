@@ -109,9 +109,33 @@ def read_snapshot(payload: object) -> list[MatchInput]:
             "squad": squad, "bosses": row.get("首领", []),
         }
 
+    def modern(row):
+        """现代快照：用字典把干员 ID 与装备 ID 补成名称，接口因此直接可展示。"""
+        if not isinstance(row, dict):
+            return row
+        normalized = dict(row)
+        squad = normalized.get("squad")
+        if isinstance(squad, list):
+            normalized["squad"] = [
+                {
+                    **unit,
+                    "name": unit.get("name") or dictionary_name(operators, unit.get("id"), unit.get("id")),
+                    "items": [dictionary_name(equipment, item, item) for item in (unit.get("items") or [])],
+                } if isinstance(unit, dict) else unit
+                for unit in squad
+            ]
+        listed = normalized.get("operators")
+        if isinstance(listed, list):
+            normalized["operators"] = [
+                {**operator, "name": operator.get("name") or dictionary_name(operators, operator.get("id"), operator.get("id"))}
+                if isinstance(operator, dict) else operator
+                for operator in listed
+            ]
+        return normalized
+
     try:
         rows = MatchList.validate_python([
-            legacy(row) if isinstance(row, dict) and "时间" in row else row for row in payload
+            legacy(row) if isinstance(row, dict) and "时间" in row else modern(row) for row in payload
         ])
     except (KeyError, TypeError, ValueError, IndexError) as error:
         raise ValueError("战绩 JSON 的字段格式无效，请检查导入格式") from error

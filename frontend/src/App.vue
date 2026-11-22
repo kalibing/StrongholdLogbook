@@ -4,7 +4,6 @@ import { useRoute } from 'vue-router'
 import { api, ApiError, message, post } from './api'
 import { logbookKey, newFilters } from './context'
 import type { Facet, Role, User } from './models'
-import Feedback from './components/Feedback.vue'
 
 const STORAGE_ROLE = 'logbook:role'
 const route = useRoute()
@@ -26,6 +25,8 @@ const titles = [
   { route: 'operators', title: '干员统计' },
   { route: 'archive', title: '档案管理' },
 ]
+
+const eyebrow = computed(() => role.value?.name ?? '规程协议 1')
 
 function storedRole(): string {
   try {
@@ -155,7 +156,8 @@ provide(logbookKey, {
     <div class="header-inner">
       <RouterLink class="brand" to="/"><i class="shield" aria-hidden="true"></i>卫戍协议<span>作战档案</span></RouterLink>
       <nav v-if="user" aria-label="主导航">
-        <RouterLink v-for="item in titles" :key="item.route" :to="{ name: item.route }">{{ item.title }}</RouterLink>
+        <RouterLink v-for="item in titles" :key="item.route" :to="{ name: item.route }"
+          :aria-current="route.name === item.route ? 'page' : undefined">{{ item.title }}</RouterLink>
       </nav>
       <div v-if="user" class="account-actions">
         <span v-if="roles.length" class="select-field">
@@ -163,32 +165,35 @@ provide(logbookKey, {
             <option v-for="item in roles" :key="item.id" :value="item.id">{{ item.name }}</option>
           </select>
         </span>
-        <button type="button" @click="logout">退出登录</button>
+        <button type="button" id="account" @click="logout">退出登录</button>
       </div>
     </div>
   </header>
 
   <main class="layout">
-    <Feedback v-if="pending" pending />
+    <p v-if="pending" class="load-message panel" role="status">正在读取数据…</p>
+
     <template v-else-if="user">
-      <div class="heading">
+      <div class="heading" :class="{ 'heading-compact': route.name !== 'overview' }">
         <div class="heading-copy">
-          <p v-if="role" class="eyebrow">{{ role.name }}</p>
+          <p class="eyebrow">卫戍协议 <span>/</span> {{ eyebrow }}</p>
           <h1>{{ route.meta.title }}</h1>
           <p class="heading-description">{{ route.meta.description }}</p>
         </div>
         <div class="heading-art" aria-hidden="true"><i></i></div>
       </div>
-      <Feedback v-if="error" :error="error" @retry="restoreSession" />
-      <Feedback v-else-if="!role && route.name !== 'archive'" empty="建立角色档案后即可导入和查看战绩。">
+      <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
+      <section v-else-if="!role && route.name !== 'archive'" class="panel empty-state">
+        <span>建立角色档案后即可导入和查看战绩。</span>
         <RouterLink class="button-link" to="/archive">创建角色档案</RouterLink>
-      </Feedback>
+      </section>
       <RouterView v-else />
     </template>
+
     <div v-else class="login-layout">
-      <div class="heading login-heading">
+      <div class="heading">
         <div class="heading-copy">
-          <p class="eyebrow">卫戍协议</p>
+          <p class="eyebrow">卫戍协议 <span>/</span> 作战档案</p>
           <h1>作战档案</h1>
           <p class="heading-description">对局记录、盟约趋势和干员出场统计。</p>
         </div>
@@ -196,11 +201,15 @@ provide(logbookKey, {
       </div>
       <section class="panel login-panel" aria-labelledby="login-title">
         <h2 id="login-title">登录</h2>
-        <form class="stack" @submit.prevent="login">
-          <label class="filter-field">用户名 <input v-model="username" autocomplete="username" required maxlength="64"></label>
-          <label class="filter-field">密码 <input v-model="password" autocomplete="current-password" type="password" required maxlength="256"></label>
-          <p v-if="error" class="error" role="alert">{{ error }}</p>
-          <button type="submit" class="primary" :disabled="loggingIn">{{ loggingIn ? '登录中…' : '登录' }}</button>
+        <form @submit.prevent="login">
+          <label class="filter-field">用户名
+            <input v-model="username" autocomplete="username" required maxlength="64">
+          </label>
+          <label class="filter-field">密码
+            <input v-model="password" autocomplete="current-password" type="password" required maxlength="256">
+          </label>
+          <p v-if="error" class="load-message" role="alert">{{ error }}</p>
+          <button type="submit" class="login-submit" :disabled="loggingIn">{{ loggingIn ? '登录中…' : '登录' }}</button>
         </form>
       </section>
     </div>

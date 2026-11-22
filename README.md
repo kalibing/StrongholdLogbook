@@ -44,11 +44,16 @@ backend/
   migrations/         Alembic 迁移（PostgreSQL 表结构来源）
   tests/              pytest 用例（含 SQLite 端到端，无需外部数据库）
 frontend/
+  public/
+    portraits/        干员头像（资源 ID 命名，来自旧版静态站）
+    art/              盟约 / 首领 / 策略 / 装备图标
   src/
     views/            Overview / History / Operators / Archive
-    components/       FiltersBar、TrendChart、MatchReport、Feedback
+    components/       FiltersBar、TrendChart（原生 Canvas）、MatchReport
+    assets.ts         由旧版资源生成的名称 → 图标映射
+    icons.ts          图标缓存与头像路径
     api.ts            请求封装与资源加载
-    style.css         设计系统
+    style.css         设计系统（旧站结构 + PRTS 风格覆盖）
 deploy/
   Caddyfile           静态托管 + /api 反代 + 安全响应头
   web.Dockerfile      前端构建产物打包
@@ -232,3 +237,16 @@ cd frontend; npm run build                    # 生产构建
 - 同一账号连续 8 次密码错误锁定 15 分钟；登录失败分支仍会执行一次哈希校验以避免时序泄露。
 - 所有写请求校验 `Origin`，所有响应带 `Cache-Control: no-store`，Caddy 追加 CSP、`X-Frame-Options` 等头。
 - 上传体积、局数、待处理任务数和档案数量都有上限；导入在独立进程写库，接口不阻塞。
+
+## 界面设计
+
+界面按旧版静态站的结构重做，再叠加 PRTS 风格的视觉收紧：
+
+| 层 | 说明 |
+| --- | --- |
+| 结构 | 顶部导航 + 英雄区横幅；总览为「作战表现 / 盟约与资金」并排 + 双列趋势图；对局为结算表 + 战报弹窗；干员为出场榜表格。 |
+| 视觉 | 近黑底、锐角（2–4px）、发丝级描边、区块标题左侧强调条、表头小写字距、数字用压缩字体对齐。 |
+| 图表 | 原生 Canvas 手绘：网格、折线、胜圆点 / 负菱形、数值标注、盟约名与图标、悬停回读。 |
+| 资源 | `frontend/public/portraits`（125 张干员头像）与 `frontend/public/art`（盟约 / 首领 / 策略 / 装备图标）来自旧站；`src/assets.ts` 提供名称到图标的映射，缺图时组件自动隐藏。 |
+
+导入时会把装备 ID 按快照里的 `equipment` 字典解析成中文名，因此在战报里直接显示「疾行靴」这类名称；旧版中文快照同样处理。

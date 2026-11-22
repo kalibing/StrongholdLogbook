@@ -17,7 +17,7 @@ def test_modern_snapshot_keeps_every_field(sample_snapshot):
     assert first.scenario == "维多利亚分队"
     assert first.bonds[0].name == "维多利亚"
     assert first.bonds[0].layers == 6
-    assert first.squad[0].items == ["chess_item_1_01", "chess_item_4_09"]
+    assert first.squad[0].items == ["锋锐之矛", "共振核心"]
     assert first.suspected_exit is False
 
 

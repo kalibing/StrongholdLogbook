@@ -1,20 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { logbook } from '../context'
 import { query, rolePath, useResource } from '../api'
-import { dateTime, number, protocolLabel, resultLabel } from '../format'
+import { number, shortTime } from '../format'
 import type { MatchDetail, MatchPage, Result } from '../models'
-import Feedback from '../components/Feedback.vue'
 import FiltersBar from '../components/FiltersBar.vue'
 import MatchReport from '../components/MatchReport.vue'
 
 const { role, filters, revision } = logbook()
-const PAGE_SIZE = 12
-const tabs: { value: Result | ''; label: string }[] = [
-  { value: '', label: '全部' },
-  { value: 'win', label: '胜' },
-  { value: 'loss', label: '负' },
-]
+const PAGE_SIZE = 10
 const result = ref<Result | ''>('')
 const page = ref(1)
 const detailUrl = ref<string | null>(null)
@@ -44,64 +38,79 @@ function close() {
   detailUrl.value = null
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && detailUrl.value) close()
-}
-
 watch(filters, () => { page.value = 1 })
 watch(result, () => { page.value = 1 })
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <FiltersBar />
-  <div class="toolbar">
-    <div class="tabs" role="group" aria-label="按战果筛选">
-      <button v-for="tab in tabs" :key="tab.label" type="button"
-        :aria-pressed="result === tab.value" @click="result = tab.value">
-        {{ tab.label }}
-      </button>
-    </div>
-    <p class="muted">{{ total }} 局记录 · 每页 {{ PAGE_SIZE }} 局</p>
-  </div>
+  <FiltersBar>
+    <template #extra>
+      <label class="filter-field">战果
+        <span class="select-field">
+          <select v-model="result" aria-label="筛选胜负">
+            <option value="">全部结果</option>
+            <option value="win">胜</option>
+            <option value="loss">负</option>
+          </select>
+        </span>
+      </label>
+    </template>
+  </FiltersBar>
 
-  <Feedback v-if="pending" pending />
-  <Feedback v-else-if="error" :error="error" @retry="refresh" />
-  <template v-else-if="data?.matches.length">
-    <div class="match-list">
-      <button v-for="row in data.matches" :key="row.id" type="button" class="match-row" @click="open(row.id)">
-        <div class="match-main">
-          <div class="match-title">
-            <span class="tag" :class="{ loss: row.result === 'loss' }">{{ resultLabel(row.result) }}</span>
-            <strong>{{ dateTime(row.played_at) }}</strong>
-            <span v-if="row.suspected_exit" class="tag exit">疑似退出</span>
-          </div>
-          <div class="match-meta">
-            <span>{{ protocolLabel(row.protocol) }}</span>
-            <span>{{ row.play }}</span>
-            <span>{{ row.difficulty }}</span>
-            <span v-if="row.scenario">{{ row.scenario }}</span>
-            <span v-if="row.strategy">{{ row.strategy }}<template v-if="row.initiator"> · {{ row.initiator }}</template></span>
-          </div>
-        </div>
-        <div class="match-stats">
-          <span>{{ number(row.rounds) }}<small>回合</small></span>
-          <span>{{ number(row.kills) }}<small>击杀</small></span>
-          <span>{{ number(row.coins) }}<small>金币</small></span>
-          <span>{{ number(row.bond_layers) }}<small>盟约层</small></span>
-        </div>
-      </button>
+  <p v-if="pending" class="load-message" role="status">正在读取对局…</p>
+  <p v-else-if="error" class="load-message" role="alert">
+    {{ error }} <button type="button" @click="refresh">重试</button>
+  </p>
+
+  <section v-else class="panel table-panel" aria-labelledby="history-title">
+    <div class="split table-heading">
+      <h2 id="history-title">结算列表</h2>
+      <span class="period">{{ total }} 局</span>
     </div>
-    <nav class="pager" aria-label="分页">
+    <div class="scroll">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th scope="col">开局时间</th>
+            <th scope="col">战果</th>
+            <th scope="col">模拟方式</th>
+            <th scope="col">难度 / 等级</th>
+            <th scope="col">开局策略</th>
+            <th scope="col">发起者</th>
+            <th scope="col">回合</th>
+            <th scope="col">击杀</th>
+            <th scope="col">金币花费</th>
+            <th scope="col">盟约总层数</th>
+            <th scope="col">战报</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in data?.matches ?? []" :key="row.id">
+            <td>{{ shortTime(row.played_at) }}</td>
+            <td><span class="chip" :class="{ loss: row.result === 'loss' }">{{ row.result === 'win' ? '胜' : '负' }}</span></td>
+            <td data-label="模拟方式">{{ row.play }}</td>
+            <td data-label="难度 / 等级">{{ row.difficulty }}</td>
+            <td data-label="开局策略">{{ row.strategy ?? '—' }}</td>
+            <td data-label="发起者">{{ row.initiator ?? '—' }}</td>
+            <td data-label="回合">{{ number(row.rounds) }}</td>
+            <td data-label="击杀">{{ number(row.kills) }}</td>
+            <td data-label="金币花费">{{ number(row.coins) }}</td>
+            <td data-label="盟约总层数">{{ number(row.bond_layers) }}</td>
+            <td><button type="button" @click="open(row.id)">查看详情</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div v-if="!data?.matches.length" class="empty-state">
+      <span>当前筛选范围内没有对局。</span>
+      <RouterLink class="button-link" to="/archive">前往档案管理</RouterLink>
+    </div>
+    <div class="paging">
       <button type="button" :disabled="current <= 1" @click="go(-1)">上一页</button>
       <span>第 {{ current }} / {{ pages }} 页</span>
       <button type="button" :disabled="current >= pages" @click="go(1)">下一页</button>
-    </nav>
-  </template>
-  <Feedback v-else empty="当前筛选范围内没有对局。可调整筛选，或导入一份战绩文件。">
-    <RouterLink class="button-link" to="/archive">前往档案管理</RouterLink>
-  </Feedback>
+    </div>
+  </section>
 
   <MatchReport v-if="detailUrl" :detail="report.data.value" :pending="report.pending.value"
     :error="report.error.value" @close="close" />

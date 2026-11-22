@@ -5,7 +5,7 @@ import { logbook } from '../context'
 import { dateTime } from '../format'
 import type { ImportJob } from '../models'
 
-const { role, roles, createRole, renameRole, deleteRole, selectRole, revision, refresh } = logbook()
+const { role, roles, createRole, renameRole, deleteRole, selectRole, refresh } = logbook()
 
 const name = ref('')
 const creating = ref(false)
@@ -19,7 +19,6 @@ const confirmingId = ref('')
 const jobs = ref<ImportJob[]>([])
 const importError = ref('')
 const importing = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
 let poll: ReturnType<typeof setTimeout> | undefined
 let lastDone = ''
 
@@ -131,9 +130,7 @@ watch(role, () => {
   editingId.value = ''
   void loadJobs()
 })
-onMounted(() => {
-  void loadJobs()
-})
+onMounted(() => { void loadJobs() })
 onBeforeUnmount(() => { if (poll) clearTimeout(poll) })
 </script>
 
@@ -142,16 +139,16 @@ onBeforeUnmount(() => { if (poll) clearTimeout(poll) })
     <section class="panel" aria-labelledby="role-title">
       <div class="split">
         <h2 id="role-title">角色档案</h2>
-        <span class="muted">{{ roles.length }} 个档案</span>
+        <span class="period">{{ roles.length }} 个档案</span>
       </div>
 
-      <form class="stack" @submit.prevent="submitRole">
+      <form @submit.prevent="submitRole">
         <label class="filter-field">新建档案名称
-          <input v-model="name" required maxlength="60" placeholder="例如：主号" aria-describedby="role-hint">
+          <input v-model="name" required maxlength="60" placeholder="例如：主号">
         </label>
-        <p id="role-hint" class="hint">档案用于区分同一账号下的不同角色，名称最多 60 个字符。</p>
-        <p v-if="createError" class="error" role="alert">{{ createError }}</p>
-        <button type="submit" class="primary" :disabled="creating || !name.trim()">{{ creating ? '创建中…' : '创建档案' }}</button>
+        <p class="hint">档案用于区分同一账号下的不同角色，名称最多 60 个字符。</p>
+        <p v-if="createError" class="load-message" role="alert">{{ createError }}</p>
+        <button type="submit" class="login-submit" :disabled="creating || !name.trim()">{{ creating ? '创建中…' : '创建档案' }}</button>
       </form>
 
       <div v-if="roles.length" class="role-list">
@@ -160,7 +157,7 @@ onBeforeUnmount(() => { if (poll) clearTimeout(poll) })
             <input v-model="editingName" maxlength="60" aria-label="新的档案名称">
             <span class="role-actions">
               <button type="button" @click="saveRename(item.id)" :disabled="!editingName.trim()">保存</button>
-              <button type="button" class="quiet" @click="editingId = ''">取消</button>
+              <button type="button" @click="editingId = ''">取消</button>
             </span>
           </template>
           <template v-else>
@@ -176,35 +173,33 @@ onBeforeUnmount(() => { if (poll) clearTimeout(poll) })
         </div>
       </div>
       <p v-else class="muted">还没有档案，先创建一个再导入战绩。</p>
-      <p v-if="actionError" class="error" role="alert">{{ actionError }}</p>
+      <p v-if="actionError" class="load-message" role="alert">{{ actionError }}</p>
     </section>
 
     <section class="panel" aria-labelledby="import-title">
       <div class="split">
         <h2 id="import-title">导入战绩</h2>
-        <span class="muted">{{ role ? role.name : '未选择档案' }}</span>
+        <span class="period">{{ role ? role.name : '未选择档案' }}</span>
       </div>
 
       <template v-if="role">
         <label class="dropzone">
-          <input ref="fileInput" type="file" accept="application/json,.json" :disabled="importing" @change="upload">
+          <input type="file" accept="application/json,.json" :disabled="importing" @change="upload">
           <strong>{{ importing ? '正在上传…' : '选择战绩 JSON 文件' }}</strong>
           <small>支持导出的快照（matches 数组）或带干员、装备字典的完整文件，单个文件不超过 8 MB。</small>
         </label>
         <p class="hint">导入在后台写入数据库，完成后总览与对局记录会自动刷新；重复导入同一局不会产生重复记录。</p>
-        <p v-if="importError" class="error" role="alert">{{ importError }}</p>
+        <p v-if="importError" class="load-message" role="alert">{{ importError }}</p>
 
-        <div class="report-block">
-          <h3>最近导入</h3>
-          <ul v-if="jobs.length" class="job-list">
-            <li v-for="job in jobs" :key="job.id" class="job">
-              <span>{{ statusLabel[job.status] }} · {{ job.processed }} / {{ job.total }} 局</span>
-              <time :datetime="job.created_at">{{ dateTime(job.created_at) }}</time>
-              <span v-if="job.error" class="job-error">{{ job.error }}</span>
-            </li>
-          </ul>
-          <p v-else class="muted">这个档案还没有导入记录。</p>
-        </div>
+        <h3>最近导入</h3>
+        <ul v-if="jobs.length" class="job-list">
+          <li v-for="job in jobs" :key="job.id" class="job">
+            <span>{{ statusLabel[job.status] }} · {{ job.processed }} / {{ job.total }} 局</span>
+            <time :datetime="job.created_at">{{ dateTime(job.created_at) }}</time>
+            <span v-if="job.error" class="job-error">{{ job.error }}</span>
+          </li>
+        </ul>
+        <p v-else class="muted">这个档案还没有导入记录。</p>
       </template>
       <p v-else class="muted">先创建或切换一个角色档案，然后再导入战绩文件。</p>
     </section>

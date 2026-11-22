@@ -1,83 +1,102 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { dateTime, number, protocolLabel, resultLabel } from '../format'
+import { computed, onMounted, ref } from 'vue'
+import { BOND_ICONS, BOSS_ICONS, EQUIPMENT_ICONS, STRATEGY_ICONS } from '../assets'
+import { dateTime, number, resultLabel } from '../format'
+import { portrait } from '../icons'
 import type { MatchDetail } from '../models'
 
 const props = defineProps<{ detail: MatchDetail | null; pending?: boolean; error?: string }>()
-defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: [] }>()
 
+const dialog = ref<HTMLDialogElement | null>(null)
 const totalLayers = computed(() => props.detail?.bonds.reduce((sum, bond) => sum + bond.layers, 0) ?? 0)
 const duration = computed(() => {
   const seconds = props.detail?.duration_seconds
   if (!seconds) return '—'
-  const minutes = Math.floor(seconds / 60)
-  return minutes ? `${minutes} 分 ${seconds % 60} 秒` : `${seconds} 秒`
+  return Math.floor(seconds / 60) + ' 分 ' + seconds % 60 + ' 秒'
 })
-const bosses = computed(() => props.detail?.bosses ?? [])
+const meta = computed(() => props.detail
+  ? [dateTime(props.detail.played_at), resultLabel(props.detail.result), props.detail.play, props.detail.difficulty].join(' · ')
+  : '正在读取战报…')
+
+function close() {
+  dialog.value?.close()
+}
+
+onMounted(() => {
+  dialog.value?.showModal()
+})
 </script>
 
 <template>
-  <div class="report-backdrop" role="presentation" @click.self="$emit('close')">
-    <section class="report" role="dialog" aria-modal="true" aria-labelledby="report-title">
-      <header class="report-head">
-        <div>
-          <p class="eyebrow">{{ detail ? resultLabel(detail.result) + ' · ' + detail.difficulty : '战报' }}</p>
-          <h2 id="report-title">{{ detail ? dateTime(detail.played_at) : '正在读取战报…' }}</h2>
+  <dialog ref="dialog" id="detail" aria-labelledby="detail-title" @close="emit('close')">
+    <div class="split dialog-heading">
+      <h2 id="detail-title">单局战报</h2>
+      <button type="button" @click="close">关闭</button>
+    </div>
+
+    <p v-if="pending" class="muted" role="status">正在读取战报…</p>
+    <p v-else-if="error" class="load-message" role="alert">{{ error }}</p>
+
+    <div v-else-if="detail" id="report">
+      <p class="report-meta">{{ meta }}</p>
+
+      <div v-if="detail.strategy || detail.initiator" class="strategy-fields">
+        <div class="art-card">
+          <small>开局策略</small>
+          <img v-if="detail.strategy && STRATEGY_ICONS[detail.strategy]" :src="STRATEGY_ICONS[detail.strategy]" alt="">
+          <b>{{ detail.strategy ?? '—' }}</b>
         </div>
-        <button type="button" class="quiet" @click="$emit('close')">关闭</button>
-      </header>
+        <div class="art-card">
+          <small>发起者</small>
+          <b>{{ detail.initiator ?? '—' }}</b>
+        </div>
+      </div>
 
-      <p v-if="pending" class="muted" role="status">正在读取战报…</p>
-      <p v-else-if="error" class="error" role="alert">{{ error }}</p>
+      <div class="report-stats">
+        <div><small>回合</small><b>{{ number(detail.rounds) }}</b></div>
+        <div><small>击杀</small><b>{{ number(detail.kills) }}</b></div>
+        <div><small>金币花费</small><b>{{ number(detail.coins) }}</b></div>
+        <div><small>同步次数</small><b>{{ number(detail.sync_count) }}</b></div>
+        <div><small>时长</small><b>{{ duration }}</b></div>
+        <div><small>奖杯变化</small><b>{{ number(detail.trophies) }}</b></div>
+      </div>
 
-      <template v-else-if="detail">
-        <dl class="report-grid">
-          <div><dt>协议期</dt><dd>{{ protocolLabel(detail.protocol) }}</dd></div>
-          <div><dt>模拟方式</dt><dd>{{ detail.play }}</dd></div>
-          <div><dt>难度 / 等级</dt><dd>{{ detail.difficulty }}</dd></div>
-          <div><dt>结果</dt><dd><span class="tag" :class="{ loss: detail.result === 'loss' }">{{ resultLabel(detail.result) }}</span></dd></div>
-          <div><dt>通过回合</dt><dd>{{ number(detail.rounds) }}</dd></div>
-          <div><dt>敌人击杀</dt><dd>{{ number(detail.kills) }}</dd></div>
-          <div><dt>金币花费</dt><dd>{{ number(detail.coins) }}</dd></div>
-          <div><dt>对局时长</dt><dd>{{ duration }}</dd></div>
-          <div><dt>奖杯增益</dt><dd>{{ number(detail.trophies) }}</dd></div>
-          <div><dt>同步次数</dt><dd>{{ number(detail.sync_count) }}</dd></div>
-          <div><dt>盟约总层数</dt><dd>{{ number(totalLayers) }}</dd></div>
-          <div><dt>分队</dt><dd>{{ detail.scenario ?? '—' }}</dd></div>
-          <div><dt>开局策略</dt><dd>{{ detail.strategy ?? '—' }}</dd></div>
-          <div><dt>策略发起者</dt><dd>{{ detail.initiator ?? '—' }}</dd></div>
-        </dl>
+      <h3>盟约 · {{ detail.bonds.length }} 种 / {{ totalLayers }} 层</h3>
+      <div v-if="detail.bonds.length" class="bond-grid">
+        <div v-for="bond in detail.bonds" :key="bond.name">
+          <span class="bond-label">
+            <img v-if="BOND_ICONS[bond.name]" :src="BOND_ICONS[bond.name]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+            <span>{{ bond.name }}</span>
+          </span>
+          <b>{{ bond.layers }} 层</b>
+        </div>
+      </div>
+      <p v-else class="muted">无</p>
 
-        <div class="report-block">
-          <h3>盟约结算</h3>
-          <div v-if="detail.bonds.length" class="tag-list">
-            <span v-for="bond in detail.bonds" :key="bond.name" class="tag neutral">{{ bond.name }} {{ bond.layers }} 层</span>
+      <h3>已击杀首领</h3>
+      <div v-if="detail.bosses.length" class="boss-grid">
+        <div v-for="boss in detail.bosses" :key="boss" class="art-card">
+          <img v-if="BOSS_ICONS[boss]" :src="BOSS_ICONS[boss]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+          <b>{{ boss }}</b>
+        </div>
+      </div>
+      <p v-else class="muted">无</p>
+
+      <h3>最终阵容</h3>
+      <ul v-if="detail.squad.length" class="squad">
+        <li v-for="unit in detail.squad" :key="unit.id">
+          <img :src="portrait(unit.id)" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+          <b>{{ unit.name }}</b>
+          <div v-if="unit.items.length" class="equipment-list">
+            <span v-for="(item, index) in unit.items" :key="index" class="equipment-chip">
+              <img v-if="EQUIPMENT_ICONS[item]" :src="EQUIPMENT_ICONS[item]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+              <span>{{ item }}</span>
+            </span>
           </div>
-          <p v-else class="muted">本局没有盟约明细。</p>
-        </div>
-
-        <div class="report-block">
-          <h3>首领</h3>
-          <div v-if="bosses.length" class="tag-list">
-            <span v-for="boss in bosses" :key="boss" class="tag neutral">{{ boss }}</span>
-          </div>
-          <p v-else class="muted">本局没有首领记录。</p>
-        </div>
-
-        <div class="report-block">
-          <h3>最终阵容</h3>
-          <div v-if="detail.squad.length" class="squad-grid">
-            <article v-for="unit in detail.squad" :key="unit.id" class="unit-card">
-              <strong>{{ unit.name }}</strong>
-              <div v-if="unit.items.length" class="items">
-                <span v-for="item in unit.items" :key="item">{{ item }}</span>
-              </div>
-              <small v-else class="muted">无装备</small>
-            </article>
-          </div>
-          <p v-else class="muted">本局没有阵容明细。</p>
-        </div>
-      </template>
-    </section>
-  </div>
+        </li>
+      </ul>
+      <p v-else class="muted">无最终阵容记录</p>
+    </div>
+  </dialog>
 </template>
