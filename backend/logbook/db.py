@@ -1,14 +1,6 @@
-from psycopg.rows import dict_row
-from psycopg_pool import ConnectionPool
-
-from .config import settings
+from .storage import create_pool
 
 
-def connection_pool() -> ConnectionPool:
-    return ConnectionPool(
-        kwargs={**settings.connect_kwargs, "row_factory": dict_row},
-        min_size=1,
-        max_size=8,
-        timeout=5,
-        open=False,
-    )
+def connection_pool():
+    """按 LOGBOOK_DB 选择 PostgreSQL 连接池或单文件 SQLite。"""
+    return create_pool()

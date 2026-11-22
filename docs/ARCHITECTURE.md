@@ -9,7 +9,8 @@
 | 模块 | 实现 |
 | --- | --- |
 | 网页 | `frontend/`：Vue 3 + TypeScript + Vite。四个路由（总览、对局、干员、档案），共享 `context.ts` 里的登录态、当前角色与筛选条件；趋势图用 Chart.js，颜色取自 CSS 变量以跟随深色主题。 |
-| API | `backend/logbook/api.py`：会话 Cookie 登录、角色档案 CRUD、筛选分面、总览 / 对局 / 干员查询、快照上传。 |
+| API | `backend/logbook/api.py`：会话 Cookie 登录、角色档案 CRUD、筛选分面、总览 / 对局 / 干员查询、快照上传。SQL 只写 PostgreSQL 风格，由 `storage.py` 在选择的后端上执行。 |
+| 存储 | `storage.py` 提供两个驱动：PostgreSQL 连接池（默认）与单文件 SQLite。SQLite 侧改写占位符、`now()`、`FOR UPDATE` 与事务语义，并将 `uuid/timestamptz/jsonb/bytea` 映射为 `TEXT/INTEGER/TEXT/BLOB`。 |
 | 导入 | `records.py` 校验并规范化快照（现代格式与旧版中文格式），任务写入 `import_jobs`；`worker.py` 逐条消费并做幂等 upsert，接口只负责入队，不等待写库。 |
 | 统计 | `stats.py`：胜率、最近十局、盟约总层数与单项峰值、金币 / 击杀 / 回合趋势（近 10 局 / 全部 / 按日）、干员出场与胜率。 |
 | 部署 | `compose.yaml` 编排 PostgreSQL、migrate、api、worker、Caddy；`deploy/Caddyfile` 托管静态文件、反代 `/api/*` 并追加安全响应头。 |
@@ -28,7 +29,7 @@
 | 网页 | Vue 3 + TypeScript + Vite + Chart.js | 四个视图共享登录态与筛选，需要组件化与类型检查；构建产物是纯静态文件。 |
 | 入口 | Caddy 2 | 自动 HTTPS、静态托管、单行反代；服务器已有 Nginx 时可直接替换成等效配置。 |
 | API | Python 3.13 + FastAPI + psycopg 3 | 同步路由跑在线程池，连接池复用；Pydantic 负责导入格式校验。 |
-| 数据库 | PostgreSQL 17 + Alembic | JSONB 存盟约 / 阵容 / 首领明细，事务与唯一约束保证幂等写入。 |
+| 数据库 | PostgreSQL 17 + Alembic（默认），可选单文件 SQLite | JSONB 存盟约 / 阵容 / 首领明细，事务与唯一约束保证幂等写入；本机开发与单机部署用 SQLite 免运维，两条路径共用同一套查询。 |
 | 运行 | 单机 + Docker Compose | API、worker、数据库在内网通信，只有 Caddy 发布端口。 |
 
 ## 正式版架构
@@ -65,7 +66,16 @@ flowchart LR
 | `matches` | 单局：角色、协议、外部局 ID、开局时间、方式、难度、胜负、分队 / 策略 / 发起者、回合、击杀、金币、同步次数、奖杯、时长、疑似退出，以及 `bonds` / `squad` / `operators` / `bosses` 四个 JSONB 字段；`(role_id, protocol, external_id)` 唯一，另有 `(role_id, played_at DESC, id DESC)` 查询索引。 |
 | `import_jobs` | 导入队列：状态（pending / done / failed）、载荷、总数、已处理数、错误、时间戳；部分索引只覆盖 pending 行。 |
 
-迁移只有一版 `0001_initial`，后续变更通过新增 revision 追加。删除角色档案会级联删除其战绩与导入任务。
+迁移只有一版 `0001_initial`，后续变更通过新增 revision 追加。删除角色档案会级联删除其战绩与导入任务。完整列定义、索引与 JSON 契约见 [DATABASE.md](DATABASE.md)。
+
+### 双后端
+
+| 后端 | 表结构来源 | 事务与并发 |
+| --- | --- | --- |
+| PostgreSQL（默认） | `alembic upgrade head` | 行锁 + `SKIP LOCKED`，worker 可多实例 |
+| SQLite（`LOGBOOK_DB=sqlite`） | `sqlite_schema.py` 启动建表 | `BEGIN IMMEDIATE` 单写者，进程内锁串行，worker 单实例 |
+
+两套 DDL 由 `test_sqlite_schema_matches_alembic_migration` 用 sqlglot 解析后逐表逐列比对，改表必须同步修改，避免漂移。SQLite 侧的时间戳存 UTC 秒、JSON 存文本，读出时由适配层还原类型。
 
 ## 统计口径
 

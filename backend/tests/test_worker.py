@@ -1,8 +1,7 @@
 from contextlib import contextmanager
 from uuid import uuid4
 
-import psycopg
-
+from logbook.errors import WriteRejected
 from logbook.worker import COLUMNS, UPSERT_MATCH, process_one
 
 
@@ -22,7 +21,7 @@ class Cursor:
     def executemany(self, sql, rows):
         self.batches.append((sql, list(rows)))
         if self.fail:
-            raise psycopg.DataError("bad row")
+            raise WriteRejected("bad row")
 
 
 class Connection:
@@ -58,11 +57,16 @@ def payload(records=1):
         "play": "独立模拟", "difficulty": "规程等级 8", "result": "win",
         "suspected_exit": False, "bonds": [], "squad": [], "operators": [], "bosses": [],
     })
-    return [row for _ in range(records)]
+    return [dict(row) for _ in range(records)]
 
 
 def job(records=None):
-    return (uuid4(), uuid4(), records if records is not None else payload(), 1)
+    return {
+        "id": uuid4(),
+        "role_id": uuid4(),
+        "payload": records if records is not None else payload(),
+        "total": 1,
+    }
 
 
 def test_empty_queue_returns_false():
@@ -78,10 +82,10 @@ def test_successful_import_marks_job_done():
     sql, rows = connection.cursor_obj.batches[0]
     assert "ON CONFLICT (role_id, protocol, external_id) DO UPDATE" in sql
     assert len(rows) == 1
-    assert rows[0][1] == current[1]
+    assert rows[0][1] == current["role_id"]
     [(update, params)] = connection.updates()
     assert "status = 'done'" in update
-    assert params == (1, current[0])
+    assert params == (1, current["id"])
 
 
 def test_failed_import_is_recorded():
@@ -89,10 +93,10 @@ def test_failed_import_is_recorded():
     assert process_one(connection) is True
     [(update, params)] = connection.updates()
     assert "status = 'failed'" in update
-    assert params == (connection.job[0],)
+    assert params == (connection.job["id"],)
 
 
 def test_upsert_covers_every_column():
     assert "INSERT INTO matches (id, role_id" in UPSERT_MATCH
+    assert "ON CONFLICT" in UPSERT_MATCH
     assert len(COLUMNS) == 20
-

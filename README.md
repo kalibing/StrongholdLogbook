@@ -35,11 +35,14 @@ backend/
     records.py        导入格式校验（现代快照与旧版中文格式）、筛选 SQL
     stats.py          总览、趋势与干员统计
     worker.py         导入队列消费进程（幂等 upsert）
+    storage.py        存储适配层：PostgreSQL / SQLite 双后端
+    sqlite_schema.py  SQLite 建表语句（与 Alembic 迁移逐列一致）
+    errors.py         跨驱动的存储异常
     config.py         PUBLIC_ORIGIN 与数据库配置
     security.py       密码哈希与会话令牌
     admin.py          命令行账号管理
-  migrations/         Alembic 迁移
-  tests/              pytest 单元测试（不需要数据库）
+  migrations/         Alembic 迁移（PostgreSQL 表结构来源）
+  tests/              pytest 用例（含 SQLite 端到端，无需外部数据库）
 frontend/
   src/
     views/            Overview / History / Operators / Archive
@@ -52,36 +55,61 @@ deploy/
 fixtures/             示例快照（导入演示与测试共用）
 compose.yaml          PostgreSQL / API / worker / Caddy 编排
 docs/ARCHITECTURE.md  架构与数据模型说明
+docs/DATABASE.md      表结构、索引与方言映射
 ```
+
+## 存储后端
+
+| 后端 | 开关 | 表结构来源 | 适用 |
+| --- | --- | --- | --- |
+| PostgreSQL 17（默认） | `LOGBOOK_DB=postgres` | `alembic upgrade head` | 正式部署、多用户、多 worker |
+| SQLite（单文件） | `LOGBOOK_DB=sqlite` | 启动时按 `sqlite_schema.py` 自动建表 | 本机开发与单机部署，零外部依赖 |
+
+两个后端跑同一套业务代码：`storage.py` 负责改写占位符、`now()`、`FOR UPDATE` 与事务语义，并把 `uuid / timestamptz / jsonb / bytea` 映射到 `TEXT / INTEGER / TEXT / BLOB`。细节见 [docs/DATABASE.md](docs/DATABASE.md)。
 
 ## 本地运行
 
-### 1. 后端
-
-需要一个 PostgreSQL 15 以上的数据库。
+### 0. 准备
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r backend/requirements.txt -r backend/requirements-dev.txt
-
-$env:POSTGRES_HOST = '127.0.0.1'
-$env:POSTGRES_USER = 'logbook'
-$env:POSTGRES_DB   = 'logbook'
-$env:POSTGRES_PASSWORD = '<数据库密码>'
-$env:PUBLIC_ORIGIN = 'http://localhost:5173'   # 浏览器实际访问的源，见下方说明
-
-cd backend
-python -m alembic upgrade head
-python -m logbook.admin create-user alice      # 交互式输入至少 12 位密码
-uvicorn logbook.api:app --port 8000
 ```
 
-另开一个终端启动导入 worker：
+### 1. 后端（SQLite，最省事）
+
+```powershell
+$env:LOGBOOK_DB = 'sqlite'
+$env:LOGBOOK_SQLITE = "$PWD\.local\logbook.sqlite3"
+$env:PUBLIC_ORIGIN = 'http://localhost:5173'
+
+cd backend
+python -m logbook.admin create-user alice        # 交互输入，或设置 LOGBOOK_ADMIN_PASSWORD 免交互
+python -m uvicorn logbook.api:app --port 8000
+```
+
+另开终端跑导入 worker（同一个 `LOGBOOK_*` 环境）：
 
 ```powershell
 cd backend
 python -m logbook.worker
+```
+
+### 1'. 后端（PostgreSQL，正式环境）
+
+```powershell
+$env:LOGBOOK_DB = 'postgres'
+$env:POSTGRES_HOST = '127.0.0.1'
+$env:POSTGRES_USER = 'logbook'
+$env:POSTGRES_DB   = 'logbook'
+$env:POSTGRES_PASSWORD = '<数据库密码>'
+$env:PUBLIC_ORIGIN = 'http://localhost:5173'
+
+cd backend
+python -m alembic upgrade head
+python -m logbook.admin create-user alice
+python -m uvicorn logbook.api:app --port 8000
 ```
 
 `PUBLIC_ORIGIN` 必须与浏览器地址栏的源一致：Vite 开发服务器是 `http://localhost:5173`，Compose 部署默认是 `http://localhost:8080`。写请求会校验 `Origin` 头，不一致会被拒绝（403）。
@@ -96,7 +124,7 @@ npm run dev        # http://localhost:5173，/api 自动代理到 127.0.0.1:8000
 
 生产构建：`npm run build`（先跑 `vue-tsc` 类型检查，输出到 `frontend/dist`）。
 
-### 3. Docker Compose（可选）
+### 3. Docker Compose（PostgreSQL，可选）
 
 ```powershell
 Copy-Item .env.example .env       # 填写 POSTGRES_PASSWORD
@@ -167,12 +195,25 @@ curl.exe -X POST "http://localhost:8000/api/roles/$ROLE_ID/imports" `
 ## 测试与检查
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest          # 后端：66 个用例，无需数据库
+.\.venv\Scripts\python.exe -m pytest          # 后端：80 个用例，无需外部数据库
 cd frontend; npm run typecheck                # vue-tsc
 cd frontend; npm run build                    # 生产构建
 ```
 
-`backend/tests` 覆盖导入格式（现代 / 旧版 / 异常）、统计口径、筛选 SQL、`PUBLIC_ORIGIN` 校验、会话与密码、上传防护，以及 worker 的成功 / 失败状态迁移。CI 在 `.github/workflows/ci.yml` 里跑同样的命令。
+`backend/tests` 覆盖导入格式（现代 / 旧版 / 异常）、统计口径、筛选 SQL、`PUBLIC_ORIGIN` 校验、会话与密码、上传防护、worker 的成功 / 失败状态迁移，以及 SQLite 后端的完整链路（登录 → 建档 → 上传 → worker 写库 → 查询 → 删除）和「SQLite 建表语句与 Alembic 迁移逐列一致」的对比。CI 在 `.github/workflows/ci.yml` 里跑同样的命令。
+
+本机已验证（SQLite 后端 + Vite 开发服务器）：
+
+| 步骤 | 结果 |
+| --- | --- |
+| `POST /api/session` 登录 | 200，Cookie 下发 |
+| 建档 → 上传 `fixtures/sample-snapshot.json` | 202，`total=6` |
+| worker 消费导入任务 | `status=done`，`processed=6`，`completed_at` 为当前时间 |
+| `GET /overview?scope=all` | `matches=5 wins=3 excluded=1 max_layers=11 total_coins=451` |
+| `GET /matches?limit=4` | `total=5 pages=2`，分队、盟约层数、时间正确 |
+| `GET /operators` | `with_squad=5`，出场排序正确 |
+| `PATCH / DELETE /api/roles/{id}` | 200 / 204，级联清理后列表为空 |
+| `http://localhost:5173/api/health` | Vite 代理转发正常
 
 ## 数据来源说明
 

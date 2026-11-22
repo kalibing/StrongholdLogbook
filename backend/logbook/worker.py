@@ -1,13 +1,10 @@
 import logging
 import signal
-from contextlib import closing
 from threading import Event
 from uuid import uuid4
 
-import psycopg
-from psycopg.types.json import Jsonb
-
-from .config import settings
+from .errors import StorageUnavailable, WriteRejected
+from .storage import connect, import_value
 
 LOGGER = logging.getLogger(__name__)
 
@@ -16,7 +13,6 @@ COLUMNS = (
     "scenario", "strategy", "initiator", "rounds", "kills", "coins", "sync_count",
     "trophies", "duration_seconds", "suspected_exit", "bonds", "squad", "operators", "bosses",
 )
-JSON_COLUMNS = {"bonds", "squad", "operators", "bosses"}
 UPSERT_MATCH = (
     "INSERT INTO matches (id, role_id, " + ", ".join(COLUMNS) + ") VALUES ("
     + ", ".join(["%s"] * (2 + len(COLUMNS))) + ") "
@@ -34,17 +30,15 @@ def process_one(connection) -> bool:
         """).fetchone()
         if job is None:
             return False
-        job_id, role_id, records, total = job
+        job_id, role_id = job["id"], job["role_id"]
+        records, total = job["payload"], job["total"]
         try:
             with connection.transaction(), connection.cursor() as cursor:
                 cursor.executemany(UPSERT_MATCH, [
-                    (uuid4(), role_id, *(
-                        Jsonb(record[column]) if column in JSON_COLUMNS else record[column]
-                        for column in COLUMNS
-                    ))
+                    (uuid4(), role_id, *(import_value(column, record[column]) for column in COLUMNS))
                     for record in records
                 ])
-        except (psycopg.DataError, psycopg.IntegrityError):
+        except WriteRejected:
             connection.execute("""
                 UPDATE import_jobs SET status = 'failed', payload = '[]', completed_at = now(),
                     error = '无法写入数据库，请检查文件后重新导入' WHERE id = %s
@@ -65,11 +59,11 @@ def main():
         signal.signal(interrupt, lambda *_: stop.set())
     while not stop.is_set():
         try:
-            with closing(psycopg.connect(**settings.connect_kwargs, autocommit=True)) as connection:
+            with connect() as connection:
                 while not stop.is_set():
                     if not process_one(connection):
                         stop.wait(2)
-        except psycopg.OperationalError:
+        except StorageUnavailable:
             LOGGER.warning("Database connection interrupted; retrying")
             stop.wait(3)
 

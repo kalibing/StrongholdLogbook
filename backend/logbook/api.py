@@ -6,8 +6,6 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
-from psycopg.errors import UniqueViolation
-from psycopg.types.json import Jsonb
 from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
@@ -15,8 +13,10 @@ from starlette.concurrency import run_in_threadpool
 from . import stats
 from .config import settings
 from .db import connection_pool
+from .errors import UniqueConflict
 from .records import Filters, read_snapshot
 from .security import COOKIE, SESSION_TTL, USERNAME_PATTERN, dummy_hash, hasher, new_session, session_hash, verify_password
+from .storage import json_param
 
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 MAX_PENDING_IMPORTS = 3
@@ -165,7 +165,7 @@ def create_role(details: RoleInput, request: Request, user=Depends(current_user)
                 "INSERT INTO roles (id, user_id, name) VALUES (%s, %s, %s)",
                 (role_id, user["id"], details.name),
             )
-    except UniqueViolation as exc:
+    except UniqueConflict as exc:
         raise HTTPException(409, "已存在同名角色档案") from exc
     return {"id": role_id, "name": details.name}
 
@@ -175,7 +175,7 @@ def rename_role(details: RoleInput, request: Request, role_id=Depends(require_ro
     try:
         with request.app.state.pool.connection() as database:
             database.execute("UPDATE roles SET name = %s WHERE id = %s", (details.name, role_id))
-    except UniqueViolation as exc:
+    except UniqueConflict as exc:
         raise HTTPException(409, "已存在同名角色档案") from exc
     return {"id": role_id, "name": details.name}
 
@@ -225,7 +225,7 @@ def matches(
         params.append(result)
     with request.app.state.pool.connection() as database:
         database.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        count = database.execute(f"SELECT count(*) FROM matches WHERE {where}", params).fetchone()["count"]
+        count = database.execute(f"SELECT count(*) AS count FROM matches WHERE {where}", params).fetchone()["count"]
         pages = max(1, (count + limit - 1) // limit)
         page = min(page, pages)
         rows = database.execute(
@@ -295,14 +295,14 @@ def queue_import(pool, role_id, content):
     with pool.connection() as database:
         database.execute("SELECT id FROM roles WHERE id = %s FOR UPDATE", (role_id,))
         pending = database.execute(
-            "SELECT count(*) FROM import_jobs WHERE role_id = %s AND status = 'pending'", (role_id,),
+            "SELECT count(*) AS count FROM import_jobs WHERE role_id = %s AND status = 'pending'", (role_id,),
         ).fetchone()["count"]
         if pending >= MAX_PENDING_IMPORTS:
             raise HTTPException(409, "当前有多个导入任务，请稍后重试")
         database.execute("""
             INSERT INTO import_jobs (id, role_id, status, payload, total)
             VALUES (%s, %s, 'pending', %s, %s)
-        """, (job_id, role_id, Jsonb([record.model_dump(mode="json") for record in records]), len(records)))
+        """, (job_id, role_id, json_param([record.model_dump(mode="json") for record in records]), len(records)))
     return {"id": job_id, "status": "pending", "total": len(records)}
 
 

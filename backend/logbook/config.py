@@ -1,8 +1,13 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
 
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+BACKENDS = {
+    "postgres": "postgres", "postgresql": "postgres", "psycopg": "postgres",
+    "sqlite": "sqlite", "sqlite3": "sqlite",
+}
 
 
 def validate_origin(value: str) -> str:
@@ -29,6 +34,19 @@ class Settings:
     @property
     def cookie_secure(self) -> bool:
         return self.public_origin.startswith("https://")
+
+    @property
+    def backend(self) -> str:
+        """LOGBOOK_DB=postgres（默认）| sqlite。"""
+        value = os.getenv("LOGBOOK_DB", "postgres").strip().lower()
+        try:
+            return BACKENDS[value]
+        except KeyError:
+            raise ValueError("LOGBOOK_DB must be 'postgres' or 'sqlite'") from None
+
+    @property
+    def sqlite_path(self) -> Path:
+        return Path(os.getenv("LOGBOOK_SQLITE", "logbook.sqlite3")).expanduser()
 
     @property
     def database_url(self) -> dict:
