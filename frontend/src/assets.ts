@@ -138,3 +138,15 @@ export const EQUIPMENT_ICONS: Record<string, string> = {
   "驱逐者警棍": "/art/equip-prts-chess_item_4_12_e_a.png",
   "驱逐者防暴装备": "/art/equip-prts-chess_item_6_05_e_a.png",
 }
+
+export const DIFFICULTY_ICONS: Record<string, string> = {
+  "标准模拟": "/art/tier-standard.png",
+  "险境模拟": "/art/tier-normal.png",
+  "绝境模拟": "/art/tier-hard.png",
+  "终极模拟": "/art/tier-abyss.png",
+}
+
+export const ELITE_ICONS = {
+  elite2: "/art/elite-2.png",
+  elite1: "/art/elite-1.png",
+}

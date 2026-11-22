@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { BOND_ICONS, BOSS_ICONS, EQUIPMENT_ICONS, STRATEGY_ICONS } from '../assets'
+import { BOND_ICONS, BOSS_ICONS, ELITE_ICONS, EQUIPMENT_ICONS, STRATEGY_ICONS } from '../assets'
 import { avatarFor, loadDirectory } from '../directory'
 import { dateTime, difficultyLabel, number, resultLabel } from '../format'
 import { portrait } from '../icons'
@@ -12,6 +12,7 @@ const emit = defineEmits<{ close: [] }>()
 const dialog = ref<HTMLDialogElement | null>(null)
 const names = ref(new Map<string, string>())
 const initiatorAvatar = computed(() => avatarFor(names.value, props.detail?.initiator ?? null))
+const displayItem = (name: string) => name.startsWith('chess_item_') ? '未识别装备' : name
 const itemCounts = (items: string[]) => {
   const counts = new Map<string, number>()
   for (const item of items) counts.set(item, (counts.get(item) ?? 0) + 1)
@@ -96,13 +97,17 @@ onMounted(async () => {
 
       <h3>最终阵容</h3>
       <ul v-if="detail.squad.length" class="squad">
-        <li v-for="unit in detail.squad" :key="unit.id">
-          <img :src="portrait(unit.id)" width="36" height="36" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+        <li v-for="(unit, index) in detail.squad" :key="unit.id + index" :class="{ elite: unit.elite }">
+          <span class="unit-portrait" :class="{ elite: unit.elite }">
+            <img :src="portrait(unit.id)" width="36" height="36" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+            <img v-if="unit.elite || unit.evolve === 2" class="elite-badge" :src="ELITE_ICONS.elite2" width="14" height="14" :alt="unit.elite ? '精锐' : '精二'">
+            <img v-else-if="unit.evolve === 1" class="elite-badge" :src="ELITE_ICONS.elite1" width="14" height="14" alt="精一">
+          </span>
           <b>{{ unit.name }}</b>
           <div v-if="unit.items.length" class="equipment-list">
             <span v-for="item in itemCounts(unit.items)" :key="item.name" class="equipment-chip">
               <img v-if="EQUIPMENT_ICONS[item.name]" :src="EQUIPMENT_ICONS[item.name]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
-              <span>{{ item.name }}<template v-if="item.count > 1"> ×{{ item.count }}</template></span>
+              <span>{{ displayItem(item.name) }}<template v-if="item.count > 1"> ×{{ item.count }}</template></span>
             </span>
           </div>
         </li>

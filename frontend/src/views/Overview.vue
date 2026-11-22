@@ -4,7 +4,7 @@ import { NIcon } from 'naive-ui'
 import { FlameOutline, LayersOutline, NuclearOutline, ShieldOutline, SkullOutline, SpeedometerOutline } from '@vicons/ionicons5'
 import { logbook } from '../context'
 import { query, useResource } from '../api'
-import { BOND_ICONS } from '../assets'
+import { BOND_ICONS, DIFFICULTY_ICONS } from '../assets'
 import { number, peakText, percent, pickMajorBond, resultLabel } from '../format'
 import { portrait } from '../icons'
 import type { DistributionGroup, Overview, Scope } from '../models'
@@ -114,7 +114,8 @@ const topTotal = computed(() => maxTotal(distribution.data.value))
           <h3>{{ group.play }}</h3>
           <div v-for="bucket in group.buckets" :key="bucket.label" class="dist-row" :class="{ zero: !bucket.total }">
             <span class="dist-icon" :style="{ color: tierOf(bucket.label).color }">
-              <NIcon :component="tierOf(bucket.label).icon" />
+              <img v-if="DIFFICULTY_ICONS[bucket.label]" :src="DIFFICULTY_ICONS[bucket.label]" width="18" height="18" alt="">
+              <NIcon v-else :component="tierOf(bucket.label).icon" />
             </span>
             <span class="dist-label">{{ bucket.label }}</span>
             <span class="dist-count win">胜 {{ bucket.wins }}</span>

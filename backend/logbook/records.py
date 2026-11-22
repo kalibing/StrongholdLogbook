@@ -22,6 +22,8 @@ class Operator(BaseModel):
 
 class Unit(Operator):
     items: list[Label] = Field(default_factory=list, max_length=40)
+    elite: bool | None = None
+    evolve: Annotated[int, Field(ge=0, le=3)] | None = None
 
 
 class MatchInput(BaseModel):

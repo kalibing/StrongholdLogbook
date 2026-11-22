@@ -68,7 +68,7 @@ export interface MatchDetail extends Match {
   trophies: number | null
   duration_seconds: number | null
   bonds: { name: string; layers: number }[]
-  squad: { id: string; name: string; items: string[] }[]
+  squad: { id: string; name: string; items: string[]; elite?: boolean | null; evolve?: number | null }[]
   bosses: string[]
 }
 export interface MatchPage { page: number; pages: number; total: number; matches: MatchSummary[] }
