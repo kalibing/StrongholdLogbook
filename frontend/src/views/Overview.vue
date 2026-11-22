@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { logbook } from '../context'
 import { query, rolePath, useResource } from '../api'
 import { BOND_ICONS } from '../assets'
@@ -12,6 +12,7 @@ import type { Metric } from '../components/TrendChart.vue'
 
 const { role, filters, revision } = logbook()
 const scope = ref<Scope>('recent')
+const missingPortraits = reactive(new Set<string>())
 const { data, pending, error, refresh } = useResource<Overview>(rolePath(role, () =>
   '/overview' + query(filters, { scope: scope.value })), revision)
 
@@ -103,7 +104,8 @@ const period = computed(() => data.value?.start ? `${data.value.start} — ${dat
       </div>
       <div v-if="data.operators.length" class="roster">
         <article v-for="operator in data.operators" :key="operator.id" class="op">
-          <img :src="portrait(operator.id)" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+          <img v-if="!missingPortraits.has(operator.id)" :src="portrait(operator.id)" alt="" @error="missingPortraits.add(operator.id)">
+          <span v-else class="op-fallback" aria-hidden="true">{{ operator.name.slice(0, 1) }}</span>
           <div>
             <b>{{ operator.name }}</b>
             <small>出场 {{ operator.count }} 局 · {{ percent(operator.usage_rate) }}</small>
@@ -120,7 +122,8 @@ const period = computed(() => data.value?.start ? `${data.value.start} — ${dat
       </div>
       <div v-if="data.bonds.length" class="bond-usage">
         <article v-for="bond in data.bonds" :key="bond.name" class="usage-card">
-          <img v-if="BOND_ICONS[bond.name]" :src="BOND_ICONS[bond.name]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+          <img v-if="BOND_ICONS[bond.name]" :src="BOND_ICONS[bond.name]" alt="">
+          <span v-else class="bond-glyph" aria-hidden="true"></span>
           <div>
             <b>{{ bond.name }}</b>
             <small>{{ bond.count }} 局 · 场均 {{ number(bond.average) }} 层</small>
