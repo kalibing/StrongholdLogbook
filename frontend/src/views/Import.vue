@@ -12,6 +12,8 @@ const jobsError = ref('')
 const jobsPending = ref(false)
 const importing = ref(false)
 const sklandTip = ref('')
+const sklandError = ref('')
+const sklandMode = ref<'cred' | 'token'>('cred')
 const sklandCred = ref('')
 const sklandSign = ref('')
 const sklandToken = ref('')
@@ -48,24 +50,30 @@ async function loadJobs() {
 }
 
 async function importFromSkland() {
-  importError.value = ''
+  sklandError.value = ''
+  sklandTip.value = ''
+  const cred = sklandCred.value.trim()
+  const sign = sklandSign.value.trim()
+  const token = sklandToken.value.trim()
+  if (sklandMode.value === 'cred' && (!cred || !sign)) {
+    sklandError.value = '请把 cred 与 sign_token 两项都填上。'
+    return
+  }
+  if (sklandMode.value === 'token' && !token) {
+    sklandError.value = '请填入鹰角 access token。'
+    return
+  }
   importing.value = true
   try {
     const job = await api<{ total: number; records: number }>('/imports/skland', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cred: sklandCred.value.trim() || undefined,
-        sign_token: sklandSign.value.trim() || undefined,
-        token: sklandToken.value.trim() || undefined,
-      }),
+      body: JSON.stringify(sklandMode.value === 'cred' ? { cred, sign_token: sign } : { token }),
     })
     sklandTip.value = `已拉取 ${job.records ?? job.total} 局，正在写入数据库…`
     await loadJobs()
   } catch (reason) {
-    importError.value = reason instanceof ApiError && reason.status === 424
-      ? `${message(reason)}（可先在本机运行一次《明日方舟》PC 端登录）`
-      : message(reason)
+    sklandError.value = message(reason)
   } finally {
     importing.value = false
   }
@@ -113,24 +121,40 @@ onBeforeUnmount(() => {
       <h3>从森空岛导入</h3>
       <span class="period">最新 100 局 · 需自备凭据</span>
     </div>
-    <p class="muted">
-      填森空岛凭据（<code>cred</code> + <code>sign_token</code>），或只填鹰角 access token 由服务端换。
-      服务端不读取任何本机客户端登录态。
-    </p>
-    <label class="filter-field">cred
-      <NInput v-model:value="sklandCred" placeholder="森空岛 cred" :input-props="{ maxlength: 128 }" />
-    </label>
-    <label class="filter-field">sign_token
-      <NInput v-model:value="sklandSign" placeholder="森空岛 sign_token" :input-props="{ maxlength: 128 }" />
-    </label>
-    <label class="filter-field">或 鹰角 access token
-      <NInput v-model:value="sklandToken" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }"
-        placeholder="只给这一项也可以（服务端换 cred）" />
-    </label>
-    <div class="row-actions">
-      <NButton type="primary" :loading="importing" @click="importFromSkland">拉取并导入</NButton>
-      <span v-if="sklandTip" class="muted">{{ sklandTip }}</span>
+    <p class="muted">服务端只接受显式凭据，不读取任何本机客户端登录态。</p>
+
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" :aria-selected="sklandMode === 'cred'" @click="sklandMode = 'cred'">森空岛凭据</button>
+      <button type="button" role="tab" :aria-selected="sklandMode === 'token'" @click="sklandMode = 'token'">鹰角 token</button>
     </div>
+
+    <div v-if="sklandMode === 'cred'" class="skland-form">
+      <label>cred
+        <NInput v-model:value="sklandCred" placeholder="森空岛 cred（32 位）" :input-props="{ maxlength: 128 }" />
+      </label>
+      <label>sign_token
+        <NInput v-model:value="sklandSign" placeholder="森空岛 sign_token（32 位）" :input-props="{ maxlength: 128 }" />
+      </label>
+    </div>
+    <div v-else class="skland-form">
+      <label>鹰角 access token
+        <NInput v-model:value="sklandToken" type="textarea" :autosize="{ minRows: 3, maxRows: 5 }"
+          placeholder="粘贴鹰角 access token，服务端用它换森空岛凭据" />
+      </label>
+    </div>
+
+    <div class="skland-actions">
+      <NButton type="primary" :loading="importing" @click="importFromSkland">拉取并导入</NButton>
+      <span v-if="sklandTip" class="skland-tip">{{ sklandTip }}</span>
+      <span v-if="sklandError" class="skland-error" role="alert">{{ sklandError }}</span>
+    </div>
+    <details class="skland-help">
+      <summary>凭据从哪来</summary>
+      <p>
+        森空岛网页版登录后，请求头里带 <code>cred</code> 与用于签名的 <code>sign_token</code>；
+        或者用鹰角通行证导出的 access token，由服务端走 OAuth 换 cred。凭据只在本次请求内使用，不落库。
+      </p>
+    </details>
   </section>
 
   <section class="panel import-panel" aria-labelledby="import-title">
@@ -174,4 +198,22 @@ onBeforeUnmount(() => {
 .import-history { border-top: 1px solid var(--line); padding-top: .85rem; }
 .import-panel .load-message, .import-panel .job-list { margin: 0; }
 .job progress { flex-basis: 100%; height: .45rem; accent-color: var(--accent); }
+
+.skland-panel { padding: 1.1rem 1.25rem; display: grid; gap: .7rem; margin-bottom: 1rem; }
+.skland-panel .tabs { display: flex; gap: .5rem; flex-wrap: wrap; }
+.skland-panel .tabs button {
+  padding: .35rem .8rem; border-radius: 999px; border: 1px solid var(--control-line);
+  background: var(--inset); color: var(--muted); cursor: pointer; font: inherit; font-size: .8125rem;
+}
+.skland-panel .tabs button[aria-selected='true'] { border-color: var(--accent); color: var(--accent); }
+.skland-form { display: grid; gap: .55rem; max-width: 42rem; }
+.skland-form label { display: grid; gap: .3rem; color: var(--muted); font-size: .8125rem; }
+.skland-form :deep(.n-input) { width: 100%; }
+.skland-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.skland-tip { color: var(--muted); font-size: .8125rem; }
+.skland-error { color: #ff8a80; font-size: .8125rem; }
+.skland-help { color: var(--muted); font-size: .78rem; }
+.skland-help summary { cursor: pointer; color: var(--accent); }
+.skland-help p { margin: .4rem 0 0; line-height: 1.7; }
+.skland-help code { background: var(--inset); border: 1px solid var(--line); border-radius: 4px; padding: 0 .2rem; }
 </style>
