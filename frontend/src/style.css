@@ -559,25 +559,25 @@ tbody tr:hover { background: #ffffff06; box-shadow: inset 2px 0 var(--accent); }
 body { background-image: linear-gradient(180deg, #0e1016 0, transparent 320px), repeating-linear-gradient(90deg, #ffffff03 0 1px, transparent 1px 120px); }
 .report-stats { grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); }
 
-/* ===== 干员卡：旧站构图（右上头像 + 左下文字 + 渐变遮罩） ===== */
+/* ===== 干员卡：按旧站参数还原（12px 圆角、112×108 头像贴右上、左下渐变文字） ===== */
 .roster { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .75rem; }
 .op {
   position: relative;
   display: flex;
   flex-direction: row;
   align-items: flex-end;
-  min-height: 128px;
+  min-height: 124px;
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  border: 1px solid #2b394b;
+  border-radius: 14px;
   background: linear-gradient(135deg, #263752, #131b29);
 }
 .op img {
   position: absolute;
-  inset: .25rem .25rem auto auto;
-  width: min(96%, 116px);
-  height: 110px;
+  inset: .2rem .2rem auto auto;
+  width: min(96%, 112px);
+  height: 108px;
   aspect-ratio: auto;
   padding: 0;
   object-fit: contain;
@@ -592,19 +592,20 @@ body { background-image: linear-gradient(180deg, #0e1016 0, transparent 320px), 
   inset: auto;
   z-index: 1;
   width: 100%;
-  padding: 1.6rem .65rem .5rem;
+  padding: 1.65rem .65rem .5rem;
   border-top: 0;
-  background: linear-gradient(transparent, #101722 54%);
+  background: linear-gradient(transparent, #111827 54%);
 }
-.op b { display: block; font-size: .95rem; line-height: 1.35; }
+.op b { display: block; font-size: 1rem; line-height: 1.35; }
 .op small { display: block; font-size: .8125rem; color: #b3bdc9; }
-.op:hover { border-color: #4a5666; }
+.op:hover { border-color: #465a74; }
 .op:hover img { filter: brightness(1.06); }
 .op-fallback {
   position: absolute;
-  inset: .25rem .25rem auto auto;
-  width: min(96%, 116px);
-  height: 110px;
+  inset: .2rem .2rem auto auto;
+  width: min(96%, 112px);
+  height: 108px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   font-size: 1.7rem;
@@ -614,8 +615,10 @@ body { background-image: linear-gradient(180deg, #0e1016 0, transparent 320px), 
 }
 @media (max-width: 900px) { .op { min-height: 120px; } }
 @media (max-width: 440px) {
-  .op { min-height: 108px; }
-  .op img, .op-fallback { width: min(96%, 92px); height: 92px; }
+  .op { min-height: 112px; border-radius: 10px; }
+  .op img, .op-fallback { width: min(96%, 96px); height: 94px; }
+  .op b { font-size: .875rem; }
+  .op small { font-size: .75rem; }
 }
 
 /* 缺盟约图标时的占位菱形，避免卡片只剩文字 */
