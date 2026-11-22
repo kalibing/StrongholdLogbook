@@ -77,6 +77,13 @@ python -m venv .venv
 pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 ```
 
+装好依赖后可以用一键脚本起本地环境（SQLite + API + worker + Vite）：
+
+```powershell
+pwsh -File scripts\dev.ps1              # 三个窗口：API 8000 / worker / 网页 5173
+pwsh -File scripts\dev.ps1 -NoWorker    # 只要 API 与网页
+```
+
 ### 1. 后端（SQLite，最省事）
 
 ```powershell
