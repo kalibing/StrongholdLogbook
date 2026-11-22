@@ -28,15 +28,13 @@ const excludeExits = computed({
   set: (value: boolean) => { filters.include_exits = !value },
 })
 
-const toDate = (timestamp: number) => {
-  const date = new Date(timestamp)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
+const range = computed<[string, string] | null>(() => filters.start && filters.end ? [filters.start, filters.end] : null)
 
-const startDisabled = (timestamp: number) => Boolean(filters.end && toDate(timestamp) > filters.end)
-const endDisabled = (timestamp: number) => Boolean(filters.start && toDate(timestamp) < filters.start)
+function setRange(value: string | string[] | null) {
+  const [start = '', end = ''] = Array.isArray(value) ? value : []
+  filters.start = start
+  filters.end = end
+}
 
 function clearFilters() {
   Object.assign(filters, newFilters())
@@ -69,20 +67,12 @@ function changePlay(value: string) {
       <NSelect :value="filters.difficulty" :options="difficultyOptions" size="small" aria-label="难度或等级"
         @update:value="value => filters.difficulty = value" />
     </label>
-    <div class="filter-dates" role="group" aria-label="开局日期">
-      <label class="filter-field">开始日期
-        <NDatePicker :formatted-value="filters.start || null" type="date" size="small" clearable
-          value-format="yyyy-MM-dd" placeholder="不限" placement="bottom-start" :is-date-disabled="startDisabled"
-          :actions="[]" :input-props="{ 'aria-label': '开始日期' }"
-          @update:formatted-value="value => filters.start = typeof value === 'string' ? value : ''" />
-      </label>
-      <label class="filter-field">结束日期
-        <NDatePicker :formatted-value="filters.end || null" type="date" size="small" clearable
-          value-format="yyyy-MM-dd" placeholder="不限" placement="bottom-start" :is-date-disabled="endDisabled"
-          :actions="[]" :input-props="{ 'aria-label': '结束日期' }"
-          @update:formatted-value="value => filters.end = typeof value === 'string' ? value : ''" />
-      </label>
-    </div>
+    <label class="filter-field date-range-field">开局日期
+      <NDatePicker :formatted-value="range" type="daterange" size="small" clearable
+        value-format="yyyy-MM-dd" :actions="['clear', 'confirm']"
+        start-placeholder="开始日期" end-placeholder="结束日期" aria-label="开局日期范围"
+        @update:formatted-value="setRange" />
+    </label>
     <slot name="extra" />
     <div class="filter-actions">
       <NCheckbox v-model:checked="excludeExits">排除疑似直接退出</NCheckbox>

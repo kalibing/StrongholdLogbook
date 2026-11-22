@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { api, ApiError, message } from '../api'
 import { logbook } from '../context'
 import { dateTime } from '../format'
@@ -8,35 +8,39 @@ import type { ImportJob } from '../models'
 const { refresh } = logbook()
 const jobs = ref<ImportJob[]>([])
 const importError = ref('')
+const jobsError = ref('')
+const jobsPending = ref(false)
 const importing = ref(false)
 let poll: ReturnType<typeof setTimeout> | undefined
-let lastDone = ''
-
-const pendingJobs = computed(() => jobs.value.filter(job => job.status === 'pending'))
+let request: AbortController | null = null
+let hasLoaded = false
+let disposed = false
 
 async function loadJobs() {
+  if (disposed) return
+  clearTimeout(poll)
+  request?.abort()
+  const controller = new AbortController()
+  request = controller
+  jobsPending.value = true
+  jobsError.value = ''
   try {
-    jobs.value = await api<ImportJob[]>('/imports')
+    const nextJobs = await api<ImportJob[]>('/imports', { signal: controller.signal })
+    if (controller.signal.aborted) return
+    const finished = new Set(jobs.value.filter(job => job.status === 'done').map(job => job.id))
+    if (hasLoaded && nextJobs.some(job => job.status === 'done' && !finished.has(job.id))) refresh()
+    jobs.value = nextJobs
+    hasLoaded = true
   } catch (reason) {
-    importError.value = message(reason)
-    return
+    if (!controller.signal.aborted) jobsError.value = message(reason)
+  } finally {
+    if (!controller.signal.aborted) {
+      jobsPending.value = false
+      if (jobs.value.some(job => job.status === 'pending')) {
+        poll = setTimeout(() => { void loadJobs() }, 2000)
+      }
+    }
   }
-  schedulePoll()
-}
-
-function schedulePoll() {
-  if (poll) clearTimeout(poll)
-  if (!pendingJobs.value.length) return
-  poll = setTimeout(() => { void loadJobs() }, 2000)
-}
-
-function noteFinished() {
-  const done = jobs.value.filter(job => job.status === 'done').map(job => job.id).join(',')
-  if (!done) return
-  if (!lastDone) { lastDone = done; return }
-  if (done === lastDone) return
-  lastDone = done
-  refresh()
 }
 
 async function upload(event: Event) {
@@ -67,36 +71,52 @@ async function upload(event: Event) {
 
 const statusLabel: Record<ImportJob['status'], string> = { pending: '等待写入', done: '已写入', failed: '写入失败' }
 
-watch(jobs, noteFinished)
 onMounted(() => { void loadJobs() })
-onBeforeUnmount(() => { if (poll) clearTimeout(poll) })
+onBeforeUnmount(() => {
+  disposed = true
+  clearTimeout(poll)
+  request?.abort()
+})
 </script>
 
 <template>
   <section class="panel import-panel" aria-labelledby="import-title">
-    <div class="split">
-      <div>
-        <h2 id="import-title">导入战绩</h2>
-        <p class="muted">同一局重复导入只会覆盖字段，不会产生重复记录。</p>
-      </div>
-    </div>
+    <header class="import-heading">
+      <h2 id="import-title">导入战绩</h2>
+      <p class="muted">同一局重复导入只会覆盖字段，不会产生重复记录。</p>
+    </header>
 
     <label class="dropzone">
-      <input type="file" accept="application/json,.json" :disabled="importing" @change="upload">
+      <input type="file" accept="application/json,.json" :disabled="importing" aria-describedby="import-file-help" @change="upload">
       <strong>{{ importing ? '正在上传…' : '选择战绩 JSON 文件' }}</strong>
-      <small>支持导出的快照（matches 数组）或带干员、装备字典的完整文件，单个文件不超过 8 MB。</small>
+      <small id="import-file-help">支持导出的快照（matches 数组）或带干员、装备字典的完整文件，单个文件不超过 8 MB。</small>
     </label>
     <p class="hint">导入在后台写入数据库，完成后总览与对局记录会自动刷新。</p>
     <p v-if="importError" class="load-message" role="alert">{{ importError }}</p>
 
-    <h3>最近导入</h3>
-    <ul v-if="jobs.length" class="job-list">
-      <li v-for="job in jobs" :key="job.id" class="job">
-        <span>{{ statusLabel[job.status] }} · {{ job.processed }} / {{ job.total }} 局</span>
-        <time :datetime="job.created_at">{{ dateTime(job.created_at) }}</time>
-        <span v-if="job.error" class="job-error">{{ job.error }}</span>
-      </li>
-    </ul>
-    <p v-else class="muted">还没有导入记录。</p>
+    <section class="import-history" aria-labelledby="import-history-title">
+      <h3 id="import-history-title">最近导入</h3>
+      <p v-if="jobsError" class="load-message" role="alert">
+        {{ jobsError }} <button type="button" @click="loadJobs">重试</button>
+      </p>
+      <ul v-if="jobs.length" class="job-list">
+        <li v-for="job in jobs" :key="job.id" class="job">
+          <span>{{ statusLabel[job.status] }} · {{ job.processed }} / {{ job.total }} 局</span>
+          <time :datetime="job.created_at">{{ dateTime(job.created_at) }}</time>
+          <progress v-if="job.status === 'pending'" :value="job.processed" :max="Math.max(1, job.total)" aria-label="写入进度"></progress>
+          <span v-if="job.error" class="job-error">{{ job.error }}</span>
+        </li>
+      </ul>
+      <p v-else-if="jobsPending" class="muted" role="status">正在读取导入记录…</p>
+      <p v-else-if="!jobsError" class="muted">还没有导入记录。</p>
+    </section>
   </section>
 </template>
+
+<style scoped>
+.import-panel { display: grid; gap: .85rem; padding: clamp(.9rem, 2.5vw, 1.4rem); }
+.import-heading, .import-history { display: grid; gap: .4rem; }
+.import-history { border-top: 1px solid var(--line); padding-top: .85rem; }
+.import-panel .load-message, .import-panel .job-list { margin: 0; }
+.job progress { flex-basis: 100%; height: .45rem; accent-color: var(--accent); }
+</style>

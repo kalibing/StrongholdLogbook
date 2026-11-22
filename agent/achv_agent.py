@@ -30,7 +30,7 @@ import ctypes.wintypes as wt
 import getpass
 import hashlib
 import hmac
-import http.cookiejar
+from http.cookiejar import CookieJar
 import json
 import os
 import re
@@ -288,7 +288,7 @@ def u8_token(access_token: str) -> str:
 
 # ------------------------------------------------------------------------- 推站点
 def push(api: str, origin: str, user: str, password: str, token: str) -> dict:
-    jar = http.cookiejar.CookieJar()
+    jar = CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
     status, text = http(f"{api}/api/session", {"username": user, "password": password},
                         {"Origin": origin}, opener)

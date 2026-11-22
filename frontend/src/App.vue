@@ -24,7 +24,7 @@ const nav = ref<HTMLElement | null>(null)
 const indicator = ref({ left: 0, width: 0 })
 const overrides = computed<GlobalThemeOverrides>(() => ({
   common: {
-    primaryColor: theme.value === 'dark' ? '#dfe6a8' : '#6f7f24',
+    primaryColor: theme.value === 'dark' ? '#dfe6a8' : '#687820',
     primaryColorHover: theme.value === 'dark' ? '#eaf0be' : '#7f9130',
     primaryColorPressed: theme.value === 'dark' ? '#c9d296' : '#5f6c1e',
     borderRadius: '3px',

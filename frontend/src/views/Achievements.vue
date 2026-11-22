@@ -1,17 +1,25 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { NButton, NInput, NSpin, useMessage } from 'naive-ui'
+import { NButton, NInput, useDialog, useMessage } from 'naive-ui'
 import { api, ApiError, message, post } from '../api'
 import AchievementRadar from '../components/AchievementRadar.vue'
+import AvatarImage from '../components/AvatarImage.vue'
 import type { AchvBadge, AchvBandTop, AchvEnvelope, AchvProfile, AchvState, AchvTitle } from '../models'
 
 const notify = useMessage()
+const dialog = useDialog()
 const state = ref<AchvState | null>(null)
 const profile = ref<AchvProfile | null>(null)
 const warning = ref('')
 const pending = ref(true)
 const busy = ref(false)
+const loadError = ref('')
 const mode = ref<'web' | 'hypergryph' | 'token'>('token')
+const bindingMethods = [
+  { value: 'token', label: '拿令牌（推荐）' },
+  { value: 'hypergryph', label: '账号密码' },
+  { value: 'web', label: '网页登录（实验）' },
+] as const
 const phone = ref('')
 const password = ref('')
 const token = ref('')
@@ -19,13 +27,17 @@ const formError = ref('')
 const webState = ref<'idle' | 'waiting' | 'syncing' | 'done'>('idle')
 let pollTimer: number | undefined
 
-const connected = computed(() => Boolean(state.value?.connected && profile.value))
 const fetched = computed(() => {
   const value = profile.value?.fetched_at
   if (!value) return '—'
   return new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
 })
-const teammate = computed(() => profile.value?.social.best_teammate ?? null)
+const legacyTeammate = computed(() => {
+  const social = profile.value?.social
+  return social?.top_teammates === undefined ? social?.best_teammate ?? null : null
+})
+const teammates = computed(() => profile.value?.social.top_teammates
+  ?? (legacyTeammate.value ? [{ ...legacyTeammate.value, wins: null }] : []))
 
 const overviewTitles = computed(() => groupTitles('overview'))
 const specialTitles = computed(() => groupTitles('special'))
@@ -43,16 +55,13 @@ function hideOnError(event: Event) {
 
 const badgeList = computed(() => profile.value?.bands.badges ?? [])
 
-function avatarUrl(value: string | null): string {
-  if (!value) return '/portraits/char_010_chen.png'
-  return '/portraits/' + value.split('#')[0] + '.png'
+function avatarUrl(value: string | null): string | null {
+  return value ? '/portraits/' + value.split('#')[0] + '.png' : null
 }
-function avatarFallback(event: Event, value: string | null) {
-  const image = event.target as HTMLImageElement
-  if (!value || image.dataset.fallback) return
-  image.dataset.fallback = '1'
+function avatarFallbackUrl(value: string | null): string | null {
+  if (!value) return null
   // char_xxx#N 走皮肤头像目录，avatar_special_xx 走通用头像目录，两者不能混
-  image.src = value.startsWith('avatar_')
+  return value.startsWith('avatar_')
     ? 'https://web.hycdn.cn/arknights/game/assets/avatar/' + encodeURIComponent(value) + '.png'
     : 'https://web.hycdn.cn/arknights/game/assets/char_skin/avatar/' + encodeURIComponent(value) + '.png'
 }
@@ -97,25 +106,23 @@ const likeIcon = '/art/like-box.png'
 
 async function load() {
   pending.value = true
+  loadError.value = ''
   formError.value = ''
   try {
     const status = await api<AchvState>('/achv/status')
     state.value = status
     if (!status.connected) {
       profile.value = null
+      warning.value = ''
       return
     }
     const envelope = await api<AchvEnvelope>('/achv/summary')
     state.value = envelope.state
-    profile.value = envelope.data
+    profile.value = envelope.data?.player ? envelope.data : null
     warning.value = envelope.warning ?? ''
+    if (!profile.value) loadError.value = warning.value || '已绑定，暂时没有可显示的成就数据。'
   } catch (reason) {
-    if (reason instanceof ApiError && reason.status === 404) {
-      state.value = { connected: false, source: null, uid: null, nickname: null, fetched_at: null, stale: false, phone: null }
-      profile.value = null
-    } else {
-      formError.value = message(reason)
-    }
+    loadError.value = message(reason)
   } finally {
     pending.value = false
   }
@@ -186,12 +193,13 @@ async function connect() {
 
 async function refresh() {
   busy.value = true
+  formError.value = ''
   try {
     const envelope = await api<AchvEnvelope>('/achv/summary?refresh=true')
     state.value = envelope.state
-    profile.value = envelope.data
+    if (envelope.data?.player) profile.value = envelope.data
     warning.value = envelope.warning ?? ''
-    notify.success('已刷新')
+    if (!warning.value && envelope.data?.player) notify.success('已刷新')
   } catch (reason) {
     if (reason instanceof ApiError && reason.status === 404) {
       await load()
@@ -219,6 +227,16 @@ async function disconnect() {
   }
 }
 
+function confirmDisconnect() {
+  dialog.warning({
+    title: '解除成就档案绑定？',
+    content: '解绑会移除已保存的成就数据，重新连接后可再次查看。',
+    positiveText: '确认解绑',
+    negativeText: '取消',
+    onPositiveClick: disconnect,
+  })
+}
+
 onMounted(load)
 onBeforeUnmount(stopPolling)
 </script>
@@ -229,17 +247,27 @@ onBeforeUnmount(stopPolling)
 
     <template v-else>
       <p v-if="formError" class="load-message" role="alert">{{ formError }}</p>
+      <p v-if="loadError && profile" class="load-message" role="alert">
+        {{ loadError }} <button type="button" @click="load">重试</button>
+      </p>
 
-      <section v-if="!connected" class="panel connect">
+      <section v-if="loadError && !profile" class="panel connect" aria-labelledby="achv-load-title">
+        <h2 id="achv-load-title">成就档案暂时无法读取</h2>
+        <p class="muted" role="alert">{{ loadError }}</p>
+        <div><NButton secondary @click="load">重试</NButton></div>
+      </section>
+
+      <section v-else-if="state?.connected === false" class="panel connect">
         <header class="connect-head">
           <h2>绑定成就数据源</h2>
           <p class="muted">成就统计来自卫戍协议 H5 的 <code>playerSummary</code> 接口，需要该接口的 <code>code</code> 令牌。</p>
         </header>
-        <div class="tabs" role="tablist">
-          <button type="button" role="tab" :aria-selected="mode === 'token'" @click="mode = 'token'">拿令牌（推荐）</button>
-          <button type="button" role="tab" :aria-selected="mode === 'hypergryph'" @click="mode = 'hypergryph'">账号密码</button>
-          <button type="button" role="tab" :aria-selected="mode === 'web'" @click="mode = 'web'">网页登录（实验）</button>
-        </div>
+        <fieldset class="binding-methods" aria-label="绑定方式" :disabled="busy || webState === 'syncing'">
+          <label v-for="method in bindingMethods" :key="method.value">
+            <input v-model="mode" type="radio" name="achievement-binding" :value="method.value">
+            {{ method.label }}
+          </label>
+        </fieldset>
 
         <div v-if="mode === 'web'" class="connect-form">
           <NButton type="primary" size="large" :loading="webState === 'syncing'" @click="openHgLogin">
@@ -304,8 +332,8 @@ onBeforeUnmount(stopPolling)
             <img v-if="profile.player.name_card" :key="profile.player.name_card" class="namecard-art"
               :src="nameCardLocal(profile.player.name_card)" alt=""
               @error="nameCardFallback($event, profile.player.name_card)" />
-            <img class="namecard-avatar" :src="avatarUrl(profile.player.avatar)" alt=""
-              @error="avatarFallback($event, profile.player.avatar)" />
+            <AvatarImage class="namecard-avatar" :src="avatarUrl(profile.player.avatar)" :fallback-src="avatarFallbackUrl(profile.player.avatar)"
+              :name="profile.player.nickname" :size="48" />
             <div class="namecard-copy">
               <h2>{{ profile.player.nickname || '未命名玩家' }}</h2>
               <small v-if="profile.player.nick_number">#{{ profile.player.nick_number }}</small>
@@ -319,7 +347,7 @@ onBeforeUnmount(stopPolling)
           </dl>
           <div class="strip-actions">
             <NButton size="small" secondary :loading="busy" @click="refresh">刷新</NButton>
-            <NButton size="small" quaternary :loading="busy" @click="disconnect">解绑</NButton>
+            <NButton size="small" quaternary :disabled="busy" @click="confirmDisconnect">解绑</NButton>
           </div>
         </section>
 
@@ -356,7 +384,7 @@ onBeforeUnmount(stopPolling)
         <section class="panel block">
           <div class="split"><h3>社交数据</h3></div>
           <div class="social-grid">
-            <div class="social-metrics" :class="{ 'social-metrics--wide': !teammate }">
+            <div class="social-metrics" :class="{ 'social-metrics--wide': !teammates.length }">
               <article class="metric-card">
                 <img v-if="trophyIcon" :src="trophyIcon" alt="" class="metric-art" />
                 <div><span>已获奖杯</span><strong>{{ profile.trophy.total }}</strong></div>
@@ -366,21 +394,25 @@ onBeforeUnmount(stopPolling)
                 <div><span>已获赞</span><strong>{{ profile.likes }}</strong></div>
               </article>
             </div>
-            <article v-if="teammate" class="mate-card">
-              <div class="namecard namecard--mate">
-                <img v-if="teammate.name_card" :key="teammate.name_card" class="namecard-art"
-                  :src="nameCardLocal(teammate.name_card)" alt="" @error="nameCardFallback($event, teammate.name_card)" />
-                <img class="namecard-avatar" :src="avatarUrl(teammate.avatar)" alt="" @error="avatarFallback($event, teammate.avatar)" />
-                <div class="namecard-copy">
-                  <strong>{{ teammate.nickname || '未命名玩家' }}</strong>
-                  <small v-if="teammate.nick_number">#{{ teammate.nick_number }}</small>
+            <div v-if="teammates.length" class="social-mates">
+              <article v-for="teammate in teammates" :key="teammate.uid" class="mate-card">
+                <div class="namecard namecard--mate">
+                  <img v-if="teammate.name_card" :key="teammate.name_card" class="namecard-art"
+                    :src="nameCardLocal(teammate.name_card)" alt="" @error="nameCardFallback($event, teammate.name_card)" />
+                  <AvatarImage class="namecard-avatar" :src="avatarUrl(teammate.avatar)" :fallback-src="avatarFallbackUrl(teammate.avatar)"
+                    :name="teammate.nickname" :size="40" />
+                  <div class="namecard-copy">
+                    <strong>{{ teammate.nickname || `UID ${teammate.uid}` }}</strong>
+                    <small v-if="teammate.nick_number">#{{ teammate.nick_number }}</small>
+                  </div>
                 </div>
-              </div>
-              <dl class="mate-stats">
-                <div><dt>最常共同游玩</dt><dd>{{ teammate.plays }} <small>场次</small></dd></div>
-                <div><dt>最多胜场</dt><dd>{{ teammate.wins }} <small>场次</small></dd></div>
-              </dl>
-            </article>
+                <dl class="mate-stats">
+                  <div v-if="teammate.plays != null"><dt>最常共同游玩</dt><dd>{{ teammate.plays }} <small>场次</small></dd></div>
+                  <div v-if="teammate.wins != null"><dt>最多胜场</dt><dd>{{ teammate.wins }} <small>场次</small></dd></div>
+                </dl>
+              </article>
+              <p v-if="legacyTeammate?.wins != null" class="muted">刷新档案后可查看最多胜场的队友。</p>
+            </div>
           </div>
         </section>
 
@@ -423,7 +455,6 @@ onBeforeUnmount(stopPolling)
         </section>
       </template>
 
-      <div v-else class="loading-shell" role="status"><NSpin size="small" /> 正在同步…</div>
     </template>
   </div>
 </template>
@@ -434,12 +465,16 @@ onBeforeUnmount(stopPolling)
 .connect { padding: 1.5rem; display: grid; gap: 1rem; }
 .connect-head h2 { margin-bottom: .4rem; }
 .connect-head code, .hint code, .steps code { background: var(--inset); border: 1px solid var(--line); border-radius: 4px; padding: 0 .25rem; }
-.tabs { display: flex; gap: .5rem; flex-wrap: wrap; }
-.tabs button {
+.binding-methods { display: flex; gap: .5rem; flex-wrap: wrap; min-width: 0; border: 0; padding: 0; margin: 0; }
+.binding-methods label {
+  position: relative;
   padding: .45rem .9rem; border-radius: 999px; border: 1px solid var(--control-line);
   background: var(--inset); color: var(--muted); cursor: pointer; font: inherit;
 }
-.tabs button[aria-selected='true'] { border-color: var(--accent); color: var(--accent); }
+.binding-methods input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
+.binding-methods label:has(input:checked) { border-color: var(--accent); color: var(--accent); }
+.binding-methods label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.binding-methods:disabled label { opacity: .65; cursor: default; }
 .connect-form { display: grid; gap: .9rem; max-width: 36rem; }
 .hint { color: var(--muted); font-size: .8125rem; line-height: 1.6; }
 .steps { margin: 0; padding-left: 1.25rem; display: grid; gap: .35rem; color: var(--muted); font-size: .8125rem; line-height: 1.7; }
@@ -478,7 +513,7 @@ onBeforeUnmount(stopPolling)
   background: linear-gradient(90deg, #0c1219b8, #0c121970 53%, transparent 90%);
 }
 .namecard:has(.namecard-art:not([hidden])) small { color: #d1d9e4; }
-.namecard-avatar { flex: none; width: 2.5rem; aspect-ratio: 1; border-radius: 4px; border: 1px solid var(--line); object-fit: cover; }
+.namecard-avatar { border: 1px solid var(--line); }
 .namecard-copy { display: grid; min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
 .namecard-copy h2 { font-size: clamp(1rem, 1.6vw, 1.2rem); }
 .namecard-copy strong { font-size: .875rem; }
@@ -527,10 +562,13 @@ onBeforeUnmount(stopPolling)
 }
 .metric-art { flex: none; width: clamp(1.85rem, 5vw, 3rem); aspect-ratio: 1; object-fit: contain; }
 .metric-art--like { padding: min(.3rem, 1.1vw); }
+.social-mates {
+  display: grid; min-width: 0; gap: .65rem;
+  border-inline-start: 1px solid var(--line); padding-inline-start: clamp(1rem, 2vw, 1.5rem);
+}
 .mate-card {
   display: grid; grid-template-columns: minmax(0, 17.5rem) minmax(0, 1fr); align-items: center;
-  gap: .8rem clamp(.8rem, 2.2vw, 1.5rem); border-inline-start: 1px solid var(--line);
-  padding-inline-start: clamp(1rem, 2vw, 1.5rem);
+  gap: .8rem clamp(.8rem, 2.2vw, 1.5rem);
 }
 .namecard--mate { max-width: 17.5rem; }
 .mate-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 8rem)); gap: .75rem; }
@@ -565,7 +603,6 @@ onBeforeUnmount(stopPolling)
   min-height: 6.4rem; padding: 1rem 1.15rem 1.05rem 1rem; border-radius: 8px; overflow: hidden;
   background: radial-gradient(75% 120% at 10% 42%, color-mix(in srgb, var(--win) 14%, transparent), transparent 62%), var(--inset);
   border: 1px solid var(--line);
-  transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
 }
 .band-card::before, .band-card::after {
   content: ''; position: absolute; width: 13px; height: 13px; pointer-events: none;
@@ -573,10 +610,6 @@ onBeforeUnmount(stopPolling)
 }
 .band-card::before { top: 5px; left: 5px; border-right: 0; border-bottom: 0; }
 .band-card::after { right: 5px; bottom: 5px; border-left: 0; border-top: 0; }
-.band-card:hover {
-  border-color: rgba(94, 220, 190, .46); transform: translateY(-2px);
-  box-shadow: 0 10px 26px -16px rgba(0, 0, 0, .9);
-}
 .band-card[data-rank='1'] { border-color: rgba(127, 240, 210, .34); }
 .band-card[data-rank='1'] .band-medal::before { box-shadow: inset 0 0 0 1px rgba(127, 240, 210, .32); }
 .band-rank {
@@ -613,14 +646,13 @@ onBeforeUnmount(stopPolling)
   background: linear-gradient(90deg, rgba(127, 240, 210, .32), #7ff0d2);
   box-shadow: 0 0 8px rgba(127, 240, 210, .4);
 }
-.loading-shell { display: flex; gap: .6rem; align-items: center; }
 
 @media (max-width: 920px) {
   .strip { grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr); }
   .namecard--player { grid-row: span 2; }
   .strip-actions { justify-self: start; }
   .social-grid { grid-template-columns: minmax(0, 1fr); }
-  .mate-card { padding: .85rem 0 0; border-inline-start: 0; border-top: 1px solid var(--line); }
+  .social-mates { padding: .85rem 0 0; border-inline-start: 0; border-top: 1px solid var(--line); }
 }
 @media (max-width: 820px) {
   .achv-cols { grid-template-columns: minmax(0, 1fr); }

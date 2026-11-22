@@ -56,7 +56,7 @@ const samples = [
       </div>
       <div class="icon-row">
         <figure v-for="[label, src] in raws" :key="label">
-          <img :src="src" width="56" height="56" :alt="label">
+          <img class="icon-original" :src="src" width="56" height="56" :alt="label">
           <figcaption>{{ label }}<br><code>{{ src }}</code></figcaption>
         </figure>
       </div>
