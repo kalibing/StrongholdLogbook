@@ -20,7 +20,6 @@ from .storage import json_param
 
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 MAX_PENDING_IMPORTS = 3
-MAX_ROLES = 20
 READ_COLUMNS = (
     "id, played_at, protocol, play, difficulty, result, scenario, strategy, initiator, "
     "rounds, kills, coins, suspected_exit"
@@ -61,10 +60,6 @@ class Login(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
-class RoleInput(BaseModel):
-    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
-
-
 def current_user(request: Request):
     token = request.cookies.get(COOKIE, "")
     if token and len(token) <= 128:
@@ -76,16 +71,6 @@ def current_user(request: Request):
             if user:
                 return user
     raise HTTPException(401, "请先登录")
-
-
-def require_role(role_id: UUID, request: Request, user=Depends(current_user)):
-    with request.app.state.pool.connection() as database:
-        role = database.execute(
-            "SELECT id, name FROM roles WHERE id = %s AND user_id = %s", (role_id, user["id"]),
-        ).fetchone()
-    if role is None:
-        raise HTTPException(404, "角色档案不存在")
-    return role_id
 
 
 @app.get("/api/health")
@@ -142,66 +127,21 @@ def logout(request: Request, response: Response):
     response.delete_cookie(COOKIE, path="/", secure=settings.cookie_secure, httponly=True, samesite="strict")
 
 
-@app.get("/api/roles")
-def roles(request: Request, user=Depends(current_user)):
-    with request.app.state.pool.connection() as database:
-        return database.execute(
-            "SELECT id, name FROM roles WHERE user_id = %s ORDER BY created_at, id", (user["id"],),
-        ).fetchall()
-
-
-@app.post("/api/roles", status_code=status.HTTP_201_CREATED)
-def create_role(details: RoleInput, request: Request, user=Depends(current_user)):
-    role_id = uuid4()
-    try:
-        with request.app.state.pool.connection() as database:
-            database.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user["id"],))
-            total = database.execute(
-                "SELECT count(*) AS count FROM roles WHERE user_id = %s", (user["id"],),
-            ).fetchone()["count"]
-            if total >= MAX_ROLES:
-                raise HTTPException(409, f"最多可建立 {MAX_ROLES} 个角色档案")
-            database.execute(
-                "INSERT INTO roles (id, user_id, name) VALUES (%s, %s, %s)",
-                (role_id, user["id"], details.name),
-            )
-    except UniqueConflict as exc:
-        raise HTTPException(409, "已存在同名角色档案") from exc
-    return {"id": role_id, "name": details.name}
-
-
-@app.patch("/api/roles/{role_id}")
-def rename_role(details: RoleInput, request: Request, role_id=Depends(require_role)):
-    try:
-        with request.app.state.pool.connection() as database:
-            database.execute("UPDATE roles SET name = %s WHERE id = %s", (details.name, role_id))
-    except UniqueConflict as exc:
-        raise HTTPException(409, "已存在同名角色档案") from exc
-    return {"id": role_id, "name": details.name}
-
-
-@app.delete("/api/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_role(request: Request, role_id=Depends(require_role)):
-    with request.app.state.pool.connection() as database:
-        database.execute("DELETE FROM roles WHERE id = %s", (role_id,))
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@app.get("/api/roles/{role_id}/facets")
-def facets(request: Request, role_id=Depends(require_role)):
+@app.get("/api/facets")
+def facets(request: Request, user=Depends(current_user)):
     with request.app.state.pool.connection() as database:
         return database.execute("""
-            SELECT DISTINCT protocol, play, difficulty FROM matches WHERE role_id = %s
+            SELECT DISTINCT protocol, play, difficulty FROM matches WHERE user_id = %s
             ORDER BY protocol, play, difficulty
-        """, (role_id,)).fetchall()
+        """, (user["id"],)).fetchall()
 
 
-@app.get("/api/roles/{role_id}/overview")
+@app.get("/api/overview")
 def overview(
     request: Request, filters: Annotated[Filters, Depends()],
-    scope: Literal["recent", "all", "day"] = "recent", role_id=Depends(require_role),
+    scope: Literal["recent", "all", "day"] = "recent", user=Depends(current_user),
 ):
-    where, params = filters.model_copy(update={"include_exits": True}).sql(role_id)
+    where, params = filters.model_copy(update={"include_exits": True}).sql(user["id"])
     with request.app.state.pool.connection() as database:
         candidates = database.execute(
             "SELECT played_at, result, rounds, kills, coins, suspected_exit, bonds, operators "
@@ -211,15 +151,15 @@ def overview(
     return stats.overview(records, len(candidates) - len(records), scope)
 
 
-@app.get("/api/roles/{role_id}/matches")
+@app.get("/api/matches")
 def matches(
     request: Request, filters: Annotated[Filters, Depends()],
     result: Literal["win", "loss"] | None = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
-    role_id=Depends(require_role),
+    user=Depends(current_user),
 ):
-    where, params = filters.sql(role_id)
+    where, params = filters.sql(user["id"])
     if result:
         where += " AND result = %s"
         params.append(result)
@@ -239,26 +179,26 @@ def matches(
     return {"page": page, "pages": pages, "total": count, "matches": rows}
 
 
-@app.get("/api/roles/{role_id}/matches/{match_id}")
-def match(match_id: UUID, request: Request, role_id=Depends(require_role)):
+@app.get("/api/matches/{match_id}")
+def match(match_id: UUID, request: Request, user=Depends(current_user)):
     with request.app.state.pool.connection() as database:
         row = database.execute(
-            f"SELECT {READ_COLUMNS}, scenario, sync_count, trophies, duration_seconds, "
-            "bonds, squad, bosses FROM matches WHERE role_id = %s AND id = %s",
-            (role_id, match_id),
+            f"SELECT {READ_COLUMNS}, sync_count, trophies, duration_seconds, "
+            "bonds, squad, bosses FROM matches WHERE user_id = %s AND id = %s",
+            (user["id"], match_id),
         ).fetchone()
     if row is None:
         raise HTTPException(404, "战报不存在")
     return row
 
 
-@app.get("/api/roles/{role_id}/operators")
+@app.get("/api/operators")
 def operators(
     request: Request, filters: Annotated[Filters, Depends()],
     sort: Literal["count", "win", "name"] = "count",
-    q: Annotated[str, Query(max_length=100)] = "", role_id=Depends(require_role),
+    q: Annotated[str, Query(max_length=100)] = "", user=Depends(current_user),
 ):
-    where, params = filters.sql(role_id)
+    where, params = filters.sql(user["id"])
     with request.app.state.pool.connection() as database:
         records = database.execute(
             f"SELECT result, operators FROM matches WHERE {where} ORDER BY played_at, id", params,
@@ -275,16 +215,16 @@ def operators(
     return {"with_squad": with_squad, "operators": rows}
 
 
-@app.get("/api/roles/{role_id}/imports")
-def imports(request: Request, role_id=Depends(require_role)):
+@app.get("/api/imports")
+def imports(request: Request, user=Depends(current_user)):
     with request.app.state.pool.connection() as database:
         return database.execute("""
             SELECT id, status, total, processed, error, created_at, completed_at
-            FROM import_jobs WHERE role_id = %s ORDER BY created_at DESC, id DESC LIMIT 20
-        """, (role_id,)).fetchall()
+            FROM import_jobs WHERE user_id = %s ORDER BY created_at DESC, id DESC LIMIT 20
+        """, (user["id"],)).fetchall()
 
 
-def queue_import(pool, role_id, content):
+def queue_import(pool, user_id, content):
     try:
         records = read_snapshot(json.loads(content))
     except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as error:
@@ -293,21 +233,21 @@ def queue_import(pool, role_id, content):
         raise HTTPException(422, str(error)) from error
     job_id = uuid4()
     with pool.connection() as database:
-        database.execute("SELECT id FROM roles WHERE id = %s FOR UPDATE", (role_id,))
+        database.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
         pending = database.execute(
-            "SELECT count(*) AS count FROM import_jobs WHERE role_id = %s AND status = 'pending'", (role_id,),
+            "SELECT count(*) AS count FROM import_jobs WHERE user_id = %s AND status = 'pending'", (user_id,),
         ).fetchone()["count"]
         if pending >= MAX_PENDING_IMPORTS:
             raise HTTPException(409, "当前有多个导入任务，请稍后重试")
         database.execute("""
-            INSERT INTO import_jobs (id, role_id, status, payload, total)
+            INSERT INTO import_jobs (id, user_id, status, payload, total)
             VALUES (%s, %s, 'pending', %s, %s)
-        """, (job_id, role_id, json_param([record.model_dump(mode="json") for record in records]), len(records)))
+        """, (job_id, user_id, json_param([record.model_dump(mode="json") for record in records]), len(records)))
     return {"id": job_id, "status": "pending", "total": len(records)}
 
 
-@app.post("/api/roles/{role_id}/imports", status_code=status.HTTP_202_ACCEPTED)
-async def upload_snapshot(request: Request, role_id=Depends(require_role)):
+@app.post("/api/imports", status_code=status.HTTP_202_ACCEPTED)
+async def upload_snapshot(request: Request, user=Depends(current_user)):
     media_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
     if media_type != "application/json":
         raise HTTPException(415, "导入文件必须为 JSON")
@@ -316,4 +256,4 @@ async def upload_snapshot(request: Request, role_id=Depends(require_role)):
         if len(content) + len(chunk) > MAX_UPLOAD_BYTES:
             raise HTTPException(413, "战绩文件不能超过 8 MB")
         content.extend(chunk)
-    return await run_in_threadpool(queue_import, request.app.state.pool, role_id, content)
+    return await run_in_threadpool(queue_import, request.app.state.pool, user["id"], content)

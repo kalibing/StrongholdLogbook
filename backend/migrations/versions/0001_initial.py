@@ -1,4 +1,4 @@
-"""Users, role archives, and durable imports."""
+"""Accounts, sessions, matches, and durable imports."""
 
 from alembic import op
 
@@ -21,16 +21,9 @@ def upgrade():
             expires_at timestamptz NOT NULL
         );
         CREATE INDEX sessions_expiration ON sessions (expires_at);
-        CREATE TABLE roles (
-            id uuid PRIMARY KEY,
-            user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            name text NOT NULL,
-            created_at timestamptz NOT NULL DEFAULT now(),
-            UNIQUE (user_id, name)
-        );
         CREATE TABLE matches (
             id uuid PRIMARY KEY,
-            role_id uuid NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+            user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             protocol text NOT NULL,
             external_id text NOT NULL,
             played_at timestamptz NOT NULL,
@@ -51,12 +44,12 @@ def upgrade():
             squad jsonb NOT NULL,
             operators jsonb NOT NULL,
             bosses jsonb NOT NULL,
-            UNIQUE (role_id, protocol, external_id)
+            UNIQUE (user_id, protocol, external_id)
         );
-        CREATE INDEX matches_recent ON matches (role_id, played_at DESC, id DESC);
+        CREATE INDEX matches_recent ON matches (user_id, played_at DESC, id DESC);
         CREATE TABLE import_jobs (
             id uuid PRIMARY KEY,
-            role_id uuid NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+            user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             status text NOT NULL CHECK (status IN ('pending', 'done', 'failed')),
             payload jsonb NOT NULL,
             total integer NOT NULL,
@@ -66,9 +59,9 @@ def upgrade():
             completed_at timestamptz
         );
         CREATE INDEX pending_import_jobs ON import_jobs (created_at, id) WHERE status = 'pending';
-        CREATE INDEX role_import_jobs ON import_jobs (role_id, created_at DESC);
+        CREATE INDEX user_import_jobs ON import_jobs (user_id, created_at DESC);
     """)
 
 
 def downgrade():
-    op.execute("DROP TABLE import_jobs, matches, roles, sessions, users")
+    op.execute("DROP TABLE import_jobs, matches, sessions, users")

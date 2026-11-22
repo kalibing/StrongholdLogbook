@@ -152,8 +152,8 @@ class Filters(BaseModel):
     end: date | None = None
     include_exits: bool = False
 
-    def sql(self, role_id):
-        conditions, values = ["role_id = %s"], [role_id]
+    def sql(self, user_id):
+        conditions, values = ["user_id = %s"], [user_id]
         for column in ("protocol", "play", "difficulty"):
             if value := getattr(self, column):
                 conditions.append(column + " = %s")

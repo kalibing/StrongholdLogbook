@@ -14,9 +14,9 @@ COLUMNS = (
     "trophies", "duration_seconds", "suspected_exit", "bonds", "squad", "operators", "bosses",
 )
 UPSERT_MATCH = (
-    "INSERT INTO matches (id, role_id, " + ", ".join(COLUMNS) + ") VALUES ("
+    "INSERT INTO matches (id, user_id, " + ", ".join(COLUMNS) + ") VALUES ("
     + ", ".join(["%s"] * (2 + len(COLUMNS))) + ") "
-    "ON CONFLICT (role_id, protocol, external_id) DO UPDATE SET "
+    "ON CONFLICT (user_id, protocol, external_id) DO UPDATE SET "
     + ", ".join(f"{column} = EXCLUDED.{column}" for column in COLUMNS[2:])
 )
 
@@ -24,18 +24,18 @@ UPSERT_MATCH = (
 def process_one(connection) -> bool:
     with connection.transaction():
         job = connection.execute("""
-            SELECT id, role_id, payload, total FROM import_jobs
+            SELECT id, user_id, payload, total FROM import_jobs
             WHERE status = 'pending' ORDER BY created_at, id
             LIMIT 1 FOR UPDATE SKIP LOCKED
         """).fetchone()
         if job is None:
             return False
-        job_id, role_id = job["id"], job["role_id"]
+        job_id, user_id = job["id"], job["user_id"]
         records, total = job["payload"], job["total"]
         try:
             with connection.transaction(), connection.cursor() as cursor:
                 cursor.executemany(UPSERT_MATCH, [
-                    (uuid4(), role_id, *(import_value(column, record[column]) for column in COLUMNS))
+                    (uuid4(), user_id, *(import_value(column, record[column]) for column in COLUMNS))
                     for record in records
                 ])
         except WriteRejected:

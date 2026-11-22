@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { BOND_ICONS, BOSS_ICONS, EQUIPMENT_ICONS, STRATEGY_ICONS } from '../assets'
-import { dateTime, number, resultLabel } from '../format'
+import { dateTime, difficultyLabel, number, resultLabel } from '../format'
 import { portrait } from '../icons'
 import type { MatchDetail } from '../models'
 
@@ -16,7 +16,7 @@ const duration = computed(() => {
   return Math.floor(seconds / 60) + ' 分 ' + seconds % 60 + ' 秒'
 })
 const meta = computed(() => props.detail
-  ? [dateTime(props.detail.played_at), resultLabel(props.detail.result), props.detail.play, props.detail.difficulty].join(' · ')
+  ? [dateTime(props.detail.played_at), resultLabel(props.detail.result), props.detail.play, difficultyLabel(props.detail.difficulty)].join(' · ')
   : '正在读取战报…')
 
 function close() {
@@ -66,7 +66,7 @@ onMounted(() => {
       <div v-if="detail.bonds.length" class="bond-grid">
         <div v-for="bond in detail.bonds" :key="bond.name">
           <span class="bond-label">
-            <img v-if="BOND_ICONS[bond.name]" :src="BOND_ICONS[bond.name]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+            <img v-if="BOND_ICONS[bond.name]" :src="BOND_ICONS[bond.name]" width="23" height="23" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
             <span>{{ bond.name }}</span>
           </span>
           <b>{{ bond.layers }} 层</b>
@@ -77,7 +77,7 @@ onMounted(() => {
       <h3>已击杀首领</h3>
       <div v-if="detail.bosses.length" class="boss-grid">
         <div v-for="boss in detail.bosses" :key="boss" class="art-card">
-          <img v-if="BOSS_ICONS[boss]" :src="BOSS_ICONS[boss]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+          <img v-if="BOSS_ICONS[boss]" :src="BOSS_ICONS[boss]" width="42" height="42" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
           <b>{{ boss }}</b>
         </div>
       </div>
@@ -86,7 +86,7 @@ onMounted(() => {
       <h3>最终阵容</h3>
       <ul v-if="detail.squad.length" class="squad">
         <li v-for="unit in detail.squad" :key="unit.id">
-          <img :src="portrait(unit.id)" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+          <img :src="portrait(unit.id)" width="36" height="36" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
           <b>{{ unit.name }}</b>
           <div v-if="unit.items.length" class="equipment-list">
             <span v-for="(item, index) in unit.items" :key="index" class="equipment-chip">

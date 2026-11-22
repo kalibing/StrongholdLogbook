@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { logbook } from '../context'
-import { query, rolePath, useResource } from '../api'
+import { query, useResource } from '../api'
 import { BOND_ICONS } from '../assets'
 import { number, peakText, percent, resultLabel } from '../format'
 import { portrait } from '../icons'
@@ -10,11 +10,11 @@ import FiltersBar from '../components/FiltersBar.vue'
 import TrendChart from '../components/TrendChart.vue'
 import type { Metric } from '../components/TrendChart.vue'
 
-const { role, filters, revision } = logbook()
+const { filters, revision } = logbook()
 const scope = ref<Scope>('recent')
 const missingPortraits = reactive(new Set<string>())
-const { data, pending, error, refresh } = useResource<Overview>(rolePath(role, () =>
-  '/overview' + query(filters, { scope: scope.value })), revision)
+const url = computed(() => '/overview' + query(filters, { scope: scope.value }))
+const { data, pending, error, refresh } = useResource<Overview>(url, revision)
 
 const rate = computed(() => data.value?.matches ? data.value.wins / data.value.matches : 0)
 const charts: { metric: Metric; match: string; day: string }[] = [
@@ -122,7 +122,7 @@ const period = computed(() => data.value?.start ? `${data.value.start} — ${dat
       </div>
       <div v-if="data.bonds.length" class="bond-usage">
         <article v-for="bond in data.bonds" :key="bond.name" class="usage-card">
-          <img v-if="BOND_ICONS[bond.name]" :src="BOND_ICONS[bond.name]" alt="">
+          <img v-if="BOND_ICONS[bond.name]" :src="BOND_ICONS[bond.name]" width="36" height="36" alt="">
           <span v-else class="bond-glyph" aria-hidden="true"></span>
           <div>
             <b>{{ bond.name }}</b>

@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { logbook } from '../context'
-import { query, rolePath, useResource } from '../api'
+import { computed } from 'vue'
+import { query, useResource } from '../api'
 import { percent } from '../format'
 import { portrait } from '../icons'
 import type { Operator } from '../models'
 import FiltersBar from '../components/FiltersBar.vue'
 
-const { role, filters, revision } = logbook()
+const { filters, revision } = logbook()
 const sort = ref<'count' | 'win' | 'name'>('count')
 const q = ref('')
 
-const url = rolePath(role, () => '/operators' + query(filters, { sort: sort.value, q: q.value }))
+const url = computed(() => '/operators' + query(filters, { sort: sort.value, q: q.value }))
 const { data, pending, error, refresh } = useResource<{ with_squad: number; operators: Operator[] }>(url, revision)
 </script>
 
@@ -56,7 +57,7 @@ const { data, pending, error, refresh } = useResource<{ with_squad: number; oper
         </thead>
         <tbody>
           <tr v-for="row in data?.operators ?? []" :key="row.id">
-            <td><img :src="portrait(row.id)" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">{{ row.name }}</td>
+            <td><img :src="portrait(row.id)" width="37" height="37" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">{{ row.name }}</td>
             <td>{{ row.count }}</td>
             <td>{{ percent(row.usage_rate) }}</td>
             <td>{{ row.wins }}</td>

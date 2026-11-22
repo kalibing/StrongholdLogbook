@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { NButton, NPagination, NSelect } from 'naive-ui'
 import { logbook } from '../context'
-import { query, rolePath, useResource } from '../api'
-import { number, shortTime } from '../format'
+import { query, useResource } from '../api'
+import { difficultyLabel, number, shortTime } from '../format'
 import type { MatchDetail, MatchPage, Result } from '../models'
 import FiltersBar from '../components/FiltersBar.vue'
 import MatchReport from '../components/MatchReport.vue'
 
-const { role, filters, revision } = logbook()
+const { filters, revision } = logbook()
 const PAGE_SIZE = 10
 const result = ref<Result | ''>('')
+const resultOptions = [{ label: '全部结果', value: '' }, { label: '胜', value: 'win' }, { label: '负', value: 'loss' }]
 const page = ref(1)
 const detailUrl = ref<string | null>(null)
 
-const listUrl = rolePath(role, () => '/matches' + query(filters, {
+const listUrl = computed(() => '/matches' + query(filters, {
   result: result.value,
   page: String(page.value),
   limit: String(PAGE_SIZE),
@@ -25,13 +27,8 @@ const pages = computed(() => data.value?.pages ?? 1)
 const current = computed(() => data.value?.page ?? page.value)
 const total = computed(() => data.value?.total ?? 0)
 
-function go(delta: number) {
-  const next = current.value + delta
-  if (next >= 1 && next <= pages.value) page.value = next
-}
-
 function open(id: string) {
-  if (role.value) detailUrl.value = '/roles/' + role.value.id + '/matches/' + id
+  detailUrl.value = '/matches/' + id
 }
 
 function close() {
@@ -46,13 +43,8 @@ watch(result, () => { page.value = 1 })
   <FiltersBar>
     <template #extra>
       <label class="filter-field">战果
-        <span class="select-field">
-          <select v-model="result" aria-label="筛选胜负">
-            <option value="">全部结果</option>
-            <option value="win">胜</option>
-            <option value="loss">负</option>
-          </select>
-        </span>
+        <NSelect :value="result" :options="resultOptions" size="small" aria-label="筛选胜负"
+          @update:value="value => result = value" />
       </label>
     </template>
   </FiltersBar>
@@ -89,14 +81,14 @@ watch(result, () => { page.value = 1 })
             <td>{{ shortTime(row.played_at) }}</td>
             <td><span class="chip" :class="{ loss: row.result === 'loss' }">{{ row.result === 'win' ? '胜' : '负' }}</span></td>
             <td data-label="模拟方式">{{ row.play }}</td>
-            <td data-label="难度 / 等级">{{ row.difficulty }}</td>
+            <td data-label="难度 / 等级">{{ difficultyLabel(row.difficulty) }}</td>
             <td data-label="开局策略">{{ row.strategy ?? '—' }}</td>
             <td data-label="发起者">{{ row.initiator ?? '—' }}</td>
             <td data-label="回合">{{ number(row.rounds) }}</td>
             <td data-label="击杀">{{ number(row.kills) }}</td>
             <td data-label="金币花费">{{ number(row.coins) }}</td>
             <td data-label="盟约总层数">{{ number(row.bond_layers) }}</td>
-            <td><button type="button" @click="open(row.id)">查看详情</button></td>
+            <td><NButton size="tiny" quaternary type="primary" @click="open(row.id)">查看详情</NButton></td>
           </tr>
         </tbody>
       </table>
@@ -106,9 +98,7 @@ watch(result, () => { page.value = 1 })
       <RouterLink class="button-link" to="/archive">前往档案管理</RouterLink>
     </div>
     <div class="paging">
-      <button type="button" :disabled="current <= 1" @click="go(-1)">上一页</button>
-      <span>第 {{ current }} / {{ pages }} 页</span>
-      <button type="button" :disabled="current >= pages" @click="go(1)">下一页</button>
+      <NPagination :page="current" :page-count="pages" size="small" @update:page="value => page = value" />
     </div>
   </section>
 

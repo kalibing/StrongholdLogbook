@@ -12,9 +12,8 @@
 | --- | --- | --- | --- | --- |
 | `users` | 登录账号 | `id` | `username` | — |
 | `sessions` | 会话令牌 | `token_hash` | — | `user_id → users` CASCADE |
-| `roles` | 角色档案 | `id` | `(user_id, name)` | `user_id → users` CASCADE |
-| `matches` | 单局战绩 | `id` | `(role_id, protocol, external_id)` | `role_id → roles` CASCADE |
-| `import_jobs` | 导入队列 | `id` | — | `role_id → roles` CASCADE |
+| `matches` | 单局战绩 | `id` | `(user_id, protocol, external_id)` | `user_id → users` CASCADE |
+| `import_jobs` | 导入队列 | `id` | — | `user_id → users` CASCADE |
 
 ```mermaid
 erDiagram

@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { NButton, NConfigProvider, NDialogProvider, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, zhCN } from 'naive-ui'
+import { MoonOutline, SunnyOutline } from '@vicons/ionicons5'
+import type { GlobalThemeOverrides } from 'naive-ui'
 import { api, ApiError, message, post } from './api'
-import { logbookKey, newFilters } from './context'
-import type { Facet, Role, User } from './models'
+import { logbookKey, newFilters, type Theme } from './context'
+import type { Facet, User } from './models'
 
-const STORAGE_ROLE = 'logbook:role'
+const STORAGE_THEME = 'logbook:theme'
 const route = useRoute()
 const user = ref<User | null>(null)
-const roles = ref<Role[]>([])
-const activeRole = ref('')
-const role = computed(() => roles.value.find(item => item.id === activeRole.value) ?? null)
 const facets = ref<Facet[]>([])
 const filters = reactive(newFilters())
 const revision = ref(0)
@@ -19,49 +19,58 @@ const error = ref('')
 const username = ref('')
 const password = ref('')
 const loggingIn = ref(false)
+const theme = ref<Theme>('dark')
+const nav = ref<HTMLElement | null>(null)
+const indicator = ref({ left: 0, width: 0 })
+const overrides = computed<GlobalThemeOverrides>(() => ({
+  common: {
+    primaryColor: theme.value === 'dark' ? '#dfe6a8' : '#6f7f24',
+    primaryColorHover: theme.value === 'dark' ? '#eaf0be' : '#7f9130',
+    primaryColorPressed: theme.value === 'dark' ? '#c9d296' : '#5f6c1e',
+    borderRadius: '3px',
+    borderRadiusSmall: '2px',
+    fontFamily: 'inherit',
+    bodyColor: 'transparent',
+    cardColor: theme.value === 'dark' ? '#12141a' : '#ffffff',
+    modalColor: theme.value === 'dark' ? '#12141a' : '#ffffff',
+    popoverColor: theme.value === 'dark' ? '#161a22' : '#ffffff',
+    borderColor: theme.value === 'dark' ? '#2a313c' : '#d8dfe7',
+    textColorBase: theme.value === 'dark' ? '#f3f4f6' : '#1a212b',
+    textColor2: theme.value === 'dark' ? '#c9d0da' : '#3b4653',
+  },
+}))
+
+function measureNav() {
+  const active = nav.value?.querySelector<HTMLElement>('a[aria-current="page"]')
+  if (!active || !nav.value) return
+  const rect = active.getBoundingClientRect()
+  const base = nav.value.getBoundingClientRect()
+  indicator.value = { left: rect.left - base.left + 8, width: Math.max(12, rect.width - 16) }
+}
 const titles = [
   { route: 'overview', title: '战绩总览' },
   { route: 'matches', title: '对局记录' },
   { route: 'operators', title: '干员统计' },
-  { route: 'archive', title: '档案管理' },
+  { route: 'data-import', title: '数据导入' },
 ]
 
-const eyebrow = computed(() => role.value?.name ?? '规程协议 1')
-
-function storedRole(): string {
+function applyTheme(value: Theme) {
+  theme.value = value
+  document.documentElement.dataset.theme = value
   try {
-    return window.localStorage.getItem(STORAGE_ROLE) ?? ''
-  } catch {
-    return ''
-  }
-}
-
-function rememberRole(id: string) {
-  try {
-    if (id) window.localStorage.setItem(STORAGE_ROLE, id)
-    else window.localStorage.removeItem(STORAGE_ROLE)
+    window.localStorage.setItem(STORAGE_THEME, value)
   } catch {
     // 隐私模式下无法写入，忽略即可。
   }
 }
 
+function toggleTheme() {
+  applyTheme(theme.value === 'dark' ? 'light' : 'dark')
+}
+
 function resetSession() {
   user.value = null
-  roles.value = []
-  activeRole.value = ''
   facets.value = []
-}
-
-function selectRole(id: string) {
-  if (roles.value.some(item => item.id === id)) activeRole.value = id
-}
-
-async function fetchRoles() {
-  roles.value = await api<Role[]>('/roles')
-  if (!role.value) {
-    const remembered = roles.value.find(item => item.id === storedRole())
-    activeRole.value = (remembered ?? roles.value[0])?.id ?? ''
-  }
 }
 
 async function restoreSession() {
@@ -69,7 +78,6 @@ async function restoreSession() {
   error.value = ''
   try {
     user.value = await api<User>('/session')
-    await fetchRoles()
   } catch (reason) {
     if (!(reason instanceof ApiError && reason.status === 401)) error.value = message(reason)
   } finally {
@@ -83,7 +91,6 @@ async function login() {
   try {
     user.value = await api<User>('/session', post({ username: username.value.trim().toLowerCase(), password: password.value }))
     password.value = ''
-    await fetchRoles()
   } catch (reason) {
     error.value = message(reason)
   } finally {
@@ -100,118 +107,108 @@ async function logout() {
   }
 }
 
-async function createRole(name: string) {
-  const created = await api<Role>('/roles', post({ name }))
-  roles.value = [...roles.value, created]
-  activeRole.value = created.id
-}
-
-async function renameRole(id: string, name: string) {
-  const updated = await api<Role>('/roles/' + id, { ...post({ name }), method: 'PATCH' })
-  roles.value = roles.value.map(item => (item.id === id ? updated : item))
-}
-
-async function deleteRole(id: string) {
-  await api('/roles/' + id, { method: 'DELETE' })
-  roles.value = roles.value.filter(item => item.id !== id)
-  if (activeRole.value === id) activeRole.value = roles.value[0]?.id ?? ''
-  revision.value++
-}
-
 function refresh() {
   revision.value++
 }
 
-watch(activeRole, id => {
-  Object.assign(filters, newFilters())
-  rememberRole(id)
-})
-watch([activeRole, revision], async ([id], _, onCleanup) => {
-  const controller = new AbortController()
-  onCleanup(() => controller.abort())
-  facets.value = []
-  if (!id) return
+async function loadFacets() {
+  if (!user.value) return
   try {
-    const values = await api<Facet[]>('/roles/' + id + '/facets', { signal: controller.signal })
-    if (!controller.signal.aborted) facets.value = values
+    facets.value = await api<Facet[]>('/facets')
   } catch {
     // 具体页面会展示连接与权限错误。
   }
-})
+}
 
+watch([revision, user], () => { void loadFacets() })
+
+watch([() => route.name, user], () => { void nextTick(measureNav) })
 onMounted(() => {
+  const stored = (document.documentElement.dataset.theme as Theme | undefined)
+    ?? (window.localStorage.getItem(STORAGE_THEME) as Theme | null)
+  applyTheme(stored === 'light' ? 'light' : 'dark')
   window.addEventListener('logbook-logout', resetSession)
+  window.addEventListener('resize', measureNav)
   void restoreSession()
+  void nextTick(measureNav)
 })
-onBeforeUnmount(() => window.removeEventListener('logbook-logout', resetSession))
+onBeforeUnmount(() => {
+  window.removeEventListener('logbook-logout', resetSession)
+  window.removeEventListener('resize', measureNav)
+})
 
-provide(logbookKey, {
-  role, roles, facets, filters, revision,
-  createRole, renameRole, deleteRole, selectRole, refresh,
-})
+provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
 </script>
 
 <template>
+  <NConfigProvider :theme="theme === 'dark' ? darkTheme : null" :theme-overrides="overrides" :locale="zhCN" :date-locale="dateZhCN">
+  <NMessageProvider>
+  <NDialogProvider>
   <header class="site-header">
     <div class="header-inner">
       <RouterLink class="brand" to="/"><i class="shield" aria-hidden="true"></i>卫戍协议<span>作战档案</span></RouterLink>
-      <nav v-if="user" aria-label="主导航">
+      <nav v-if="user" ref="nav" aria-label="主导航">
+        <i class="nav-indicator" :style="{ transform: `translateX(${indicator.left}px)`, width: indicator.width + 'px' }" aria-hidden="true"></i>
         <RouterLink v-for="item in titles" :key="item.route" :to="{ name: item.route }"
           :aria-current="route.name === item.route ? 'page' : undefined">{{ item.title }}</RouterLink>
       </nav>
-      <div v-if="user" class="account-actions">
-        <span v-if="roles.length" class="select-field">
-          <select v-model="activeRole" aria-label="当前角色档案">
-            <option v-for="item in roles" :key="item.id" :value="item.id">{{ item.name }}</option>
-          </select>
-        </span>
-        <button type="button" id="account" @click="logout">退出登录</button>
+      <div class="account-actions">
+        <NButton quaternary circle size="small" class="theme-toggle"
+          :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
+          :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
+          <template #icon>
+            <NIcon :component="theme === 'dark' ? SunnyOutline : MoonOutline" />
+          </template>
+        </NButton>
+        <NButton v-if="user" size="small" secondary @click="logout">退出登录</NButton>
       </div>
     </div>
   </header>
 
   <main class="layout">
-    <p v-if="pending" class="load-message panel" role="status">正在读取数据…</p>
+    <div v-if="pending" class="loading-shell" role="status">正在读取数据…</div>
 
     <template v-else-if="user">
       <div class="heading" :class="{ 'heading-compact': route.name !== 'overview' }">
         <div class="heading-copy">
-          <p class="eyebrow">卫戍协议 <span>/</span> {{ eyebrow }}</p>
+          <p class="eyebrow">卫戍协议 <span>/</span> {{ user.username }}</p>
           <h1>{{ route.meta.title }}</h1>
           <p class="heading-description">{{ route.meta.description }}</p>
         </div>
         <div class="heading-art" aria-hidden="true"><i></i></div>
       </div>
       <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
-      <section v-else-if="!role && route.name !== 'archive'" class="panel empty-state">
-        <span>建立角色档案后即可导入和查看战绩。</span>
-        <RouterLink class="button-link" to="/archive">创建角色档案</RouterLink>
-      </section>
-      <RouterView v-else />
+      <RouterView v-else v-slot="{ Component }">
+        <Transition name="page" mode="out-in">
+          <component :is="Component" />
+        </Transition>
+      </RouterView>
     </template>
 
     <div v-else class="login-layout">
-      <div class="heading">
-        <div class="heading-copy">
-          <p class="eyebrow">卫戍协议 <span>/</span> 作战档案</p>
-          <h1>作战档案</h1>
-          <p class="heading-description">对局记录、盟约趋势和干员出场统计。</p>
-        </div>
-        <div class="heading-art" aria-hidden="true"><i></i></div>
-      </div>
       <section class="panel login-panel" aria-labelledby="login-title">
-        <h2 id="login-title">登录</h2>
-        <form @submit.prevent="login">
+        <header class="login-head">
+          <p class="eyebrow">卫戍协议 <span>/</span> 作战档案</p>
+          <h1 id="login-title">登录</h1>
+          <p class="muted">对局记录、盟约趋势和干员出场统计。</p>
+        </header>
+        <form class="login-form" @submit.prevent="login">
           <label class="filter-field">用户名
-            <input v-model="username" autocomplete="username" required maxlength="64">
+            <NInput v-model:value="username" size="large" placeholder="用户名" :input-props="{ autocomplete: 'username', maxlength: 64 }" />
           </label>
           <label class="filter-field">密码
-            <input v-model="password" autocomplete="current-password" type="password" required maxlength="256">
+            <NInput v-model:value="password" type="password" size="large" show-password-on="click"
+              placeholder="密码" :input-props="{ autocomplete: 'current-password', maxlength: 256 }" />
           </label>
           <p v-if="error" class="load-message" role="alert">{{ error }}</p>
-          <button type="submit" class="login-submit" :disabled="loggingIn">{{ loggingIn ? '登录中…' : '登录' }}</button>
+          <NButton type="primary" size="large" block attr-type="submit" :loading="loggingIn">
+            {{ loggingIn ? '登录中…' : '登录' }}
+          </NButton>
         </form>
       </section>
     </div>
   </main>
+  </NDialogProvider>
+  </NMessageProvider>
+  </NConfigProvider>
 </template>

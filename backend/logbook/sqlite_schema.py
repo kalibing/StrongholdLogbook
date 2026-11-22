@@ -24,18 +24,9 @@ SCHEMA = (
     """,
     "CREATE INDEX IF NOT EXISTS sessions_expiration ON sessions (expires_at)",
     """
-    CREATE TABLE IF NOT EXISTS roles (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
-        UNIQUE (user_id, name)
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS matches (
         id TEXT PRIMARY KEY,
-        role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         protocol TEXT NOT NULL,
         external_id TEXT NOT NULL,
         played_at INTEGER NOT NULL,
@@ -56,14 +47,14 @@ SCHEMA = (
         squad TEXT NOT NULL,
         operators TEXT NOT NULL,
         bosses TEXT NOT NULL,
-        UNIQUE (role_id, protocol, external_id)
+        UNIQUE (user_id, protocol, external_id)
     )
     """,
-    "CREATE INDEX IF NOT EXISTS matches_recent ON matches (role_id, played_at DESC, id DESC)",
+    "CREATE INDEX IF NOT EXISTS matches_recent ON matches (user_id, played_at DESC, id DESC)",
     """
     CREATE TABLE IF NOT EXISTS import_jobs (
         id TEXT PRIMARY KEY,
-        role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         status TEXT NOT NULL CHECK (status IN ('pending', 'done', 'failed')),
         payload TEXT NOT NULL,
         total INTEGER NOT NULL,
@@ -74,5 +65,5 @@ SCHEMA = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS pending_import_jobs ON import_jobs (created_at, id) WHERE status = 'pending'",
-    "CREATE INDEX IF NOT EXISTS role_import_jobs ON import_jobs (role_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS user_import_jobs ON import_jobs (user_id, created_at DESC)",
 )

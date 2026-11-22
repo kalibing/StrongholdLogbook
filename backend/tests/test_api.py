@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from logbook.api import app, current_user, queue_import, require_role
+from logbook.api import app, current_user, queue_import
 
 ORIGIN = "http://localhost:8080"
 
@@ -18,7 +18,6 @@ def client():
 @pytest.fixture()
 def authorized():
     app.dependency_overrides[current_user] = lambda: {"id": uuid4(), "username": "tester"}
-    app.dependency_overrides[require_role] = lambda: uuid4()
     try:
         yield TestClient(app)
     finally:
@@ -49,9 +48,8 @@ def test_login_payload_is_validated(client):
 
 
 def test_anonymous_reads_are_unauthorized(client):
-    for path in ("/api/session", "/api/roles", f"/api/roles/{uuid4()}/overview",
-                 f"/api/roles/{uuid4()}/matches", f"/api/roles/{uuid4()}/operators",
-                 f"/api/roles/{uuid4()}/imports"):
+    for path in ("/api/session", "/api/facets", "/api/overview", "/api/matches",
+                 "/api/operators", "/api/imports"):
         response = client.get(path)
         assert response.status_code == 401, path
         assert response.headers["cache-control"] == "no-store"
@@ -59,7 +57,7 @@ def test_anonymous_reads_are_unauthorized(client):
 
 def test_anonymous_upload_is_unauthorized(client):
     response = client.post(
-        f"/api/roles/{uuid4()}/imports", content=b"{}",
+        "/api/imports", content=b"{}",
         headers={"Origin": ORIGIN, "Content-Type": "application/json"},
     )
     assert response.status_code == 401
@@ -72,7 +70,7 @@ def test_logout_without_session_is_idempotent(client):
 
 def test_upload_requires_json_media_type(authorized):
     response = authorized.post(
-        f"/api/roles/{uuid4()}/imports", content=b"{}",
+        "/api/imports", content=b"{}",
         headers={"Origin": ORIGIN, "Content-Type": "text/plain"},
     )
     assert response.status_code == 415
@@ -81,7 +79,7 @@ def test_upload_requires_json_media_type(authorized):
 
 def test_upload_rejects_oversized_body(authorized):
     response = authorized.post(
-        f"/api/roles/{uuid4()}/imports", content=b"0" * (8 * 1024 * 1024 + 1),
+        "/api/imports", content=b"0" * (8 * 1024 * 1024 + 1),
         headers={"Origin": ORIGIN, "Content-Type": "application/json"},
     )
     assert response.status_code == 413
@@ -94,11 +92,11 @@ def test_queue_import_validates_before_writing(payload):
     assert error.value.status_code == 422
 
 
-def test_health_route_exists(client):
+def test_routes_are_flat(client):
     routes = {route.path for route in app.routes}
-    assert {"/api/health", "/api/roles/{role_id}/overview", "/api/roles/{role_id}/matches",
-            "/api/roles/{role_id}/matches/{match_id}", "/api/roles/{role_id}/operators",
-            "/api/roles/{role_id}/imports"} <= routes
+    assert {"/api/health", "/api/facets", "/api/overview", "/api/matches",
+            "/api/matches/{match_id}", "/api/operators", "/api/imports"} <= routes
+    assert not any(path.startswith("/api/roles") for path in routes)
 
 
 def test_unknown_route_is_not_found(client):

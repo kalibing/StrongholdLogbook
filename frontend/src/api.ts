@@ -62,10 +62,6 @@ export function useResource<T>(url: Ref<string | null>, revision: Ref<number>) {
   return { data, pending, error, refresh: () => { attempt.value++ } }
 }
 
-export function rolePath(role: Ref<{ id: string } | null>, suffix: () => string) {
-  return computed(() => role.value ? '/roles/' + role.value.id + suffix() : null)
-}
-
 export function message(reason: unknown): string {
   return reason instanceof ApiError ? reason.message : '暂时无法连接，请稍后重试。'
 }

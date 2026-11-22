@@ -42,7 +42,7 @@ class Connection:
 
     def execute(self, sql, params=None):
         self.executed.append((" ".join(sql.split()), params))
-        if "SELECT id, role_id, payload, total" in sql:
+        if "SELECT id, user_id, payload, total" in sql:
             return Result(self.job)
         return Result(None)
 
@@ -63,7 +63,7 @@ def payload(records=1):
 def job(records=None):
     return {
         "id": uuid4(),
-        "role_id": uuid4(),
+        "user_id": uuid4(),
         "payload": records if records is not None else payload(),
         "total": 1,
     }
@@ -80,9 +80,9 @@ def test_successful_import_marks_job_done():
     connection = Connection(job=current)
     assert process_one(connection) is True
     sql, rows = connection.cursor_obj.batches[0]
-    assert "ON CONFLICT (role_id, protocol, external_id) DO UPDATE" in sql
+    assert "ON CONFLICT (user_id, protocol, external_id) DO UPDATE" in sql
     assert len(rows) == 1
-    assert rows[0][1] == current["role_id"]
+    assert rows[0][1] == current["user_id"]
     [(update, params)] = connection.updates()
     assert "status = 'done'" in update
     assert params == (1, current["id"])
@@ -97,6 +97,6 @@ def test_failed_import_is_recorded():
 
 
 def test_upsert_covers_every_column():
-    assert "INSERT INTO matches (id, role_id" in UPSERT_MATCH
+    assert "INSERT INTO matches (id, user_id" in UPSERT_MATCH
     assert "ON CONFLICT" in UPSERT_MATCH
     assert len(COLUMNS) == 20

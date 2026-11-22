@@ -17,16 +17,16 @@ def row(when, result="win", coins=None, kills=None, rounds=None, bonds=None, ope
 
 
 def test_bond_total_sums_layers():
-    assert stats.bond_total({"bonds": [{"name": "维多利亚", "layers": 4}, {"name": "术师", "layers": 2}]}) == 6
+    assert stats.bond_total({"bonds": [{"name": "维多利亚", "layers": 4}, {"name": "奥术", "layers": 2}]}) == 6
     assert stats.bond_total({"bonds": []}) == 0
 
 
 def test_peak_keeps_tied_names_sorted():
     rows = [
-        {"bonds": [{"name": "术师", "layers": 5}, {"name": "维多利亚", "layers": 5}]},
-        {"bonds": [{"name": "深海猎人", "layers": 2}]},
+        {"bonds": [{"name": "奥术", "layers": 5}, {"name": "维多利亚", "layers": 5}]},
+        {"bonds": [{"name": "伊比利亚", "layers": 2}]},
     ]
-    assert stats.peak(rows) == {"layers": 5, "names": ["术师", "维多利亚"]}
+    assert stats.peak(rows) == {"layers": 5, "names": ["奥术", "维多利亚"]}
     assert stats.peak([{"bonds": []}]) is None
 
 
@@ -63,9 +63,9 @@ def test_overview_totals(sample_snapshot):
     assert summary["total_coins"] == 451
     assert summary["average_coins"] == 75.2
     assert summary["peak"]["layers"] == 7
-    assert summary["peak"]["names"] == ["术师"]
+    assert summary["peak"]["names"] == ["奥术"]
     assert summary["recent_results"] == ["loss", "win", "loss", "win", "win", "loss"]
-    assert [bond["name"] for bond in summary["bonds"]] == ["术师", "维多利亚", "深海猎人", "重装"]
+    assert [bond["name"] for bond in summary["bonds"]] == ["奥术", "维多利亚", "伊比利亚", "不屈"]
     assert len(summary["points"]) == 6
 
 
@@ -109,7 +109,7 @@ def test_day_key_uses_shanghai_timezone():
 def test_filters_render_sql():
     filters = Filters(protocol="V3_1", play="独立模拟", start=datetime(2026, 11, 1).date(), include_exits=True)
     sql, params = filters.sql("role-1")
-    assert "role_id = %s" in sql
+    assert "user_id = %s" in sql
     assert "protocol = %s" in sql and "play = %s" in sql
     assert "NOT suspected_exit" not in sql
     assert params[0] == "role-1"
