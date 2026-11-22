@@ -247,6 +247,9 @@ cd frontend; npm run build                    # 生产构建
 | 结构 | 顶部导航 + 英雄区横幅；总览为「作战表现 / 盟约与资金」并排 + 双列趋势图；对局为结算表 + 战报弹窗；干员为出场榜表格。 |
 | 视觉 | 近黑底、锐角（2–4px）、发丝级描边、区块标题左侧强调条、表头小写字距、数字用压缩字体对齐。 |
 | 图表 | 原生 Canvas 手绘：网格、折线、胜圆点 / 负菱形、数值标注、盟约名与图标、悬停回读。 |
-| 资源 | `frontend/public/portraits`（125 张干员头像）与 `frontend/public/art`（盟约 / 首领 / 策略 / 装备图标）来自旧站；`src/assets.ts` 提供名称到图标的映射，缺图时组件自动隐藏。 |
+| 资源 | `frontend/public/portraits`（126 张 180×180 干员头像）与 `frontend/public/art`（盟约 / 首领 / 策略 / 装备图标）来自旧站；`src/assets.ts` 提供名称到图标的映射，缺图时组件自动隐藏。
+| 干员卡 | 构图取自旧快照（6px 圆角、110px 高、头像 `height:104%` 右贴边、文字压底 `24px 9px 8px`），配色跟随本站深色主题。 |
 
 导入时会把装备 ID 按快照里的 `equipment` 字典解析成中文名，因此在战报里直接显示「疾行靴」这类名称；旧版中文快照同样处理。
+
+头像缺失时用 `node scripts/fetch-portraits.mjs <干员ID>` 从公开的明日方舟资源镜像（默认 Aceship `Arknight-Images`）补齐 180×180 头像；`--from online/dist/operators.json` 可批量补全整个字典。

@@ -559,7 +559,7 @@ tbody tr:hover { background: #ffffff06; box-shadow: inset 2px 0 var(--accent); }
 body { background-image: linear-gradient(180deg, #0e1016 0, transparent 320px), repeating-linear-gradient(90deg, #ffffff03 0 1px, transparent 1px 120px); }
 .report-stats { grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); }
 
-/* ===== 干员卡：旧快照样式（6px 圆角、灰蓝底、头像右侧贴边且略高于卡面） ===== */
+/* ===== 干员卡：沿用旧快照的构图（6px 圆角 / 头像右贴边 / 文字压底），配色跟随本站 ===== */
 .roster { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
 .op {
   position: relative;
@@ -568,9 +568,9 @@ body { background-image: linear-gradient(180deg, #0e1016 0, transparent 320px), 
   min-height: 110px;
   padding: 0;
   overflow: hidden;
-  border: 1px solid #464b58;
+  border: 1px solid #2c3340;
   border-radius: 6px;
-  background: linear-gradient(135deg, #383c49, #2b2e35);
+  background: linear-gradient(135deg, #1c2431, #10141a);
 }
 .op img {
   position: absolute;
@@ -593,11 +593,12 @@ body { background-image: linear-gradient(180deg, #0e1016 0, transparent 320px), 
   width: 100%;
   padding: 24px 9px 8px;
   border-top: 0;
-  background: linear-gradient(transparent, #17191ef5);
+  background: linear-gradient(transparent, #0b0e13f2);
 }
-.op b { display: block; font-size: .9375rem; line-height: 1.3; color: #f4f5f8; }
-.op small { display: block; font-size: .75rem; color: #b9bdc9; }
-.op:hover { border-color: #5c6473; }
+.op b { display: block; font-size: .9375rem; line-height: 1.3; color: #f3f4f6; }
+.op small { display: block; font-size: .75rem; color: #a6adb9; }
+.op:hover { border-color: #46536a; }
+.op:hover img { filter: brightness(1.06); }
 .op-fallback {
   position: absolute;
   inset: 0 0 0 auto;
@@ -607,8 +608,8 @@ body { background-image: linear-gradient(180deg, #0e1016 0, transparent 320px), 
   place-items: center;
   font-size: 1.7rem;
   font-weight: 700;
-  color: #8d93a3;
-  background: repeating-linear-gradient(135deg, #3d414d 0 6px, #343843 6px 12px);
+  color: #5f6875;
+  background: repeating-linear-gradient(135deg, #1a2230 0 6px, #141a24 6px 12px);
 }
 @media (max-width: 900px) { .roster { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 440px) {
