@@ -12,6 +12,9 @@ const jobsError = ref('')
 const jobsPending = ref(false)
 const importing = ref(false)
 const sklandTip = ref('')
+const sklandCred = ref('')
+const sklandSign = ref('')
+const sklandToken = ref('')
 let poll: ReturnType<typeof setTimeout> | undefined
 let request: AbortController | null = null
 let hasLoaded = false
@@ -51,7 +54,11 @@ async function importFromSkland() {
     const job = await api<{ total: number; records: number }>('/imports/skland', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify({
+        cred: sklandCred.value.trim() || undefined,
+        sign_token: sklandSign.value.trim() || undefined,
+        token: sklandToken.value.trim() || undefined,
+      }),
     })
     sklandTip.value = `已拉取 ${job.records ?? job.total} 局，正在写入数据库…`
     await loadJobs()
@@ -104,11 +111,22 @@ onBeforeUnmount(() => {
   <section class="panel skland-panel">
     <div class="split">
       <h3>从森空岛导入</h3>
-      <span class="period">最新 100 局 · 无需导出文件</span>
+      <span class="period">最新 100 局 · 需自备凭据</span>
     </div>
     <p class="muted">
-      用本机《明日方舟》PC 端的登录态自动换取森空岛凭据，拉取卫戍协议战绩后直接入库（同一局按对局 ID 幂等）。
+      填森空岛凭据（<code>cred</code> + <code>sign_token</code>），或只填鹰角 access token 由服务端换。
+      服务端不读取任何本机客户端登录态。
     </p>
+    <label class="filter-field">cred
+      <NInput v-model:value="sklandCred" placeholder="森空岛 cred" :input-props="{ maxlength: 128 }" />
+    </label>
+    <label class="filter-field">sign_token
+      <NInput v-model:value="sklandSign" placeholder="森空岛 sign_token" :input-props="{ maxlength: 128 }" />
+    </label>
+    <label class="filter-field">或 鹰角 access token
+      <NInput v-model:value="sklandToken" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }"
+        placeholder="只给这一项也可以（服务端换 cred）" />
+    </label>
     <div class="row-actions">
       <NButton type="primary" :loading="importing" @click="importFromSkland">拉取并导入</NButton>
       <span v-if="sklandTip" class="muted">{{ sklandTip }}</span>

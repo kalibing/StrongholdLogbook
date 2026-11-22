@@ -11,7 +11,7 @@ from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import achievements, capture, device_token, hgproxy, hypergryph, skland, stats
+from . import achievements, capture, hgproxy, hypergryph, skland, stats
 from .config import settings
 from .db import connection_pool
 from .errors import UniqueConflict
@@ -327,8 +327,9 @@ def queue_import(pool, user_id, content):
 async def import_from_skland(request: Request, user=Depends(current_user)):
     """从森空岛拉最新战绩（固定 100 条）并入库。
 
-    body 可留空：服务端会用本机 hgsdk 登录态自动换取 cred；
-    也可以显式传 {"cred": ..., "sign_token": ...} 或 {"token": <鹰角 token>}。
+    必须显式提供凭据（不再读取本机客户端登录态）：
+      {"cred": "...", "sign_token": "..."}   —— 森空岛凭据
+      {"token": "<鹰角 access token>"}       —— 只给 token，服务端换 cred
     """
     content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
     body: dict = {}
@@ -345,18 +346,18 @@ async def import_from_skland(request: Request, user=Depends(current_user)):
     access_token = (body.get("token") or "").strip()
     season = (body.get("season") or skland.SEASON).strip()
 
+    if not (cred and sign_token) and not access_token:
+        raise HTTPException(422, "请提供森空岛凭据（cred + sign_token）或鹰角 token")
+
     def pull() -> dict:
         nonlocal cred, sign_token
         try:
             if not cred or not sign_token:
-                source = access_token
-                if not source:
-                    _, source = device_token.load_login()  # 本机 hgsdk 登录态
-                cred, sign_token = skland.cred_from_token(source)
+                cred, sign_token = skland.cred_from_token(access_token)
             role = skland.arknights_role(cred, sign_token)
             records = skland.history(cred, sign_token, role, season)
             return skland.to_snapshot(records)
-        except (skland.SklandError, device_token.DeviceTokenError) as error:
+        except skland.SklandError as error:
             raise HTTPException(424, str(error)) from error
 
     snapshot = await run_in_threadpool(pull)

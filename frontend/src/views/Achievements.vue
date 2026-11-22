@@ -320,16 +320,12 @@ onBeforeUnmount(stopPolling)
             <h4>风险提示 · 使用前必读</h4>
             <ul>
               <li><b>账号风险</b>：本页的自动取数属于非官方用法（解析本机客户端登录态换令牌），可能触发风控，最坏导致账号被限制或封禁，后果自负。</li>
-              <li><b>隐私</b>：本机助手会读取注册表与游戏本地登录数据，在本地内存解密，不上传第三方；请勿在他人机器运行，也不要外传解出的令牌。</li>
+              <li><b>隐私</b>：令牌等同于只读凭证，请勿外传或贴到不可信的站点。</li>
               <li><b>时效</b>：令牌只有小时级寿命，客户端常量随游戏版本变化，随时可能失效。</li>
               <li><b>范围</b>：仅限自己的账号与机器、个人自用；禁止代跑他人账号、批量采集或对外提供服务。</li>
               <li><b>归属</b>：本项目与鹰角网络无关联，游戏内容与商标归其所有。</li>
             </ul>
-            <p class="risk-actions">
-              本机助手：
-              <a href="/download/ArknightsAchvAgent.exe" download>下载 ArknightsAchvAgent.exe</a>
-              <span class="muted">（源码见仓库 <code>agent/achv_agent.py</code>，建议自行构建）</span>
-            </p>
+
           </aside>
         </form>
       </section>
@@ -579,6 +575,9 @@ onBeforeUnmount(stopPolling)
 .mate-stats dt { white-space: nowrap; }
 .mate-stats dd { margin-top: .2rem; }
 .mate-stats small { font-size: .72rem; font-weight: 500; white-space: nowrap; }
+@media (min-width: 921px) {
+  .mate-card { grid-template-columns: minmax(0, 3fr) minmax(5.8rem, 2fr); }
+}
 
 .badges {
   list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 7.2rem), 1fr));
