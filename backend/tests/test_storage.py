@@ -76,18 +76,20 @@ def _columns(ddl: str, dialect: str) -> dict[str, set[str]]:
 
 
 def _migration_ddl() -> str:
-    path = BACKEND / "migrations" / "versions" / "0001_initial.py"
-    spec = importlib.util.spec_from_file_location("migration_0001", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    captured = []
-    original = op.execute
-    op.execute = lambda sql, *args, **kwargs: captured.append(str(sql))
-    try:
-        module.upgrade()
-    finally:
-        op.execute = original
-    return captured[0]
+    """把全部 Alembic 迁移的 DDL 按版本顺序拼起来。"""
+    versions = sorted((BACKEND / "migrations" / "versions").glob("*.py"))
+    captured: list[str] = []
+    for path in versions:
+        spec = importlib.util.spec_from_file_location(f"migration_{path.stem}", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        original = op.execute
+        op.execute = lambda sql, *args, **kwargs: captured.append(str(sql))
+        try:
+            module.upgrade()
+        finally:
+            op.execute = original
+    return ";\n".join(captured)
 
 
 def test_sqlite_schema_matches_alembic_migration():

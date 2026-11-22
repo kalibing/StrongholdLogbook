@@ -303,14 +303,14 @@ dialog::backdrop { background: #080d16c9; }
 .squad .equipment-chip img { width: 22px; height: 22px; }
 
 @media (max-width: 900px) {
+  .header-inner { flex-wrap: wrap; gap: 0 .8rem; padding-top: .5rem; }
+  .site-header nav { order: 1; width: 100%; gap: .15rem; }
+  .site-header nav a { flex: 1; padding-inline: .15rem; font-size: clamp(.75rem, 3.7vw, .9rem); letter-spacing: normal; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #roster { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 730px) {
   .header-inner, .layout { width: calc(100% - 1.5rem); }
-  .header-inner { flex-wrap: wrap; gap: 0 .8rem; padding-top: .5rem; }
-  nav { order: 1; width: 100%; }
-  nav a { flex: 1; padding-inline: .15rem; }
   .layout { padding-top: .75rem; }
   .heading, .heading-compact { min-height: 135px; }
   .heading-art { opacity: .47; inset-inline-start: 26%; }
@@ -1091,3 +1091,15 @@ td .with-avatar { white-space: nowrap; }
   border-radius: 2px;
   padding: 1px;
 }
+
+/* ===== 模拟难度图标（PC 端 AB 包拆包产物） ===== */
+.tier-tag { display: inline-flex; align-items: center; gap: .38rem; white-space: nowrap; }
+.tier-tag img { width: 18px; height: 18px; flex: none; object-fit: contain; filter: drop-shadow(0 0 4px #00000055); }
+:root[data-theme="light"] .tier-tag img { filter: none; }
+.icon-gallery { display: grid; gap: 1rem; padding: 1rem 1.15rem; }
+.icon-gallery .icon-row { display: flex; flex-wrap: wrap; gap: 1.4rem; align-items: flex-end; }
+.icon-gallery figure { display: grid; gap: .5rem; justify-items: center; margin: 0; min-width: 96px; }
+.icon-gallery figure img { image-rendering: auto; }
+.icon-gallery figcaption { font-size: .8125rem; color: var(--muted); text-align: center; }
+.icon-gallery .icon-sizes { display: inline-flex; align-items: flex-end; gap: .7rem; height: 34px; }
+.icon-gallery code { font-size: .8125rem; color: var(--muted); }

@@ -92,3 +92,113 @@ export interface DistributionGroup {
   play: string
   buckets: DistributionBucket[]
 }
+
+export interface AchvTitle {
+  id: string
+  name: string
+  type: string
+  type_name: string
+  rank: number
+  group: 'overview' | 'special'
+  value: number
+  pic_id: string | null
+}
+export interface AchvDimension {
+  key: string
+  name: string
+  score: number
+  titles: AchvTitle[]
+}
+export interface AchvPlayer {
+  uid: string
+  nickname: string | null
+  nick_number: string | null
+  level: number | null
+  avatar: string | null
+  name_card: string | null
+}
+export interface AchvTeammate {
+  uid: string
+  nickname: string | null
+  nick_number: string | null
+  level: number | null
+  avatar: string | null
+  name_card: string | null
+  plays: number | null
+  wins: number | null
+}
+
+export interface AchvSocial {
+  likes: number
+  friends: number
+  star_friends: string[]
+  best_teammate: AchvTeammate | null
+  top_teammates?: AchvTeammate[]
+}
+export interface AchvBandTop {
+  id: string
+  name: string | null
+  effect: string | null
+  value: number
+  winning_rate: number | null
+  type: string | null
+}
+export interface AchvBadge {
+  id: string
+  name: string | null
+  effect: string | null
+  type: string | null
+  variant: 'master' | 'base'
+  variant_name: string
+  obtained: boolean
+  icon: string | null
+}
+export interface AchvBands {
+  top: AchvBandTop[]
+  badges: AchvBadge[]
+  variants: Record<string, string>
+  summary: { total: number; mastered: number; pending: number }
+}
+export interface AchvBest { key: string; label: string; value: number }
+export interface AchvModes {
+  single: { battle: number; win: number; hard_mode: string | null; hard_win: number }
+  multi: { battle: number; win: number; hard_win: number; second_hard_win: number }
+}
+export interface AchvSeason {
+  activity: string | null
+  version: string | null
+  name: string | null
+  year: string | null
+  start: string | null
+  end: string | null
+  offseason: boolean
+}
+export interface AchvProfile {
+  player: AchvPlayer
+  trophy: { total: number; level: number; icon: string | null }
+  likes: number
+  dimensions: AchvDimension[]
+  titles: AchvTitle[]
+  social: AchvSocial
+  modes: AchvModes
+  best: AchvBest[]
+  bands: AchvBands
+  season: AchvSeason
+  fetched_at: string
+  warnings?: string[]
+}
+export interface AchvState {
+  connected: boolean
+  source: string | null
+  uid: string | null
+  nickname: string | null
+  fetched_at: string | null
+  stale: boolean
+  phone: string | null
+}
+export interface AchvEnvelope {
+  state: AchvState
+  warning?: string | null
+  warnings?: string[]
+  data: AchvProfile
+}

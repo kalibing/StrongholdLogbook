@@ -34,3 +34,25 @@ __pycache__/
 
 .local/
 
+
+# 本地临时产物（截图预览、解码出来的资源草稿）
+/.tmp/
+
+# 构建产物
+/build/
+/dist/
+*.spec
+
+# 抓包与导出数据（含令牌，禁止入库）
+/reports/
+/reqable_export/
+/out/
+
+# tools/ 只公开链路脚本，其余为本地探索产物
+/tools/*
+!/tools/hgsdk_unlock.py
+!/tools/decrypt_u8_config.py
+!/tools/u8_gettoken_from_hgsdk.py
+!/tools/auto_achv.py
+!/tools/u8_watch.py
+!/tools/extract_title_icons.py

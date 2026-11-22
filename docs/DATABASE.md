@@ -2,7 +2,7 @@
 
 表结构的唯一来源：
 
-- PostgreSQL：`backend/migrations/versions/0001_initial.py`（Alembic 迁移）。
+- PostgreSQL：`backend/migrations/versions/`（Alembic 迁移，按版本号顺序执行）。
 - SQLite：`backend/logbook/sqlite_schema.py`（启动时 `CREATE TABLE IF NOT EXISTS`）。
 - 两者一致性由 `backend/tests/test_storage.py::test_sqlite_schema_matches_alembic_migration` 用 sqlglot 解析 DDL 逐表逐列比对，改表必须同时改两处，否则测试失败。
 
@@ -14,6 +14,7 @@
 | `sessions` | 会话令牌 | `token_hash` | — | `user_id → users` CASCADE |
 | `matches` | 单局战绩 | `id` | `(user_id, protocol, external_id)` | `user_id → users` CASCADE |
 | `import_jobs` | 导入队列 | `id` | — | `user_id → users` CASCADE |
+| `achv_links` | 成就档案绑定（u8 token + 快照） | `user_id` | — | `user_id → users` CASCADE |
 
 ```mermaid
 erDiagram
@@ -93,6 +94,19 @@ erDiagram
 | `created_at` | `timestamptz DEFAULT now()` | `INTEGER` | 入队时间 |
 | `completed_at` | `timestamptz` | `INTEGER` | 完成时间 |
 
+### achv_links
+
+| 列 | PostgreSQL | SQLite | 说明 |
+| --- | --- | --- | --- |
+| `user_id` | `uuid` PK | `TEXT` PK | 一个账号一份绑定 |
+| `source` | `text` CHECK | `TEXT` CHECK | `hypergryph` / `token` |
+| `phone_masked` | `text` | `TEXT` | 仅展示用，如 `138****1234`；密码不入库 |
+| `u8_token` | `text` | `TEXT` | 换来的 u8 token，刷新时复用 |
+| `uid` / `nickname` | `text` | `TEXT` | 成就接口返回的游戏角色 |
+| `payload` | `jsonb` | `TEXT` (JSON) | 归一化后的成就档案，见 `logbook/achievements.py` |
+| `fetched_at` | `timestamptz` | `INTEGER` | 上次成功取数时间（10 分钟内不重拉） |
+| `updated_at` | `timestamptz` | `INTEGER` | 写入时间 |
+
 ## 索引
 
 | 索引 | 表 | 定义 | 用途 |
@@ -141,3 +155,4 @@ SQLite 的时间戳统一存 UTC 秒；适配层读出时转回带时区 `dateti
 | `sync_jobs` / `sync_runs` | 增量同步任务与运行记录，复用 `import_jobs` 的取任务模式 |
 
 拆表方案：新增明细表后，用一次性回填脚本把 `matches.bonds/squad/bosses` 展开，再删 JSONB 列；接口层保持不变。
+

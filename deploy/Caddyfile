@@ -12,6 +12,14 @@
     reverse_proxy api:8000
   }
 
+  # 鹰角通行证登录页反向代理（网页登录取 access token）
+  handle /hg/* {
+    reverse_proxy api:8000
+  }
+  handle /hg {
+    reverse_proxy api:8000
+  }
+
   handle {
     root * /srv
     @assets path /assets/*

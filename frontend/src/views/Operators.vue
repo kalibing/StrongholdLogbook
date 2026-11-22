@@ -1,41 +1,48 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NInput, NSelect } from 'naive-ui'
 import { logbook } from '../context'
-import { computed } from 'vue'
 import { query, useResource } from '../api'
 import { percent } from '../format'
 import { portrait } from '../icons'
 import type { Operator } from '../models'
+import AvatarImage from '../components/AvatarImage.vue'
 import FiltersBar from '../components/FiltersBar.vue'
 
 const { filters, revision } = logbook()
 const sort = ref<'count' | 'win' | 'name'>('count')
 const q = ref('')
+const search = ref('')
 const sortOptions = [
   { label: '按出场局数', value: 'count' },
   { label: '按出场胜率', value: 'win' },
   { label: '按名称', value: 'name' },
 ]
 
-const url = computed(() => '/operators' + query(filters, { sort: sort.value, q: q.value }))
-const { data, pending, error, refresh } = useResource<{ with_squad: number; operators: Operator[] }>(url, revision)
+watch(q, (value, _, onCleanup) => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    search.value = ''
+    return
+  }
+  const timer = window.setTimeout(() => { search.value = trimmed }, 220)
+  onCleanup(() => window.clearTimeout(timer))
+})
+
+const url = computed(() => '/operators' + query(filters, { sort: sort.value, q: search.value }))
+const { data, pending, error, refresh } = useResource<{ with_squad: number; operators: Operator[] }>(url, revision, true)
 </script>
 
 <template>
   <FiltersBar />
 
-  <p v-if="pending" class="load-message" role="status">正在读取干员数据…</p>
-  <p v-else-if="error" class="load-message" role="alert">
-    {{ error }} <button type="button" @click="refresh">重试</button>
-  </p>
-
-  <section v-else class="panel table-panel" aria-labelledby="operator-title">
+  <section class="panel table-panel" aria-labelledby="operator-title">
     <div class="table-heading operator-toolbar">
       <div>
         <h2 id="operator-title">出场榜</h2>
         <p class="muted" role="status">
-          {{ data?.with_squad ?? 0 }} 局有阵容明细<template v-if="data?.operators.length">，共 {{ data.operators.length }} 名干员</template>
+          <template v-if="pending">正在读取干员数据…</template>
+          <template v-else-if="data">{{ data.with_squad }} 局有阵容明细<template v-if="data.operators.length">，共 {{ data.operators.length }} 名干员</template></template>
         </p>
       </div>
       <div class="operator-options">
@@ -43,7 +50,10 @@ const { data, pending, error, refresh } = useResource<{ with_squad: number; oper
         <NSelect v-model:value="sort" size="small" :options="sortOptions" aria-label="排序" />
       </div>
     </div>
-    <div class="scroll">
+    <p v-if="error" class="table-feedback load-message" role="alert">
+      {{ error }} <button type="button" @click="refresh">重试</button>
+    </p>
+    <div v-if="data" class="scroll" :aria-busy="pending">
       <table class="operator-table">
         <thead>
           <tr>
@@ -57,15 +67,15 @@ const { data, pending, error, refresh } = useResource<{ with_squad: number; oper
         </thead>
         <tbody>
           <tr v-for="row in data?.operators ?? []" :key="row.id">
-            <td><img :src="portrait(row.id)" width="37" height="37" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">{{ row.name }}</td>
+            <td><span class="with-avatar"><AvatarImage :src="portrait(row.id)" :name="row.name" />{{ row.name }}</span></td>
             <td>{{ row.count }}</td>
             <td>{{ percent(row.usage_rate) }}</td>
             <td>{{ row.wins }}</td>
             <td>{{ row.losses }}</td>
             <td>{{ percent(row.win_rate) }}</td>
           </tr>
-          <tr v-if="!data?.operators.length">
-            <td class="empty-cell" colspan="6">当前筛选范围内没有阵容明细。</td>
+          <tr v-if="!pending && !data.operators.length">
+            <td class="empty-cell" colspan="6">{{ search ? '没有找到匹配的干员。' : '当前筛选范围内没有阵容明细。' }}</td>
           </tr>
         </tbody>
       </table>

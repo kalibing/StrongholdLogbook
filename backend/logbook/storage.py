@@ -24,7 +24,9 @@ from .config import settings
 from .errors import StorageUnavailable, UniqueConflict, WriteRejected
 from .sqlite_schema import SCHEMA
 
-TIMESTAMP_COLUMNS = frozenset({"played_at", "created_at", "completed_at", "expires_at", "locked_until"})
+TIMESTAMP_COLUMNS = frozenset({
+    "played_at", "created_at", "completed_at", "expires_at", "locked_until", "fetched_at", "updated_at",
+})
 JSON_COLUMNS = frozenset({"bonds", "squad", "operators", "bosses", "payload"})
 BOOL_COLUMNS = frozenset({"suspected_exit"})
 SQLITE_NOW = "CAST(strftime('%s','now') AS INTEGER)"

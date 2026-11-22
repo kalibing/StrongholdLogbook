@@ -35,23 +35,30 @@ export function query(filters: Filters, extra: Record<string, string> = {}) {
   return encoded ? '?' + encoded : ''
 }
 
-export function useResource<T>(url: Ref<string | null>, revision: Ref<number>) {
+export function useResource<T>(url: Ref<string | null>, revision: Ref<number>, keepPrevious = false) {
   const data = shallowRef<T | null>(null)
   const pending = ref(false)
   const error = ref('')
+  const resolvedUrl = ref<string | null>(null)
   const attempt = ref(0)
 
   watch([url, revision, attempt], async ([path], _, onCleanup) => {
     const controller = new AbortController()
     onCleanup(() => controller.abort())
     error.value = ''
-    data.value = null
+    if (!path || !keepPrevious) {
+      data.value = null
+      resolvedUrl.value = null
+    }
     pending.value = Boolean(path)
     if (!path) return
 
     try {
       const response = await api<T>(path, { signal: controller.signal })
-      if (!controller.signal.aborted) data.value = response
+      if (!controller.signal.aborted) {
+        data.value = response
+        resolvedUrl.value = path
+      }
     } catch (reason) {
       if (!controller.signal.aborted) error.value = message(reason)
     } finally {
@@ -59,7 +66,7 @@ export function useResource<T>(url: Ref<string | null>, revision: Ref<number>) {
     }
   }, { immediate: true })
 
-  return { data, pending, error, refresh: () => { attempt.value++ } }
+  return { data, pending, error, resolvedUrl, refresh: () => { attempt.value++ } }
 }
 
 export function message(reason: unknown): string {

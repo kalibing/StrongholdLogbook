@@ -66,4 +66,17 @@ SCHEMA = (
     """,
     "CREATE INDEX IF NOT EXISTS pending_import_jobs ON import_jobs (created_at, id) WHERE status = 'pending'",
     "CREATE INDEX IF NOT EXISTS user_import_jobs ON import_jobs (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS achv_links (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        source TEXT NOT NULL CHECK (source IN ('hypergryph', 'token')),
+        phone_masked TEXT,
+        u8_token TEXT NOT NULL,
+        uid TEXT,
+        nickname TEXT,
+        payload TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    )
+    """,
 )

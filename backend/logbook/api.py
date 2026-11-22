@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import json
+from threading import Lock
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -10,7 +11,7 @@ from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import stats
+from . import achievements, capture, hgproxy, hypergryph, stats
 from .config import settings
 from .db import connection_pool
 from .errors import UniqueConflict
@@ -42,12 +43,23 @@ app = FastAPI(title="卫戍协议战绩档案", docs_url=None, redoc_url=None, o
 
 @app.middleware("http")
 async def protect_requests(request: Request, call_next):
-    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.headers.get("origin") != settings.public_origin:
+    # /hg/* 是鹰角通行证登录页的反向代理，请求由官方页面自己发出，不校验本站 Origin。
+    proxied = (request.url.path == "/hg" or request.url.path.startswith("/hg/")
+               or request.url.path == "/api/hg/report")
+    if (
+        not proxied
+        and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and request.headers.get("origin") != settings.public_origin
+    ):
         response = JSONResponse({"detail": "请求来源无效"}, 403)
     else:
         response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+app.include_router(hgproxy.router)
+app.include_router(hgproxy.capture_router)
 
 
 @app.exception_handler(PoolTimeout)
@@ -322,3 +334,149 @@ async def upload_snapshot(request: Request, user=Depends(current_user)):
             raise HTTPException(413, "战绩文件不能超过 8 MB")
         content.extend(chunk)
     return await run_in_threadpool(queue_import, request.app.state.pool, user["id"], content)
+
+
+# ------------------------------------------------------------ 成就档案（鹰角通行证）
+
+ACHV_TTL = timedelta(minutes=10)
+ACHV_CACHE: dict[str, tuple[datetime, dict]] = {}
+ACHV_LOCK = Lock()
+
+
+class AchvConnect(BaseModel):
+    phone: str | None = Field(default=None, max_length=32)
+    password: str | None = Field(default=None, max_length=256)
+    token: str | None = Field(default=None, max_length=8192)
+    access_token: str | None = Field(default=None, max_length=4096)
+    uid: str | None = Field(default=None, max_length=32)
+
+
+def mask_phone(phone: str | None) -> str | None:
+    digits = "".join(character for character in (phone or "") if character.isdigit())
+    return f"{digits[:3]}****{digits[-4:]}" if len(digits) >= 7 else None
+
+
+def achv_state(row) -> dict:
+    if row is None:
+        return {"connected": False, "source": None, "uid": None, "nickname": None,
+                "fetched_at": None, "stale": False, "phone": None}
+    fetched = row["fetched_at"]
+    stale = (datetime.now(timezone.utc) - fetched) > ACHV_TTL
+    return {"connected": True, "source": row["source"], "uid": row["uid"], "nickname": row["nickname"],
+            "fetched_at": fetched.isoformat(), "stale": stale, "phone": row["phone_masked"]}
+
+
+def save_link(request: Request, user_id, source: str, phone: str | None, code: str, uid: str | None,
+              payload: dict) -> None:
+    now = datetime.now(timezone.utc)
+    with request.app.state.pool.connection() as database:
+        database.execute("""
+            INSERT INTO achv_links
+                (user_id, source, phone_masked, u8_token, uid, nickname, payload, fetched_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                source = EXCLUDED.source, phone_masked = EXCLUDED.phone_masked, u8_token = EXCLUDED.u8_token,
+                uid = EXCLUDED.uid, nickname = EXCLUDED.nickname, payload = EXCLUDED.payload,
+                fetched_at = EXCLUDED.fetched_at, updated_at = EXCLUDED.updated_at
+        """, (user_id, source, phone, code, uid, (payload.get("player") or {}).get("nickname"),
+              json_param(payload), now, now))
+    with ACHV_LOCK:
+        ACHV_CACHE[str(user_id)] = (now, payload)
+
+
+def fetch_link(request: Request, user_id):
+    with request.app.state.pool.connection() as database:
+        return database.execute("SELECT * FROM achv_links WHERE user_id = %s", (user_id,)).fetchone()
+
+
+@app.get("/api/achv/status")
+def achv_status(request: Request, user=Depends(current_user)):
+    row = fetch_link(request, user["id"])
+    state = achv_state(row)
+    if row is not None:
+        cached = ACHV_CACHE.get(str(user["id"]))
+        state["payload_ready"] = bool(cached) or row["payload"] is not None
+    return state
+
+
+@app.post("/api/achv/session")
+def achv_connect(details: AchvConnect, request: Request, user=Depends(current_user)):
+    warnings: list[str] = []
+    uid: str | None = None
+    phone = mask_phone(details.phone)
+    if details.token and details.token.strip():
+        source = "token"
+        try:
+            code = hypergryph.extract_code(details.token)
+            data = hypergryph.player_summary(code)
+        except hypergryph.CredentialError as error:
+            raise HTTPException(424, str(error)) from error
+    elif details.access_token and details.access_token.strip():
+        source = "hypergryph"
+        try:
+            uid, code, data, warnings = hypergryph.connect_with_access_token(
+                details.access_token.strip(), (details.uid or "").strip())
+        except hypergryph.CredentialError as error:
+            raise HTTPException(424, str(error)) from error
+    elif details.phone and details.password:
+        source = "hypergryph"
+        try:
+            uid, code, data, warnings = hypergryph.connect_with_password(details.phone, details.password)
+        except hypergryph.CredentialError as error:
+            raise HTTPException(424, str(error)) from error
+    else:
+        raise HTTPException(422, "请填写手机号与密码，或粘贴成就页链接")
+    payload = achievements.normalize(data)
+    if warnings:
+        payload["warnings"] = warnings
+    save_link(request, user["id"], source, phone, code, uid or payload["player"]["uid"], payload)
+    return {"state": achv_state(fetch_link(request, user["id"])), "warnings": warnings, "data": payload}
+
+
+@app.get("/api/achv/summary")
+def achv_summary(request: Request, refresh: bool = False, user=Depends(current_user)):
+    row = fetch_link(request, user["id"])
+    if row is None:
+        raise HTTPException(404, "尚未绑定鹰角通行证或成就令牌")
+    state = achv_state(row)
+    payload = row["payload"] or {}
+    warning = None
+    if refresh or state["stale"]:
+        try:
+            data = hypergryph.player_summary(row["u8_token"])
+            payload = achievements.normalize(data)
+            save_link(request, user["id"], row["source"], row["phone_masked"], row["u8_token"],
+                      row["uid"], payload)
+            state = achv_state(fetch_link(request, user["id"]))
+        except hypergryph.CredentialError as error:
+            warning = f"刷新失败，正在展示上次成功的数据：{error}"
+    return {"state": state, "warning": warning, "data": payload}
+
+
+@app.post("/api/achv/import-capture")
+def achv_import_capture(request: Request, user=Depends(current_user)):
+    """本地便利功能：扫 Reqable 最近抓包，取最新的 u8 token 直接入库。"""
+    tokens = capture.candidate_tokens()
+    if not tokens:
+        raise HTTPException(404, "没在 Reqable 抓包里找到成就接口，先在模拟器里打开一次成就页")
+    errors: list[str] = []
+    for code, origin in tokens[:8]:
+        try:
+            data = hypergryph.player_summary(code)
+        except hypergryph.CredentialError as error:
+            errors.append(f"{origin}: {error}")
+            continue
+        payload = achievements.normalize(data)
+        payload["captured_from"] = origin
+        save_link(request, user["id"], "token", None, code, payload["player"]["uid"], payload)
+        return {"state": achv_state(fetch_link(request, user["id"])), "warnings": [], "data": payload,
+                "source_file": origin, "tried": len(errors) + 1}
+    raise HTTPException(424, "抓包里的令牌都失效了：" + "；".join(errors[:2]))
+
+
+@app.delete("/api/achv/session", status_code=status.HTTP_204_NO_CONTENT)
+def achv_disconnect(request: Request, user=Depends(current_user)):
+    with request.app.state.pool.connection() as database:
+        database.execute("DELETE FROM achv_links WHERE user_id = %s", (user["id"],))
+    with ACHV_LOCK:
+        ACHV_CACHE.pop(str(user["id"]), None)

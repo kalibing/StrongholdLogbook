@@ -5,6 +5,7 @@ import { logbook, newFilters } from '../context'
 import { compareDifficulty, difficultyLabel, playRank, protocolLabel } from '../format'
 
 const { filters, facets } = logbook()
+const emit = defineEmits<{ reset: [] }>()
 const unique = (values: string[]) => [...new Set(values)]
 const protocols = computed(() => unique(facets.value.map(item => item.protocol)))
 const inProtocol = computed(() => facets.value.filter(item => !filters.protocol || item.protocol === filters.protocol))
@@ -27,28 +28,20 @@ const excludeExits = computed({
   set: (value: boolean) => { filters.include_exits = !value },
 })
 
-const pad = (value: number) => String(value).padStart(2, '0')
-const toTimestamp = (value: string) => {
-  if (!value) return null
-  const [year, month, day] = value.split('-').map(Number)
-  return new Date(year, month - 1, day).getTime()
-}
 const toDate = (timestamp: number) => {
   const date = new Date(timestamp)
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
 }
 
-const range = computed<[number, number] | null>({
-  get() {
-    const start = toTimestamp(filters.start)
-    const end = toTimestamp(filters.end)
-    return start && end ? [start, end] : null
-  },
-  set(value) {
-    filters.start = value ? toDate(value[0]) : ''
-    filters.end = value ? toDate(value[1]) : ''
-  },
-})
+const startDisabled = (timestamp: number) => Boolean(filters.end && toDate(timestamp) > filters.end)
+const endDisabled = (timestamp: number) => Boolean(filters.start && toDate(timestamp) < filters.start)
+
+function clearFilters() {
+  Object.assign(filters, newFilters())
+  emit('reset')
+}
 
 function changeProtocol(value: string) {
   filters.protocol = value
@@ -76,15 +69,24 @@ function changePlay(value: string) {
       <NSelect :value="filters.difficulty" :options="difficultyOptions" size="small" aria-label="难度或等级"
         @update:value="value => filters.difficulty = value" />
     </label>
-    <label class="filter-field date-range-field">开局日期
-      <NDatePicker v-model:value="range" type="daterange" size="small" clearable
-        :actions="['clear', 'confirm']" start-placeholder="开始日期" end-placeholder="结束日期"
-        aria-label="开局日期范围" />
-    </label>
+    <div class="filter-dates" role="group" aria-label="开局日期">
+      <label class="filter-field">开始日期
+        <NDatePicker :formatted-value="filters.start || null" type="date" size="small" clearable
+          value-format="yyyy-MM-dd" placeholder="不限" placement="bottom-start" :is-date-disabled="startDisabled"
+          :actions="[]" :input-props="{ 'aria-label': '开始日期' }"
+          @update:formatted-value="value => filters.start = typeof value === 'string' ? value : ''" />
+      </label>
+      <label class="filter-field">结束日期
+        <NDatePicker :formatted-value="filters.end || null" type="date" size="small" clearable
+          value-format="yyyy-MM-dd" placeholder="不限" placement="bottom-start" :is-date-disabled="endDisabled"
+          :actions="[]" :input-props="{ 'aria-label': '结束日期' }"
+          @update:formatted-value="value => filters.end = typeof value === 'string' ? value : ''" />
+      </label>
+    </div>
     <slot name="extra" />
     <div class="filter-actions">
       <NCheckbox v-model:checked="excludeExits">排除疑似直接退出</NCheckbox>
-      <NButton size="small" quaternary @click="Object.assign(filters, newFilters())">清空筛选</NButton>
+      <NButton size="small" quaternary @click="clearFilters">清空筛选</NButton>
     </div>
   </div>
 </template>

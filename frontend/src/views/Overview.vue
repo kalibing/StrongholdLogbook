@@ -16,7 +16,8 @@ const { filters, revision } = logbook()
 const scope = ref<Scope>('recent')
 const missingPortraits = reactive(new Set<string>())
 const url = computed(() => '/overview' + query(filters, { scope: scope.value }))
-const { data, pending, error, refresh } = useResource<Overview>(url, revision)
+const { data, pending, error, resolvedUrl, refresh } = useResource<Overview>(url, revision, true)
+const renderedScope = computed(() => (new URLSearchParams(resolvedUrl.value?.split('?')[1]).get('scope') as Scope | null) ?? 'recent')
 
 const rate = computed(() => data.value?.matches ? data.value.wins / data.value.matches : 0)
 const charts: { metric: Metric; match: string; day: string }[] = [
@@ -29,7 +30,7 @@ const charts: { metric: Metric; match: string; day: string }[] = [
 const period = computed(() => data.value?.start ? `${data.value.start} — ${data.value.end}` : '当前筛选无对局')
 const majorBond = computed(() => (data.value?.peak ? pickMajorBond(data.value.peak.names) : ''))
 const distributionUrl = computed(() => '/distribution' + query(filters))
-const distribution = useResource<DistributionGroup[]>(distributionUrl, revision)
+const distribution = useResource<DistributionGroup[]>(distributionUrl, revision, true)
 
 const TIERS: Record<string, { icon: Component; color: string }> = {
   标准模拟: { icon: ShieldOutline, color: '#e0b04a' },
@@ -51,12 +52,12 @@ const topTotal = computed(() => maxTotal(distribution.data.value))
 
 <template>
   <FiltersBar />
-  <p v-if="pending" class="load-message" role="status">正在读取战绩…</p>
-  <p v-else-if="error" class="load-message" role="alert">
+  <p v-if="pending && !data" class="load-message" role="status">正在读取战绩…</p>
+  <p v-if="error" class="load-message" role="alert">
     {{ error }} <button type="button" @click="refresh">重试</button>
   </p>
 
-  <template v-else-if="data">
+  <template v-if="data">
     <div class="summary-grid">
       <section class="performance panel" aria-labelledby="performance-title">
         <div class="split">
@@ -103,13 +104,16 @@ const topTotal = computed(() => maxTotal(distribution.data.value))
       </section>
     </div>
 
-    <section v-if="distribution.data.value?.some(group => group.buckets.some(bucket => bucket.total))"
+    <section v-if="distribution.error.value || distribution.data.value?.some(group => group.buckets.some(bucket => bucket.total))"
       class="content-section" aria-labelledby="distribution-title">
       <div class="split section-heading">
         <h2 id="distribution-title">模式分布</h2>
         <span class="muted">按难度分档统计胜负</span>
       </div>
-      <div class="distribution panel">
+      <p v-if="distribution.error.value" class="load-message" role="alert">
+        {{ distribution.error.value }} <button type="button" @click="distribution.refresh">重试</button>
+      </p>
+      <div v-if="distribution.data.value?.length" class="distribution panel" :aria-busy="distribution.pending.value">
         <section v-for="group in distribution.data.value" :key="group.play" class="dist-group">
           <h3>{{ group.play }}</h3>
           <div v-for="bucket in group.buckets" :key="bucket.label" class="dist-row" :class="{ zero: !bucket.total }">
@@ -133,7 +137,8 @@ const topTotal = computed(() => maxTotal(distribution.data.value))
       <div class="split section-heading">
         <h2 id="trend-title">对局趋势</h2>
         <div class="chart-controls">
-          <div v-show="scope !== 'day' && data.points.length" class="chart-legend" aria-label="图例">
+          <span v-if="pending" class="muted" role="status">正在更新…</span>
+          <div v-show="renderedScope !== 'day' && data.points.length" class="chart-legend" aria-label="图例">
             <span class="win-key">● 胜</span><span class="loss-key">◆ 负</span>
           </div>
           <span class="select-field">
@@ -145,11 +150,12 @@ const topTotal = computed(() => maxTotal(distribution.data.value))
           </span>
         </div>
       </div>
-      <div class="trend-grid">
+      <div v-if="data.points.length" class="trend-grid" :aria-busy="pending">
         <TrendChart v-for="chart in charts" :key="chart.metric" :points="data.points" :metric="chart.metric"
-          :scope="scope" :title="scope === 'day' ? chart.day : chart.match" />
-        <TrendChart v-if="scope === 'day'" :points="data.points" metric="average" :scope="scope" title="场均金币" />
+          :scope="renderedScope" :title="renderedScope === 'day' ? chart.day : chart.match" />
+        <TrendChart v-if="renderedScope === 'day'" :points="data.points" metric="average" :scope="renderedScope" title="场均金币" />
       </div>
+      <p v-else class="empty-state">当前筛选无对局趋势。</p>
     </section>
 
     <section class="content-section" aria-labelledby="operators-title">

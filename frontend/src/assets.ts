@@ -140,10 +140,23 @@ export const EQUIPMENT_ICONS: Record<string, string> = {
 }
 
 export const DIFFICULTY_ICONS: Record<string, string> = {
+  "极速模拟": "/art/tier-fast.png",
   "标准模拟": "/art/tier-standard.png",
   "险境模拟": "/art/tier-normal.png",
   "绝境模拟": "/art/tier-hard.png",
   "终极模拟": "/art/tier-abyss.png",
+}
+
+// 从 PC 端 AB 包原生拆出的白色 glyph（ui/autochess/[uc]autochesscommon.ab: mode_*_icon），
+// UI 里可用 CSS filter / mask 换色。
+export const MODE_ICONS: Record<string, string> = {
+  "极速模拟": "/art/mode-fast.png",
+  "标准模拟": "/art/mode-fast.png",
+  "险境模拟": "/art/mode-normal.png",
+  "绝境模拟": "/art/mode-hard.png",
+  "终极模拟": "/art/mode-abyss.png",
+  "趣味模拟": "/art/mode-funny.png",
+  "教学模拟": "/art/mode-training.png",
 }
 
 export const ELITE_ICONS = {

@@ -22,6 +22,7 @@ frontend (Vue 3)  ──/api/*──▶  FastAPI  ──▶  PostgreSQL
 | 战绩总览 | 胜率、最近十局、盟约总层数 / 单项最高层数 / 金币 / 击杀 / 回合趋势，可按近 10 局、全部对局或按日期聚合；常用干员与常用盟约。 |
 | 对局记录 | 按协议期、模拟方式、难度、开局日期、战果筛选并分页；点开单局战报查看回合、击杀、金币、奖杯、盟约结算、首领和最终阵容与装备。 |
 | 干员统计 | 出场局数、出场率、胜负与胜率，支持搜索和排序。 |
+| 成就档案 | 绑定鹰角通行证（或粘贴成就页链接）后直连卫戍协议 `playerSummary`：六维成就、18 个称号、社交与获赞、策略纪录与**两种特殊标识**。见 [docs/achievements.md](docs/achievements.md)。 |
 | 数据导入 | 上传战绩 JSON，查看导入任务进度与错误（一个账号一份数据，不再区分角色档案）。 |
 
 | 通用 | 顶部导航带滑动指示器；筛选区使用 Naive UI 的下拉与范围日期选择；图表为 ECharts；主题可切换日间/夜间。 |
@@ -36,6 +37,8 @@ backend/
     api.py            路由、登录会话、角色档案、导入上传
     records.py        导入格式校验（现代快照与旧版中文格式）、筛选 SQL
     stats.py          总览、趋势与干员统计
+    hypergryph.py     鹰角通行证 → u8 token → playerSummary 取数
+    achievements.py   成就档案归一化（六维 / 称号 / 社交 / 特殊标识）
     worker.py         导入队列消费进程（幂等 upsert）
     storage.py        存储适配层：PostgreSQL / SQLite 双后端
     sqlite_schema.py  SQLite 建表语句（与 Alembic 迁移逐列一致）
@@ -147,6 +150,25 @@ docker compose exec api python -m logbook.admin create-user alice
 ```
 
 Compose 会先跑 `alembic upgrade head`（`migrate` 服务），再启动 API 与 worker；Caddy 只在 `HOST_BIND` 上发布端口，默认 `127.0.0.1`。对外提供 HTTPS 时把 `SITE_ADDRESS` 设成域名，Caddy 自动申请证书，并把 `PUBLIC_ORIGIN` 改成同一个 `https://` 源。
+
+## 成就档案（鹰角通行证）
+
+「成就档案」页直连卫戍协议 H5 的 `playerSummary` 接口，把成就页上的内容搬进本站：
+
+- **六维成就**：盟约理解 / 补救能力 / 人力调度 / 装备活用 / 资金管理 / 领袖挑战（0–100）
+- **18 个称号**：每维 3 个（特殊 / T1 / T2）与数值
+- **社交**：已获赞、好友数、特别关注、最常共同游玩的队友与胜场
+- **策略与分队纪录**：TOP3 分队 + **两种特殊标识**（`master` 精通角标 / `base` 基础标识）
+
+绑定方式三选一：
+
+1. **网页登录（推荐）**：点「打开鹰角通行证登录页」，在官方页面上用手机号 / 短信 / 扫码登录，
+   本站反代只读取登录成功后的 access token，自动换取成就数据；密码不经过任何存储。
+2. 游戏内打开「卫戍协议 · 成就」→ 复制地址栏链接 → 粘到页面「粘贴链接 / 令牌」；
+3. 填手机号 + 密码走 `token_by_phone_password` → `u8/getToken`（服务端直连，可能被风控挡住）。
+
+链路、字段字典、两种标识的判定依据与已知限制见 [docs/achievements.md](docs/achievements.md)。
+令牌按天失效，过期后页面继续展示上次快照并提示。
 
 ## 导入战绩
 

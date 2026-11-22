@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { NButton, NPagination, NSelect } from 'naive-ui'
-import { logbook } from '../context'
+import { logbook, newFilters } from '../context'
 import { query, useResource } from '../api'
 import { avatarFor, loadDirectory } from '../directory'
+import TierTag from '../components/TierTag.vue'
 import { difficultyLabel, number, shortTime } from '../format'
 import type { MatchDetail, MatchPage, Result } from '../models'
 import FiltersBar from '../components/FiltersBar.vue'
+import AvatarImage from '../components/AvatarImage.vue'
 import MatchReport from '../components/MatchReport.vue'
 
 const { filters, revision } = logbook()
@@ -23,12 +25,18 @@ const listUrl = computed(() => '/matches' + query(filters, {
   page: String(page.value),
   limit: String(PAGE_SIZE),
 }))
-const { data, pending, error, refresh } = useResource<MatchPage>(listUrl, revision)
+const { data, pending, error, refresh } = useResource<MatchPage>(listUrl, revision, true)
 const report = useResource<MatchDetail>(detailUrl, revision)
 
 const pages = computed(() => data.value?.pages ?? 1)
 const current = computed(() => data.value?.page ?? page.value)
 const total = computed(() => data.value?.total ?? 0)
+const hasFilters = computed(() => Boolean(result.value || Object.values(filters).some(Boolean)))
+
+function resetFilters() {
+  Object.assign(filters, newFilters())
+  result.value = ''
+}
 
 function open(id: string) {
   detailUrl.value = '/matches/' + id
@@ -44,7 +52,7 @@ watch(result, () => { page.value = 1 })
 </script>
 
 <template>
-  <FiltersBar>
+  <FiltersBar @reset="result = ''">
     <template #extra>
       <label class="filter-field">战果
         <NSelect :value="result" :options="resultOptions" size="small" aria-label="筛选胜负"
@@ -53,17 +61,16 @@ watch(result, () => { page.value = 1 })
     </template>
   </FiltersBar>
 
-  <p v-if="pending" class="load-message" role="status">正在读取对局…</p>
-  <p v-else-if="error" class="load-message" role="alert">
-    {{ error }} <button type="button" @click="refresh">重试</button>
-  </p>
-
-  <section v-else class="panel table-panel" aria-labelledby="history-title">
+  <section class="panel table-panel" aria-labelledby="history-title">
     <div class="split table-heading">
       <h2 id="history-title">结算列表</h2>
-      <span class="period">{{ total }} 局</span>
+      <span v-if="pending" class="period" role="status">正在读取对局…</span>
+      <span v-else-if="data" class="period">{{ total }} 局</span>
     </div>
-    <div class="scroll">
+    <p v-if="error" class="table-feedback load-message" role="alert">
+      {{ error }} <button type="button" @click="refresh">重试</button>
+    </p>
+    <div v-if="data?.matches.length" class="scroll" :aria-busy="pending">
       <table class="history-table">
         <thead>
           <tr>
@@ -84,12 +91,12 @@ watch(result, () => { page.value = 1 })
           <tr v-for="row in data?.matches ?? []" :key="row.id">
             <td>{{ shortTime(row.played_at) }}</td>
             <td><span class="chip" :class="{ loss: row.result === 'loss' }">{{ row.result === 'win' ? '胜' : '负' }}</span></td>
-            <td data-label="模拟方式">{{ row.play }}</td>
+            <td data-label="模拟方式"><TierTag :label="row.play" /></td>
             <td data-label="难度 / 等级">{{ difficultyLabel(row.difficulty) }}</td>
             <td data-label="开局策略">{{ row.strategy ?? '—' }}</td>
             <td data-label="发起者">
               <span class="with-avatar">
-                <img v-if="initiatorAvatar(row.initiator)" :src="initiatorAvatar(row.initiator)!" width="22" height="22" alt="">
+                <AvatarImage v-if="row.initiator" :src="initiatorAvatar(row.initiator)" :name="row.initiator" :size="22" />
                 <span>{{ row.initiator ?? '—' }}</span>
               </span>
             </td>
@@ -102,15 +109,16 @@ watch(result, () => { page.value = 1 })
         </tbody>
       </table>
     </div>
-    <div v-if="!data?.matches.length" class="empty-state">
+    <div v-if="data && !data.matches.length && !pending && !error" class="empty-state">
       <span>当前筛选范围内没有对局。</span>
-      <RouterLink class="button-link" to="/archive">前往档案管理</RouterLink>
+      <NButton v-if="hasFilters" secondary @click="resetFilters">清空筛选</NButton>
+      <RouterLink v-else class="button-link" to="/import">前往数据导入</RouterLink>
     </div>
-    <div class="paging">
+    <div v-if="pages > 1 && data?.matches.length" class="paging">
       <NPagination :page="current" :page-count="pages" size="small" @update:page="value => page = value" />
     </div>
   </section>
 
   <MatchReport v-if="detailUrl" :detail="report.data.value" :pending="report.pending.value"
-    :error="report.error.value" @close="close" />
+    :error="report.error.value" @close="close" @retry="report.refresh" />
 </template>

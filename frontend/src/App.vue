@@ -51,6 +51,7 @@ const titles = [
   { route: 'overview', title: '战绩总览' },
   { route: 'matches', title: '对局记录' },
   { route: 'operators', title: '干员统计' },
+  { route: 'achievements', title: '成就档案' },
   { route: 'data-import', title: '数据导入' },
 ]
 
@@ -168,19 +169,19 @@ provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
   <main class="layout">
     <div v-if="pending" class="loading-shell" role="status">正在读取数据…</div>
 
-    <template v-else-if="user">
+    <template v-else-if="user || route.meta.public">
       <div class="heading" :class="{ 'heading-compact': route.name !== 'overview' }">
         <div class="heading-copy">
-          <p class="eyebrow">卫戍协议 <span>/</span> {{ user.username }}</p>
+          <p class="eyebrow">卫戍协议 <span>/</span> {{ user?.username ?? '本地资源' }}</p>
           <h1>{{ route.meta.title }}</h1>
           <p class="heading-description">{{ route.meta.description }}</p>
         </div>
         <div class="heading-art" aria-hidden="true"><i></i></div>
       </div>
       <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
-      <RouterView v-else v-slot="{ Component }">
-        <Transition name="page" mode="out-in">
-          <component :is="Component" />
+      <RouterView v-else v-slot="{ Component, route: pageRoute }">
+        <Transition name="page">
+          <div :key="pageRoute.name" class="route-content"><component :is="Component" /></div>
         </Transition>
       </RouterView>
     </template>

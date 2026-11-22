@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { AriaComponent, GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { logbook } from '../context'
 import { shortTime } from '../format'
-import { bondIcon, iconVersion } from '../icons'
 import type { Point, Scope } from '../models'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, AriaComponent, CanvasRenderer])
@@ -22,14 +21,17 @@ const props = defineProps<{
 
 const { theme } = logbook()
 const container = ref<HTMLDivElement | null>(null)
+const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
+const reduceMotion = ref(motionPreference.matches)
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
 
 const valueOf = (point: Point) => {
-  if (props.metric === 'peak') return point.peak?.layers ?? 0
-  if (props.metric === 'average') return point.average_coins ?? 0
-  return point[props.metric] ?? 0
+  if (props.metric === 'peak') return point.peak?.layers ?? null
+  if (props.metric === 'average') return point.average_coins ?? null
+  return point[props.metric] ?? null
 }
+const hasValues = computed(() => props.points.some(point => valueOf(point) !== null))
 
 const byMatch = () => props.scope !== 'day'
 const formatValue = (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 1 })
@@ -49,7 +51,8 @@ function describe(index: number): string {
   const names = props.metric === 'peak' && point.peak && point.peak.names.length
     ? `（${point.peak.names.join('、')}）`
     : ''
-  return `${parts.join(' · ')} · ${formatValue(valueOf(point))}${unit}${names}`
+  const value = valueOf(point)
+  return `${parts.join(' · ')} · ${value === null ? '无记录' : formatValue(value) + unit + names}`
 }
 
 function buildOption() {
@@ -62,24 +65,29 @@ function buildOption() {
   const win = css('win')
   const loss = css('loss')
 
-  const data = items.map((point, index) => ({
-    value: valueOf(point),
-    itemStyle: { color: point.result === 'loss' && match ? loss : win },
-    symbol: point.result === 'loss' && match ? 'diamond' : 'circle',
-    symbolSize: 7,
-    label: {
-      show: true,
-      position: index === 0 ? 'right' : index === items.length - 1 ? 'left' : 'top',
-      distance: 8,
-      color: text,
-      fontSize: 10,
-      formatter: () => formatValue(valueOf(point)),
-    },
-  }))
+  const dense = items.length > 10
+  const data = items.map((point, index) => {
+    const value = valueOf(point)
+    return {
+      value,
+      itemStyle: { color: point.result === 'loss' && match ? loss : win },
+      symbol: point.result === 'loss' && match ? 'diamond' : 'circle',
+      symbolSize: dense ? 4 : 7,
+      label: {
+        show: value !== null && !dense,
+        position: index === 0 ? 'right' : index === items.length - 1 ? 'left' : 'top',
+        distance: 8,
+        color: text,
+        fontSize: 10,
+        formatter: value === null ? '' : formatValue(value),
+      },
+    }
+  })
 
   return {
-    animation: true,
-    animationDuration: 260,
+    animation: !reduceMotion.value,
+    animationDuration: 160,
+    animationDurationUpdate: 0,
     animationEasing: 'cubicOut' as const,
     backgroundColor: 'transparent',
     grid: { left: 62, right: 22, top: 32, bottom: 28 },
@@ -97,7 +105,7 @@ function buildOption() {
       axisPointer: { type: 'line', lineStyle: { color: grid } },
       formatter: (params: unknown) => {
         const list = params as { dataIndex: number }[]
-        return describe(list?.[0]?.dataIndex ?? 0)
+        return list?.[0] ? describe(list[0].dataIndex) : ''
       },
     },
     xAxis: {
@@ -112,7 +120,7 @@ function buildOption() {
       type: 'value',
       min: 0,
       splitNumber: 3,
-      max: (value: { max: number }) => Math.ceil(value.max * 1.15),
+      max: (value: { max: number }) => Math.max(1, Math.ceil(value.max * 1.15)),
       axisLabel: {
         color: muted,
         fontSize: 10,
@@ -125,6 +133,7 @@ function buildOption() {
     },
     series: [{
       type: 'line',
+      connectNulls: false,
       smooth: false,
       showSymbol: true,
       symbolSize: 7,
@@ -135,7 +144,7 @@ function buildOption() {
           { offset: 1, color: line + '00' },
         ]),
       },
-      emphasis: { scale: 1.5, focus: 'series' },
+      emphasis: { scale: reduceMotion.value ? false : 1.5, focus: 'series' },
       data,
     }],
   }
@@ -144,28 +153,41 @@ function buildOption() {
 function render() {
   if (!container.value) return
   chart ??= echarts.init(container.value, undefined, { renderer: 'canvas' })
-  chart.setOption(buildOption(), { notMerge: true })
-  chart.resize()
+  chart.setOption(buildOption())
+}
+
+function updateMotion() {
+  reduceMotion.value = motionPreference.matches
 }
 
 onMounted(() => {
-  void nextTick(render)
-  if (container.value) observer = new ResizeObserver(() => chart?.resize())
-  if (container.value) observer?.observe(container.value)
+  motionPreference.addEventListener('change', updateMotion)
+  render()
+  if (!container.value) return
+  observer = new ResizeObserver(() => chart?.resize())
+  observer.observe(container.value)
 })
 onBeforeUnmount(() => {
+  motionPreference.removeEventListener('change', updateMotion)
   observer?.disconnect()
   chart?.dispose()
   chart = null
 })
-watch([() => props.points, () => props.metric, () => props.title, () => props.scope, iconVersion, theme], () => {
-  void nextTick(render)
-}, { flush: 'post' })
+watch([() => props.points, () => props.metric, () => props.title, () => props.scope, theme, reduceMotion], render, { flush: 'post' })
 </script>
 
 <template>
   <article class="trend-panel">
     <h3>{{ title }}</h3>
-    <div ref="container" class="trend-canvas" role="img" />
+    <div class="chart-body">
+      <div ref="container" class="trend-canvas" :class="{ 'chart-hidden': !hasValues }" :aria-hidden="!hasValues" role="img" />
+      <p v-if="!hasValues" class="chart-empty muted">暂无记录</p>
+    </div>
   </article>
 </template>
+
+<style scoped>
+.chart-body { position: relative; min-width: 0; }
+.chart-hidden { visibility: hidden; }
+.chart-empty { position: absolute; inset: 0; display: grid; place-items: center; }
+</style>
