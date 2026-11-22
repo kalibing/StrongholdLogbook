@@ -559,29 +559,28 @@ tbody tr:hover { background: #ffffff06; box-shadow: inset 2px 0 var(--accent); }
 body { background-image: linear-gradient(180deg, #0e1016 0, transparent 320px), repeating-linear-gradient(90deg, #ffffff03 0 1px, transparent 1px 120px); }
 .report-stats { grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); }
 
-/* ===== 干员卡：按旧站参数还原（12px 圆角、112×108 头像贴右上、左下渐变文字） ===== */
-.roster { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .75rem; }
+/* ===== 干员卡：旧快照样式（6px 圆角、灰蓝底、头像右侧贴边且略高于卡面） ===== */
+.roster { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
 .op {
   position: relative;
   display: flex;
-  flex-direction: row;
   align-items: flex-end;
-  min-height: 124px;
+  min-height: 110px;
   padding: 0;
   overflow: hidden;
-  border: 1px solid #2b394b;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #263752, #131b29);
+  border: 1px solid #464b58;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #383c49, #2b2e35);
 }
 .op img {
   position: absolute;
-  inset: .2rem .2rem auto auto;
-  width: min(96%, 112px);
-  height: 108px;
+  inset: 0 0 0 auto;
+  width: auto;
+  height: 104%;
   aspect-ratio: auto;
   padding: 0;
   object-fit: contain;
-  object-position: top right;
+  object-position: right center;
   transform: none;
   filter: none;
   transition: none;
@@ -592,35 +591,31 @@ body { background-image: linear-gradient(180deg, #0e1016 0, transparent 320px), 
   inset: auto;
   z-index: 1;
   width: 100%;
-  padding: 1.65rem .65rem .5rem;
+  padding: 24px 9px 8px;
   border-top: 0;
-  background: linear-gradient(transparent, #111827 54%);
+  background: linear-gradient(transparent, #17191ef5);
 }
-.op b { display: block; font-size: 1rem; line-height: 1.35; }
-.op small { display: block; font-size: .8125rem; color: #b3bdc9; }
-.op:hover { border-color: #465a74; }
-.op:hover img { filter: brightness(1.06); }
+.op b { display: block; font-size: .9375rem; line-height: 1.3; color: #f4f5f8; }
+.op small { display: block; font-size: .75rem; color: #b9bdc9; }
+.op:hover { border-color: #5c6473; }
 .op-fallback {
   position: absolute;
-  inset: .2rem .2rem auto auto;
-  width: min(96%, 112px);
-  height: 108px;
-  border-radius: 8px;
+  inset: 0 0 0 auto;
+  width: 50%;
+  height: 100%;
   display: grid;
   place-items: center;
   font-size: 1.7rem;
   font-weight: 700;
-  color: #5d6875;
-  background: repeating-linear-gradient(135deg, #1a2431 0 6px, #141b26 6px 12px);
+  color: #8d93a3;
+  background: repeating-linear-gradient(135deg, #3d414d 0 6px, #343843 6px 12px);
 }
-@media (max-width: 900px) { .op { min-height: 120px; } }
+@media (max-width: 900px) { .roster { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 440px) {
-  .op { min-height: 112px; border-radius: 10px; }
-  .op img, .op-fallback { width: min(96%, 96px); height: 94px; }
+  .op { min-height: 96px; }
   .op b { font-size: .875rem; }
-  .op small { font-size: .75rem; }
+  .op small { font-size: .72rem; }
 }
-
 /* 缺盟约图标时的占位菱形，避免卡片只剩文字 */
 .bond-glyph {
   width: 26px;

@@ -108,7 +108,7 @@ const period = computed(() => data.value?.start ? `${data.value.start} — ${dat
           <span v-else class="op-fallback" aria-hidden="true">{{ operator.name.slice(0, 1) }}</span>
           <div>
             <b>{{ operator.name }}</b>
-            <small>出场 {{ operator.count }} 局 · {{ percent(operator.usage_rate) }}</small>
+            <small>出场 {{ operator.count }} 局</small>
           </div>
         </article>
       </div>
