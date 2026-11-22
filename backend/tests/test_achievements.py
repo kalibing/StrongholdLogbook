@@ -91,7 +91,7 @@ def test_normalize_tolerates_missing_fields():
     assert len(profile["dimensions"]) == 6
 
 
-def test_teammate_metrics_are_grouped_by_uid():
+def test_teammate_cards_keep_each_metric_with_its_owner():
     players = {"a": {"nickname": "甲"}, "b": {"nickname": "乙"}}
     play = {"uid": "a", "value": 15}
     win = {"uid": "b", "value": 12}
@@ -101,7 +101,7 @@ def test_teammate_metrics_are_grouped_by_uid():
         return [(row["nickname"], row["plays"], row["wins"]) for row in social["top_teammates"]]
 
     assert metrics({"maxPlay": play, "maxWin": win}) == [("甲", 15, None), ("乙", None, 12)]
-    assert metrics({"maxPlay": play, "maxWin": {**win, "uid": "a"}}) == [("甲", 15, 12)]
+    assert metrics({"maxPlay": play, "maxWin": {**win, "uid": "a"}}) == [("甲", 15, None), ("甲", None, 12)]
     assert metrics({"maxWin": win}) == [("乙", None, 12)]
     assert metrics({}) == []
 

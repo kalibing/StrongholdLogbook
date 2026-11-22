@@ -36,8 +36,16 @@ const legacyTeammate = computed(() => {
   const social = profile.value?.social
   return social?.top_teammates === undefined ? social?.best_teammate ?? null : null
 })
-const teammates = computed(() => profile.value?.social.top_teammates
-  ?? (legacyTeammate.value ? [{ ...legacyTeammate.value, wins: null }] : []))
+const teammateCards = computed(() => {
+  const rows = profile.value?.social.top_teammates
+    ?? (legacyTeammate.value ? [{ ...legacyTeammate.value, wins: null }] : [])
+  const mostPlayed = rows.find(row => row.plays != null)
+  const mostWins = rows.find(row => row.wins != null)
+  const cards = []
+  if (mostPlayed?.plays != null) cards.push({ teammate: mostPlayed, label: '最常共同游玩', value: mostPlayed.plays })
+  if (mostWins?.wins != null) cards.push({ teammate: mostWins, label: '最多胜场', value: mostWins.wins })
+  return cards
+})
 
 const overviewTitles = computed(() => groupTitles('overview'))
 const specialTitles = computed(() => groupTitles('special'))
@@ -384,7 +392,7 @@ onBeforeUnmount(stopPolling)
         <section class="panel block">
           <div class="split"><h3>社交数据</h3></div>
           <div class="social-grid">
-            <div class="social-metrics" :class="{ 'social-metrics--wide': !teammates.length }">
+            <div class="social-metrics">
               <article class="metric-card">
                 <img v-if="trophyIcon" :src="trophyIcon" alt="" class="metric-art" />
                 <div><span>已获奖杯</span><strong>{{ profile.trophy.total }}</strong></div>
@@ -394,8 +402,8 @@ onBeforeUnmount(stopPolling)
                 <div><span>已获赞</span><strong>{{ profile.likes }}</strong></div>
               </article>
             </div>
-            <div v-if="teammates.length" class="social-mates">
-              <article v-for="(teammate, index) in teammates" :key="teammate.uid + '-' + index" class="mate-card">
+            <div v-if="teammateCards.length" class="social-mates">
+              <article v-for="{ teammate, label, value } in teammateCards" :key="label" class="mate-card">
                 <div class="namecard namecard--mate">
                   <img v-if="teammate.name_card" :key="teammate.name_card" class="namecard-art"
                     :src="nameCardLocal(teammate.name_card)" alt="" @error="nameCardFallback($event, teammate.name_card)" />
@@ -406,10 +414,7 @@ onBeforeUnmount(stopPolling)
                     <small v-if="teammate.nick_number">#{{ teammate.nick_number }}</small>
                   </div>
                 </div>
-                <dl class="mate-stats">
-                  <div v-if="teammate.plays != null"><dt>最常共同游玩</dt><dd>{{ teammate.plays }} <small>场次</small></dd></div>
-                  <div v-if="teammate.wins != null"><dt>最多胜场</dt><dd>{{ teammate.wins }} <small>场次</small></dd></div>
-                </dl>
+                <dl class="mate-stats"><dt>{{ label }}</dt><dd>{{ value }} <small>场次</small></dd></dl>
               </article>
               <p v-if="legacyTeammate?.wins != null" class="muted">刷新档案后可查看最多胜场的队友。</p>
             </div>
@@ -546,32 +551,32 @@ onBeforeUnmount(stopPolling)
 .title-value { font-family: var(--numbers); font-size: 1.18rem; color: var(--accent); font-variant-numeric: tabular-nums; }
 
 .social-grid {
-  display: grid; grid-template-columns: minmax(14rem, 1fr) minmax(0, 2fr); align-items: center;
-  gap: .85rem clamp(1rem, 2vw, 1.5rem); margin-top: .85rem;
+  display: grid; grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+  gap: .65rem; margin-top: .85rem;
 }
 .social-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
-.social-metrics--wide { grid-column: 1 / -1; max-width: 28rem; }
-.metric-card {
-  display: flex; align-items: center; gap: clamp(.45rem, 1vw, .8rem); min-height: 4.5rem;
-  padding: .65rem clamp(.55rem, 1vw, .9rem); background: var(--inset); border: 1px solid var(--line); border-radius: 6px;
+.metric-card, .mate-card {
+  min-width: 0; min-height: 5.25rem; padding: .55rem .65rem;
+  background: var(--inset); border: 1px solid var(--line); border-radius: 6px;
 }
+.metric-card { display: flex; align-items: center; gap: .45rem; }
 .metric-card span, .mate-stats dt { display: block; color: var(--muted); font-size: .8125rem; }
 .metric-card strong, .mate-stats dd {
   font-family: var(--numbers); font-variant-numeric: tabular-nums;
   font-size: clamp(1.35rem, 2.5vw, 1.85rem); font-weight: 700; line-height: 1.12; color: var(--accent);
 }
-.metric-art { flex: none; width: clamp(1.85rem, 5vw, 3rem); aspect-ratio: 1; object-fit: contain; }
+.metric-art { flex: none; width: clamp(1.6rem, 4vw, 2rem); aspect-ratio: 1; object-fit: contain; }
 .metric-art--like { padding: min(.3rem, 1.1vw); }
 .social-mates {
-  display: grid; min-width: 0; gap: .65rem;
-  border-inline-start: 1px solid var(--line); padding-inline-start: clamp(1rem, 2vw, 1.5rem);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); min-width: 0; gap: .65rem;
 }
+.social-mates > p { grid-column: 1 / -1; }
 .mate-card {
-  display: grid; grid-template-columns: minmax(0, 17.5rem) minmax(0, 1fr); align-items: center;
-  gap: .8rem clamp(.8rem, 2.2vw, 1.5rem);
+  display: grid; grid-template-columns: minmax(0, 1fr) 5.8rem; gap: .65rem; align-items: center;
 }
-.namecard--mate { max-width: 17.5rem; }
-.mate-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 8rem)); gap: .75rem; }
+.namecard--mate { max-width: 14rem; }
+.namecard--mate .namecard-avatar { width: 2rem; }
+.mate-stats dt { white-space: nowrap; }
 .mate-stats dd { margin-top: .2rem; }
 .mate-stats small { font-size: .72rem; font-weight: 500; white-space: nowrap; }
 
@@ -652,7 +657,6 @@ onBeforeUnmount(stopPolling)
   .namecard--player { grid-row: span 2; }
   .strip-actions { justify-self: start; }
   .social-grid { grid-template-columns: minmax(0, 1fr); }
-  .social-mates { padding: .85rem 0 0; border-inline-start: 0; border-top: 1px solid var(--line); }
 }
 @media (max-width: 820px) {
   .achv-cols { grid-template-columns: minmax(0, 1fr); }
@@ -661,7 +665,6 @@ onBeforeUnmount(stopPolling)
   .strip { grid-template-columns: minmax(0, 1fr); }
   .namecard--player { grid-row: auto; }
   .strip-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .mate-card { grid-template-columns: minmax(0, 1fr); }
   .badges { grid-template-columns: repeat(auto-fill, minmax(min(100%, 5.4rem), 1fr)); gap: .55rem; }
 }
 </style>

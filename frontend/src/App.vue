@@ -25,8 +25,8 @@ const indicator = ref({ left: 0, width: 0 })
 const overrides = computed<GlobalThemeOverrides>(() => ({
   common: {
     primaryColor: theme.value === 'dark' ? '#dfe6a8' : '#687820',
-    primaryColorHover: theme.value === 'dark' ? '#eaf0be' : '#7f9130',
-    primaryColorPressed: theme.value === 'dark' ? '#c9d296' : '#5f6c1e',
+    primaryColorHover: theme.value === 'dark' ? '#eaf0be' : '#5f701b',
+    primaryColorPressed: theme.value === 'dark' ? '#c9d296' : '#516017',
     borderRadius: '3px',
     borderRadiusSmall: '2px',
     fontFamily: 'inherit',

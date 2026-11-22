@@ -1017,7 +1017,7 @@ td .with-avatar { white-space: nowrap; }
 
 /* ===== 模式分布 ===== */
 .distribution { padding: 1rem 1.15rem; display: grid; gap: 1.1rem; }
-.dist-group { display: grid; gap: .45rem; }
+.dist-group { display: grid; min-width: 0; gap: .45rem; }
 .dist-group h3 { font-size: .95rem; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
 .dist-row {
   display: grid;
@@ -1038,7 +1038,8 @@ td .with-avatar { white-space: nowrap; }
 .dist-bar { display: block; height: 4px; border-radius: 2px; background: var(--inset); overflow: hidden; }
 .dist-bar i { display: block; height: 100%; border-radius: 2px; }
 @media (max-width: 730px) {
-  .dist-row { grid-template-columns: 20px minmax(6rem, 1fr) 3.6rem 3.6rem 4.2rem; }
+  .dist-row { grid-template-columns: 1.1rem minmax(0, 1fr) repeat(3, max-content); column-gap: clamp(.25rem, 1.5vw, .6rem); }
+  .dist-label { overflow-wrap: anywhere; }
   .dist-bar { grid-column: 1 / -1; }
 }
 

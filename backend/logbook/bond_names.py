@@ -1,0 +1,30 @@
+# -*- coding: utf-8 -*-
+# 盟约 id → 中文名（来自卫戍协议 playerSummary 的 season.bonds）
+BOND_NAMES = {
+    "yanShip": "炎",
+    "sargonShip": "萨尔贡",
+    "victoriaShip": "维多利亚",
+    "kjeragShip": "谢拉格",
+    "egirShip": "阿戈尔",
+    "siracusaShip": "叙拉古",
+    "kazimierzShip": "卡西米尔",
+    "ursusShip": "乌萨斯",
+    "iberiaShip": "伊比利亚",
+    "lethaniaShip": "莱塔尼亚",
+    "preciShip": "精准",
+    "swiftShip": "迅捷",
+    "skillfulShip": "灵巧",
+    "steadShip": "坚守",
+    "deputShip": "助力",
+    "visiShip": "远见",
+    "miraShip": "奇迹",
+    "investShip": "投资人",
+    "raidShip": "突袭",
+    "indomShip": "不屈",
+    "maniShip": "调和",
+    "emptyShip": "协防干员",
+    "soloShip": "独行",
+    "suntShip": "绝技",
+    "docShip": "聚合",
+    "arcaneShip": "奥术"
+}

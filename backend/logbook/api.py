@@ -11,7 +11,7 @@ from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import achievements, capture, hgproxy, hypergryph, stats
+from . import achievements, capture, device_token, hgproxy, hypergryph, skland, stats
 from .config import settings
 from .db import connection_pool
 from .errors import UniqueConflict
@@ -321,6 +321,51 @@ def queue_import(pool, user_id, content):
             VALUES (%s, %s, 'pending', %s, %s)
         """, (job_id, user_id, json_param([record.model_dump(mode="json") for record in records]), len(records)))
     return {"id": job_id, "status": "pending", "total": len(records)}
+
+
+@app.post("/api/imports/skland", status_code=status.HTTP_202_ACCEPTED)
+async def import_from_skland(request: Request, user=Depends(current_user)):
+    """从森空岛拉最新战绩（固定 100 条）并入库。
+
+    body 可留空：服务端会用本机 hgsdk 登录态自动换取 cred；
+    也可以显式传 {"cred": ..., "sign_token": ...} 或 {"token": <鹰角 token>}。
+    """
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    body: dict = {}
+    if content_type == "application/json":
+        raw = await request.body()
+        if raw.strip():
+            try:
+                body = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError) as error:
+                raise HTTPException(422, "请求体不是合法 JSON") from error
+
+    cred = (body.get("cred") or "").strip()
+    sign_token = (body.get("sign_token") or "").strip()
+    access_token = (body.get("token") or "").strip()
+    season = (body.get("season") or skland.SEASON).strip()
+
+    def pull() -> dict:
+        nonlocal cred, sign_token
+        try:
+            if not cred or not sign_token:
+                source = access_token
+                if not source:
+                    _, source = device_token.load_login()  # 本机 hgsdk 登录态
+                cred, sign_token = skland.cred_from_token(source)
+            role = skland.arknights_role(cred, sign_token)
+            records = skland.history(cred, sign_token, role, season)
+            return skland.to_snapshot(records)
+        except (skland.SklandError, device_token.DeviceTokenError) as error:
+            raise HTTPException(424, str(error)) from error
+
+    snapshot = await run_in_threadpool(pull)
+    if not snapshot["matches"]:
+        raise HTTPException(404, "森空岛没有返回可导入的战绩")
+    job = await run_in_threadpool(queue_import, request.app.state.pool, user["id"],
+                                  json.dumps(snapshot, ensure_ascii=False).encode())
+    return {**job, "source": "skland", "records": len(snapshot["matches"]),
+            "operators": len(snapshot["operators"])}
 
 
 @app.post("/api/imports", status_code=status.HTTP_202_ACCEPTED)

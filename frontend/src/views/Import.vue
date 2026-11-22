@@ -11,6 +11,7 @@ const importError = ref('')
 const jobsError = ref('')
 const jobsPending = ref(false)
 const importing = ref(false)
+const sklandTip = ref('')
 let poll: ReturnType<typeof setTimeout> | undefined
 let request: AbortController | null = null
 let hasLoaded = false
@@ -40,6 +41,26 @@ async function loadJobs() {
         poll = setTimeout(() => { void loadJobs() }, 2000)
       }
     }
+  }
+}
+
+async function importFromSkland() {
+  importError.value = ''
+  importing.value = true
+  try {
+    const job = await api<{ total: number; records: number }>('/imports/skland', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    sklandTip.value = `已拉取 ${job.records ?? job.total} 局，正在写入数据库…`
+    await loadJobs()
+  } catch (reason) {
+    importError.value = reason instanceof ApiError && reason.status === 424
+      ? `${message(reason)}（可先在本机运行一次《明日方舟》PC 端登录）`
+      : message(reason)
+  } finally {
+    importing.value = false
   }
 }
 
@@ -80,6 +101,20 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <section class="panel skland-panel">
+    <div class="split">
+      <h3>从森空岛导入</h3>
+      <span class="period">最新 100 局 · 无需导出文件</span>
+    </div>
+    <p class="muted">
+      用本机《明日方舟》PC 端的登录态自动换取森空岛凭据，拉取卫戍协议战绩后直接入库（同一局按对局 ID 幂等）。
+    </p>
+    <div class="row-actions">
+      <NButton type="primary" :loading="importing" @click="importFromSkland">拉取并导入</NButton>
+      <span v-if="sklandTip" class="muted">{{ sklandTip }}</span>
+    </div>
+  </section>
+
   <section class="panel import-panel" aria-labelledby="import-title">
     <header class="import-heading">
       <h2 id="import-title">导入战绩</h2>
@@ -114,6 +149,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.skland-panel { padding: 1.1rem 1.25rem; display: grid; gap: .55rem; margin-bottom: 1rem; }
+.skland-panel .row-actions { display: flex; align-items: center; gap: .75rem; }
 .import-panel { display: grid; gap: .85rem; padding: clamp(.9rem, 2.5vw, 1.4rem); }
 .import-heading, .import-history { display: grid; gap: .4rem; }
 .import-history { border-top: 1px solid var(--line); padding-top: .85rem; }
