@@ -955,3 +955,105 @@ nav a[aria-current="page"] { background: none !important; }
 .site-header .account-actions .n-button { --n-border-radius: 3px; }
 .theme-toggle { color: var(--muted); }
 .theme-toggle:hover { color: var(--accent); }
+
+
+/* 单项最高盟约：大盟约图标 + 层数 */
+dd.peak-value { display: flex; align-items: center; gap: .4rem; }
+dd.peak-value img, dd.peak-value .bond-glyph { width: 22px; height: 22px; flex: none; }
+dd.peak-value b { font-family: var(--numbers); font-size: 1.35rem; font-weight: 700; }
+:root[data-theme="light"] dd.peak-value b { color: #1a212b; }
+
+
+/* ===== 图表尺寸与动效速度 ===== */
+.trend-canvas { height: 230px; }
+.trend-panel { padding: 1rem 1.1rem .85rem; }
+.trend-panel h3 { font-size: .95rem; }
+@media (max-width: 900px) { .trend-canvas { height: 200px; } }
+@media (max-width: 730px) { .trend-canvas { height: 180px; } }
+
+.layout > * { animation-duration: .26s; }
+.layout > *:nth-child(2) { animation-delay: .02s; }
+.layout > *:nth-child(3) { animation-delay: .04s; }
+.layout > *:nth-child(4) { animation-delay: .06s; }
+.layout > *:nth-child(5) { animation-delay: .08s; }
+.page-enter-active, .page-leave-active { transition-duration: .14s; }
+.nav-indicator { transition-duration: .2s; }
+.op, .usage-card { transition-duration: .18s; }
+
+.operator-options .n-input { width: 13rem; }
+.operator-options .n-select { width: 9.5rem; }
+@media (max-width: 440px) {
+  .operator-options .n-input { width: 100%; }
+}
+
+/* ===== 盟约卡片：瀑布式错落布局 ===== */
+.bond-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: .5rem;
+}
+.bond-grid > div {
+  flex: 0 1 auto;
+  min-width: 8.5rem;
+  padding: .5rem .65rem;
+}
+.bond-label { display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
+.bond-label span { white-space: nowrap; }
+.bond-grid b { white-space: nowrap; }
+
+.bond-usage {
+  columns: 4 14rem;
+  column-gap: .65rem;
+  display: block;
+}
+.bond-usage .usage-card {
+  break-inside: avoid;
+  margin-bottom: .65rem;
+  width: 100%;
+}
+@media (max-width: 900px) { .bond-usage { columns: 2 12rem; } }
+@media (max-width: 440px) { .bond-usage { columns: 1; } }
+
+
+/* 发起者头像 */
+.with-avatar { display: inline-flex; align-items: center; gap: .4rem; }
+.with-avatar img {
+  width: 22px; height: 22px; flex: none; border-radius: 50%;
+  object-fit: cover; object-position: top center;
+  background: var(--inset); border: 1px solid var(--line);
+}
+.art-card .initiator-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  object-fit: cover; object-position: top center;
+  background: var(--inset); border: 1px solid var(--line);
+}
+td .with-avatar { white-space: nowrap; }
+
+
+/* ===== 模式分布 ===== */
+.distribution { padding: 1rem 1.15rem; display: grid; gap: 1.1rem; }
+.dist-group { display: grid; gap: .45rem; }
+.dist-group h3 { font-size: .95rem; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+.dist-row {
+  display: grid;
+  grid-template-columns: 22px minmax(7rem, 1fr) 4.5rem 4.5rem 5rem minmax(6rem, 2fr);
+  align-items: center;
+  gap: .6rem;
+  padding: .35rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: .875rem;
+}
+.dist-row:last-child { border-bottom: 0; }
+.dist-row.zero { opacity: .55; }
+.dist-icon { display: inline-flex; font-size: 1.05rem; }
+.dist-label { font-weight: 600; }
+.dist-count.win { color: var(--win); }
+.dist-count.loss { color: var(--loss); }
+.dist-total { color: var(--muted); text-align: right; }
+.dist-bar { display: block; height: 4px; border-radius: 2px; background: var(--inset); overflow: hidden; }
+.dist-bar i { display: block; height: 100%; border-radius: 2px; }
+@media (max-width: 730px) {
+  .dist-row { grid-template-columns: 20px minmax(6rem, 1fr) 3.6rem 3.6rem 4.2rem; }
+  .dist-bar { grid-column: 1 / -1; }
+}

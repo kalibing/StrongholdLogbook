@@ -14,7 +14,7 @@ def bond_total(row):
 
 
 def peak(rows):
-    bonds = [bond for row in rows for bond in row["bonds"]]
+    bonds = [bond for row in rows for bond in row["bonds"] if bond["layers"] > 0]
     if not bonds:
         return None
     layers = max(bond["layers"] for bond in bonds)
@@ -68,7 +68,8 @@ def overview(rows, excluded, scope):
     bonds = defaultdict(list)
     for row in rows:
         for bond in row["bonds"]:
-            bonds[bond["name"]].append(bond["layers"])
+            if bond["layers"] > 0:
+                bonds[bond["name"]].append(bond["layers"])
     ordered_bonds = sorted(bonds, key=lambda name: (-len(bonds[name]), -sum(bonds[name]), name))
     coins = [row["coins"] for row in rows if row["coins"] is not None]
     return {

@@ -81,3 +81,14 @@ export interface ImportJob {
   created_at: string
   completed_at: string | null
 }
+
+export interface DistributionBucket {
+  label: string
+  wins: number
+  losses: number
+  total: number
+}
+export interface DistributionGroup {
+  play: string
+  buckets: DistributionBucket[]
+}

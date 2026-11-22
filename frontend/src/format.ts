@@ -44,3 +44,13 @@ export const compareDifficulty = (a: string, b: string) => {
   const [groupB, rankB] = difficultyRank(b)
   return groupA - groupB || rankA - rankB || a.localeCompare(b, 'zh-Hans-CN')
 }
+
+const MAJOR_BONDS = [
+  '炎', '乌萨斯', '维多利亚', '伊比利亚', '阿戈尔', '莱塔尼亚', '卡西米尔',
+  '萨尔贡', '叙拉古', '谢拉格', '哥伦比亚', '玻利瓦尔', '雷姆必拓', '米诺斯',
+]
+
+/** 并列时优先展示大盟约（如「炎」），没有命中则取第一个。 */
+export function pickMajorBond(names: string[]): string {
+  return MAJOR_BONDS.find(name => names.includes(name)) ?? names[0] ?? ''
+}

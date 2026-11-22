@@ -5,6 +5,7 @@ import { LineChart } from 'echarts/charts'
 import { AriaComponent, GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { logbook } from '../context'
+import { shortTime } from '../format'
 import { bondIcon, iconVersion } from '../icons'
 import type { Point, Scope } from '../models'
 
@@ -31,6 +32,7 @@ const valueOf = (point: Point) => {
 }
 
 const byMatch = () => props.scope !== 'day'
+const formatValue = (value: number) => value.toLocaleString('zh-CN', { maximumFractionDigits: 1 })
 
 function css(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim()
@@ -39,11 +41,15 @@ function css(name: string): string {
 function describe(index: number): string {
   const point = props.points[index]
   if (!point) return ''
-  const head = byMatch() ? `第 ${index + 1} 局 · ` : ''
-  const outcome = byMatch() ? (point.result === 'loss' ? ' · 负' : ' · 胜') : ''
-  const names = props.metric === 'peak' && point.peak ? ' · ' + point.peak.names.join('、') : ''
+  const head = byMatch() ? `第 ${index + 1} 局` : point.label
+  const when = byMatch() ? shortTime(point.label) : ''
+  const outcome = point.result === 'loss' ? '负' : point.result === 'win' ? '胜' : ''
+  const parts = [head, when, outcome].filter(Boolean)
   const unit = props.metric === 'peak' ? ' 层' : ''
-  return `${head}${point.label}${outcome}${names} · ${valueOf(point).toLocaleString('zh-CN', { maximumFractionDigits: 1 })}${unit}`
+  const names = props.metric === 'peak' && point.peak && point.peak.names.length
+    ? `（${point.peak.names.join('、')}）`
+    : ''
+  return `${parts.join(' · ')} · ${formatValue(valueOf(point))}${unit}${names}`
 }
 
 function buildOption() {
@@ -53,26 +59,33 @@ function buildOption() {
   const grid = css('chart-grid')
   const line = css('chart-line')
   const text = css('text')
-  const labelBg = css('chart-label')
-  const title = props.title
-  const description = items.length
-    ? (match ? `按开局时间排列 · ${items.length} 局` : `按开局日期统计 · ${items.length} 天`)
-    : '当前筛选无对局'
+  const win = css('win')
+  const loss = css('loss')
 
-  const data = items.map((point) => ({
+  const data = items.map((point, index) => ({
     value: valueOf(point),
-    itemStyle: { color: point.result === 'loss' && match ? css('loss') : css('win') },
+    itemStyle: { color: point.result === 'loss' && match ? loss : win },
     symbol: point.result === 'loss' && match ? 'diamond' : 'circle',
-    symbolSize: 6,
+    symbolSize: 7,
+    label: {
+      show: true,
+      position: index === 0 ? 'right' : index === items.length - 1 ? 'left' : 'top',
+      distance: 8,
+      color: text,
+      fontSize: 10,
+      formatter: () => formatValue(valueOf(point)),
+    },
   }))
 
   return {
-    animation: false,
+    animation: true,
+    animationDuration: 260,
+    animationEasing: 'cubicOut' as const,
     backgroundColor: 'transparent',
-    grid: { left: 48, right: 16, top: props.metric === 'peak' ? 46 : 22, bottom: 26 },
+    grid: { left: 62, right: 22, top: 32, bottom: 28 },
     aria: {
       enabled: true,
-      label: { description: `${title}。${items.map((_, index) => describe(index)).join('，') || '当前筛选无对局'}` },
+      label: { description: `${props.title}。${items.map((_, index) => describe(index)).join('，') || '当前筛选无对局'}` },
     },
     tooltip: {
       trigger: 'axis',
@@ -80,38 +93,51 @@ function buildOption() {
       backgroundColor: css('panel'),
       borderColor: css('line'),
       textStyle: { color: text, fontSize: 12 },
+      extraCssText: 'border-radius:3px;box-shadow:0 10px 28px #00000055;',
       axisPointer: { type: 'line', lineStyle: { color: grid } },
       formatter: (params: unknown) => {
         const list = params as { dataIndex: number }[]
-        const index = list?.[0]?.dataIndex ?? 0
-        return describe(index)
+        return describe(list?.[0]?.dataIndex ?? 0)
       },
     },
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: items.map((point, index) => (match ? String(index + 1) : point.label.slice(5))),
+      data: items.map((point, index) => (match ? String(index + 1) : shortTime(point.label).slice(0, 5))),
       axisLine: { lineStyle: { color: grid } },
       axisTick: { show: false },
-      axisLabel: { color: muted, fontSize: 11, hideOverlap: true },
+      axisLabel: { color: muted, fontSize: 10, hideOverlap: true, margin: 10 },
     },
     yAxis: {
       type: 'value',
       min: 0,
-      splitNumber: 4,
-      axisLabel: { color: muted, fontSize: 11 },
+      splitNumber: 3,
+      max: (value: { max: number }) => Math.ceil(value.max * 1.15),
+      axisLabel: {
+        color: muted,
+        fontSize: 10,
+        margin: 8,
+        formatter: (value: number) => value >= 1000
+          ? `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`
+          : String(Math.round(value)),
+      },
       splitLine: { lineStyle: { color: grid } },
     },
     series: [{
       type: 'line',
       smooth: false,
       showSymbol: true,
-      symbolSize: 6,
+      symbolSize: 7,
       lineStyle: { color: line, width: 2 },
-      emphasis: { scale: 1.4, focus: 'series' },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: line + '33' },
+          { offset: 1, color: line + '00' },
+        ]),
+      },
+      emphasis: { scale: 1.5, focus: 'series' },
       data,
     }],
-    __description: description,
   }
 }
 

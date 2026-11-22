@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, type Component } from 'vue'
+import { NIcon } from 'naive-ui'
+import { FlameOutline, LayersOutline, NuclearOutline, ShieldOutline, SkullOutline, SpeedometerOutline } from '@vicons/ionicons5'
 import { logbook } from '../context'
 import { query, useResource } from '../api'
 import { BOND_ICONS } from '../assets'
-import { number, peakText, percent, resultLabel } from '../format'
+import { number, peakText, percent, pickMajorBond, resultLabel } from '../format'
 import { portrait } from '../icons'
-import type { Overview, Scope } from '../models'
+import type { DistributionGroup, Overview, Scope } from '../models'
 import FiltersBar from '../components/FiltersBar.vue'
 import TrendChart from '../components/TrendChart.vue'
 import type { Metric } from '../components/TrendChart.vue'
@@ -25,6 +27,26 @@ const charts: { metric: Metric; match: string; day: string }[] = [
   { metric: 'rounds', match: '通过回合', day: '场均回合' },
 ]
 const period = computed(() => data.value?.start ? `${data.value.start} — ${data.value.end}` : '当前筛选无对局')
+const majorBond = computed(() => (data.value?.peak ? pickMajorBond(data.value.peak.names) : ''))
+const distributionUrl = computed(() => '/distribution' + query(filters))
+const distribution = useResource<DistributionGroup[]>(distributionUrl, revision)
+
+const TIERS: Record<string, { icon: Component; color: string }> = {
+  标准模拟: { icon: ShieldOutline, color: '#e0b04a' },
+  险境模拟: { icon: FlameOutline, color: '#e58b48' },
+  绝境模拟: { icon: SkullOutline, color: '#e0533f' },
+  终极模拟: { icon: NuclearOutline, color: '#d02f45' },
+  极速模拟: { icon: SpeedometerOutline, color: '#7fae6a' },
+}
+function tierOf(label: string): { icon: Component; color: string } {
+  if (TIERS[label]) return TIERS[label]
+  if (label.startsWith('规程等级')) return { icon: LayersOutline, color: '#d8b24a' }
+  return { icon: LayersOutline, color: 'var(--muted)' }
+}
+function maxTotal(groups: DistributionGroup[] | null) {
+  return Math.max(1, ...(groups ?? []).flatMap(group => group.buckets.map(bucket => bucket.total)))
+}
+const topTotal = computed(() => maxTotal(distribution.data.value))
 </script>
 
 <template>
@@ -64,12 +86,47 @@ const period = computed(() => data.value?.start ? `${data.value.start} — ${dat
         <h2 id="stats-title">盟约与资金</h2>
         <dl class="stats">
           <div><dt>单局最高总层数</dt><dd>{{ data.max_layers === null ? '—' : number(data.max_layers) + ' 层' }}</dd></div>
-          <div><dt>单项最高盟约</dt><dd id="peak">{{ peakText(data.peak) }}</dd></div>
+          <div>
+            <dt>单项最高盟约</dt>
+            <dd id="peak" class="peak-value" :title="data.peak ? data.peak.names.join('、') : ''">
+              <template v-if="data.peak">
+                <img v-if="BOND_ICONS[majorBond]" :src="BOND_ICONS[majorBond]" width="22" height="22" alt="">
+                <span class="bond-glyph" v-else aria-hidden="true"></span>
+                <b>{{ number(data.peak.layers) }} 层</b>
+              </template>
+              <template v-else>—</template>
+            </dd>
+          </div>
           <div><dt>金币总花费</dt><dd>{{ number(data.total_coins) }}</dd></div>
           <div><dt>场均金币</dt><dd>{{ number(data.average_coins) }}</dd></div>
         </dl>
       </section>
     </div>
+
+    <section v-if="distribution.data.value?.some(group => group.buckets.some(bucket => bucket.total))"
+      class="content-section" aria-labelledby="distribution-title">
+      <div class="split section-heading">
+        <h2 id="distribution-title">模式分布</h2>
+        <span class="muted">按难度分档统计胜负</span>
+      </div>
+      <div class="distribution panel">
+        <section v-for="group in distribution.data.value" :key="group.play" class="dist-group">
+          <h3>{{ group.play }}</h3>
+          <div v-for="bucket in group.buckets" :key="bucket.label" class="dist-row" :class="{ zero: !bucket.total }">
+            <span class="dist-icon" :style="{ color: tierOf(bucket.label).color }">
+              <NIcon :component="tierOf(bucket.label).icon" />
+            </span>
+            <span class="dist-label">{{ bucket.label }}</span>
+            <span class="dist-count win">胜 {{ bucket.wins }}</span>
+            <span class="dist-count loss">负 {{ bucket.losses }}</span>
+            <span class="dist-total">总 {{ bucket.total }} 场</span>
+            <span class="dist-bar">
+              <i :style="{ width: (bucket.total / topTotal) * 100 + '%', background: tierOf(bucket.label).color }"></i>
+            </span>
+          </div>
+        </section>
+      </div>
+    </section>
 
     <section class="content-section" aria-labelledby="trend-title">
       <div class="split section-heading">

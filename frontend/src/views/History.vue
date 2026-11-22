@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { NButton, NPagination, NSelect } from 'naive-ui'
 import { logbook } from '../context'
 import { query, useResource } from '../api'
+import { avatarFor, loadDirectory } from '../directory'
 import { difficultyLabel, number, shortTime } from '../format'
 import type { MatchDetail, MatchPage, Result } from '../models'
 import FiltersBar from '../components/FiltersBar.vue'
@@ -14,6 +15,8 @@ const result = ref<Result | ''>('')
 const resultOptions = [{ label: '全部结果', value: '' }, { label: '胜', value: 'win' }, { label: '负', value: 'loss' }]
 const page = ref(1)
 const detailUrl = ref<string | null>(null)
+const names = ref(new Map<string, string>())
+const initiatorAvatar = (value: string | null) => avatarFor(names.value, value)
 
 const listUrl = computed(() => '/matches' + query(filters, {
   result: result.value,
@@ -35,6 +38,7 @@ function close() {
   detailUrl.value = null
 }
 
+onMounted(async () => { names.value = await loadDirectory() })
 watch(filters, () => { page.value = 1 })
 watch(result, () => { page.value = 1 })
 </script>
@@ -68,7 +72,7 @@ watch(result, () => { page.value = 1 })
             <th scope="col">模拟方式</th>
             <th scope="col">难度 / 等级</th>
             <th scope="col">开局策略</th>
-            <th scope="col">发起者</th>
+            <th scope="col">发起干员</th>
             <th scope="col">回合</th>
             <th scope="col">击杀</th>
             <th scope="col">金币花费</th>
@@ -83,7 +87,12 @@ watch(result, () => { page.value = 1 })
             <td data-label="模拟方式">{{ row.play }}</td>
             <td data-label="难度 / 等级">{{ difficultyLabel(row.difficulty) }}</td>
             <td data-label="开局策略">{{ row.strategy ?? '—' }}</td>
-            <td data-label="发起者">{{ row.initiator ?? '—' }}</td>
+            <td data-label="发起者">
+              <span class="with-avatar">
+                <img v-if="initiatorAvatar(row.initiator)" :src="initiatorAvatar(row.initiator)!" width="22" height="22" alt="">
+                <span>{{ row.initiator ?? '—' }}</span>
+              </span>
+            </td>
             <td data-label="回合">{{ number(row.rounds) }}</td>
             <td data-label="击杀">{{ number(row.kills) }}</td>
             <td data-label="金币花费">{{ number(row.coins) }}</td>

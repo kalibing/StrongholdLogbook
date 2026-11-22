@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { BOND_ICONS, BOSS_ICONS, EQUIPMENT_ICONS, STRATEGY_ICONS } from '../assets'
+import { avatarFor, loadDirectory } from '../directory'
 import { dateTime, difficultyLabel, number, resultLabel } from '../format'
 import { portrait } from '../icons'
 import type { MatchDetail } from '../models'
@@ -9,7 +10,15 @@ const props = defineProps<{ detail: MatchDetail | null; pending?: boolean; error
 const emit = defineEmits<{ close: [] }>()
 
 const dialog = ref<HTMLDialogElement | null>(null)
-const totalLayers = computed(() => props.detail?.bonds.reduce((sum, bond) => sum + bond.layers, 0) ?? 0)
+const names = ref(new Map<string, string>())
+const initiatorAvatar = computed(() => avatarFor(names.value, props.detail?.initiator ?? null))
+const itemCounts = (items: string[]) => {
+  const counts = new Map<string, number>()
+  for (const item of items) counts.set(item, (counts.get(item) ?? 0) + 1)
+  return [...counts].map(([name, count]) => ({ name, count }))
+}
+const activeBonds = computed(() => (props.detail?.bonds ?? []).filter(bond => bond.layers > 0))
+const totalLayers = computed(() => activeBonds.value.reduce((sum, bond) => sum + bond.layers, 0))
 const duration = computed(() => {
   const seconds = props.detail?.duration_seconds
   if (!seconds) return '—'
@@ -23,8 +32,9 @@ function close() {
   dialog.value?.close()
 }
 
-onMounted(() => {
+onMounted(async () => {
   dialog.value?.showModal()
+  names.value = await loadDirectory()
 })
 </script>
 
@@ -48,7 +58,8 @@ onMounted(() => {
           <b>{{ detail.strategy ?? '—' }}</b>
         </div>
         <div class="art-card">
-          <small>发起者</small>
+          <small>发起干员</small>
+          <img v-if="initiatorAvatar" class="initiator-avatar" :src="initiatorAvatar" width="26" height="26" alt="">
           <b>{{ detail.initiator ?? '—' }}</b>
         </div>
       </div>
@@ -62,9 +73,9 @@ onMounted(() => {
         <div><small>奖杯变化</small><b>{{ number(detail.trophies) }}</b></div>
       </div>
 
-      <h3>盟约 · {{ detail.bonds.length }} 种 / {{ totalLayers }} 层</h3>
-      <div v-if="detail.bonds.length" class="bond-grid">
-        <div v-for="bond in detail.bonds" :key="bond.name">
+      <h3>盟约 · {{ activeBonds.length }} 种 / {{ totalLayers }} 层</h3>
+      <div v-if="activeBonds.length" class="bond-grid">
+        <div v-for="bond in activeBonds" :key="bond.name">
           <span class="bond-label">
             <img v-if="BOND_ICONS[bond.name]" :src="BOND_ICONS[bond.name]" width="23" height="23" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
             <span>{{ bond.name }}</span>
@@ -89,9 +100,9 @@ onMounted(() => {
           <img :src="portrait(unit.id)" width="36" height="36" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
           <b>{{ unit.name }}</b>
           <div v-if="unit.items.length" class="equipment-list">
-            <span v-for="(item, index) in unit.items" :key="index" class="equipment-chip">
-              <img v-if="EQUIPMENT_ICONS[item]" :src="EQUIPMENT_ICONS[item]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
-              <span>{{ item }}</span>
+            <span v-for="item in itemCounts(unit.items)" :key="item.name" class="equipment-chip">
+              <img v-if="EQUIPMENT_ICONS[item.name]" :src="EQUIPMENT_ICONS[item.name]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
+              <span>{{ item.name }}<template v-if="item.count > 1"> ×{{ item.count }}</template></span>
             </span>
           </div>
         </li>

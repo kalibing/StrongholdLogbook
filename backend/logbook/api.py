@@ -127,6 +127,41 @@ def logout(request: Request, response: Response):
     response.delete_cookie(COOKIE, path="/", secure=settings.cookie_secure, httponly=True, samesite="strict")
 
 
+@app.get("/api/directory")
+def directory(request: Request, user=Depends(current_user)):
+    """干员 ID ↔ 名称，用于把发起者等纯文本字段对上头像。"""
+    with request.app.state.pool.connection() as database:
+        rows = database.execute(
+            "SELECT operators FROM matches WHERE user_id = %s", (user["id"],),
+        ).fetchall()
+    names = {}
+    for row in rows:
+        for operator in row["operators"]:
+            names[operator["id"]] = operator["name"]
+    return {"operators": [{"id": key, "name": value} for key, value in sorted(names.items(), key=lambda item: item[1])]}
+
+
+SOLO_RANGES = (
+    (1, 4, "规程等级 1–4"),
+    (5, 8, "规程等级 5–8"),
+    (9, 14, "规程等级 9–14"),
+    (15, 20, "规程等级 15–20"),
+)
+UNION_TIERS = ("标准模拟", "险境模拟", "绝境模拟", "终极模拟")
+
+
+def distribution_label(play: str, difficulty: str) -> str:
+    if play == "联合模拟":
+        return difficulty if difficulty in UNION_TIERS else "其他"
+    for low, high, label in SOLO_RANGES:
+        level = difficulty.replace("规程等级", "").strip()
+        if level.isdigit() and low <= int(level) <= high:
+            return label
+    if difficulty == "极速模拟":
+        return "极速模拟"
+    return "其他"
+
+
 @app.get("/api/facets")
 def facets(request: Request, user=Depends(current_user)):
     with request.app.state.pool.connection() as database:
@@ -134,6 +169,37 @@ def facets(request: Request, user=Depends(current_user)):
             SELECT DISTINCT protocol, play, difficulty FROM matches WHERE user_id = %s
             ORDER BY protocol, play, difficulty
         """, (user["id"],)).fetchall()
+
+
+@app.get("/api/distribution")
+def distribution(request: Request, filters: Annotated[Filters, Depends()], user=Depends(current_user)):
+    """按模拟方式与难度分组统计胜负，展示模式分布。"""
+    where, params = filters.sql(user["id"])
+    with request.app.state.pool.connection() as database:
+        rows = database.execute(
+            f"SELECT play, difficulty, result FROM matches WHERE {where}", params,
+        ).fetchall()
+
+    counts: dict[tuple[str, str], list[int]] = {}
+    for row in rows:
+        key = (row["play"], distribution_label(row["play"], row["difficulty"]))
+        bucket = counts.setdefault(key, [0, 0])
+        bucket[0 if row["result"] == "win" else 1] += 1
+
+    order = {"联合模拟": list(UNION_TIERS) + ["其他"], "独立模拟": [label for _, _, label in SOLO_RANGES] + ["极速模拟", "其他"]}
+    result = []
+    for play in ("联合模拟", "独立模拟"):
+        labels = order[play]
+        buckets = []
+        for label in labels:
+            wins, losses = counts.get((play, label), (0, 0))
+            buckets.append({"label": label, "wins": wins, "losses": losses, "total": wins + losses})
+        extra = sorted({key[1] for key in counts if key[0] == play} - set(labels))
+        for label in extra:
+            wins, losses = counts[(play, label)]
+            buckets.append({"label": label, "wins": wins, "losses": losses, "total": wins + losses})
+        result.append({"play": play, "buckets": buckets})
+    return result
 
 
 @app.get("/api/overview")
