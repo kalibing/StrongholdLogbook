@@ -68,7 +68,7 @@ watch(result, () => { page.value = 1 })
       <span v-else-if="data" class="period">{{ total }} 局</span>
     </div>
     <p v-if="error" class="table-feedback load-message" role="alert">
-      {{ error }} <button type="button" @click="refresh">重试</button>
+      {{ error }} <span v-if="data">正在显示上次成功的结果。</span> <button type="button" @click="refresh">重试</button>
     </p>
     <div v-if="data?.matches.length" class="scroll" :aria-busy="pending">
       <table class="history-table">

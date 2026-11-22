@@ -37,6 +37,7 @@ const overrides = computed<GlobalThemeOverrides>(() => ({
     borderColor: theme.value === 'dark' ? '#2a313c' : '#d8dfe7',
     textColorBase: theme.value === 'dark' ? '#f3f4f6' : '#1a212b',
     textColor2: theme.value === 'dark' ? '#c9d0da' : '#3b4653',
+    placeholderColor: theme.value === 'dark' ? '#a4acb8' : '#5d6a78',
   },
 }))
 

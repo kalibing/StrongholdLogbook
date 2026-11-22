@@ -114,12 +114,25 @@ def social_of(data: dict) -> dict:
                 "wins": None,
             }
         teammates[uid][metric] = _int(record.get("value"))
+
+    # 游戏内是两张卡：一张「最常共同游玩」、一张「最多胜场」；同一人也要各占一张
+    cards: list[dict] = []
+    play_uid_str = str(play.get("uid") or "")
+    win_uid_str = str(win.get("uid") or "")
+    if play_uid_str and play_uid_str in teammates:
+        card = dict(teammates[play_uid_str])
+        card["wins"] = None
+        cards.append(card)
+    if win_uid_str and win_uid_str in teammates:
+        card = dict(teammates[win_uid_str])
+        card["plays"] = None
+        cards.append(card)
     return {
         "likes": _int(data.get("beLike")),
         "friends": len(friend.get("friendList") or []),
         "star_friends": [str(uid) for uid in (friend.get("starFriendList") or [])],
         "best_teammate": teammates.get(str(play.get("uid") or "")),
-        "top_teammates": list(teammates.values()),
+        "top_teammates": cards,
         "others": 0,
     }
 

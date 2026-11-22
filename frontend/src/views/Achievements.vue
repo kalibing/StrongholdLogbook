@@ -203,7 +203,7 @@ async function refresh() {
   } catch (reason) {
     if (reason instanceof ApiError && reason.status === 404) {
       await load()
-      notify.warning('绑定已失效，请重新连接')
+      if (state.value?.connected === false) notify.warning('绑定已失效，请重新连接')
     } else {
       formError.value = message(reason)
     }
@@ -395,7 +395,7 @@ onBeforeUnmount(stopPolling)
               </article>
             </div>
             <div v-if="teammates.length" class="social-mates">
-              <article v-for="teammate in teammates" :key="teammate.uid" class="mate-card">
+              <article v-for="(teammate, index) in teammates" :key="teammate.uid + '-' + index" class="mate-card">
                 <div class="namecard namecard--mate">
                   <img v-if="teammate.name_card" :key="teammate.name_card" class="namecard-art"
                     :src="nameCardLocal(teammate.name_card)" alt="" @error="nameCardFallback($event, teammate.name_card)" />

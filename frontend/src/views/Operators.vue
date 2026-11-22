@@ -51,7 +51,7 @@ const { data, pending, error, refresh } = useResource<{ with_squad: number; oper
       </div>
     </div>
     <p v-if="error" class="table-feedback load-message" role="alert">
-      {{ error }} <button type="button" @click="refresh">重试</button>
+      {{ error }} <span v-if="data">正在显示上次成功的结果。</span> <button type="button" @click="refresh">重试</button>
     </p>
     <div v-if="data" class="scroll" :aria-busy="pending">
       <table class="operator-table">
@@ -74,7 +74,7 @@ const { data, pending, error, refresh } = useResource<{ with_squad: number; oper
             <td>{{ row.losses }}</td>
             <td>{{ percent(row.win_rate) }}</td>
           </tr>
-          <tr v-if="!pending && !data.operators.length">
+          <tr v-if="!pending && !error && !data.operators.length">
             <td class="empty-cell" colspan="6">{{ search ? '没有找到匹配的干员。' : '当前筛选范围内没有阵容明细。' }}</td>
           </tr>
         </tbody>

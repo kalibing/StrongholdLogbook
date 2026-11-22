@@ -54,7 +54,7 @@ const topTotal = computed(() => maxTotal(distribution.data.value))
   <FiltersBar />
   <p v-if="pending && !data" class="load-message" role="status">正在读取战绩…</p>
   <p v-if="error" class="load-message" role="alert">
-    {{ error }} <button type="button" @click="refresh">重试</button>
+    {{ error }} <span v-if="data">正在显示上次成功的结果。</span> <button type="button" @click="refresh">重试</button>
   </p>
 
   <template v-if="data">
