@@ -1,0 +1,176 @@
+{
+  "season": "act3autochess",
+  "operators": {
+    "char_002_amiya": { "name": "阿米娅" },
+    "char_1012_skadi2": { "name": "浊心斯卡蒂" },
+    "char_263_skadi": { "name": "斯卡蒂" },
+    "char_180_amgoat": { "name": "艾雅法拉" },
+    "char_291_aglina": { "name": "安洁莉娜" },
+    "char_179_cgbird": { "name": "夜莺" },
+    "char_2015_dusk": { "name": "夕" },
+    "char_322_lmlee": { "name": "令" }
+  },
+  "equipment": {
+    "chess_item_1_01": { "name": "锋锐之矛" },
+    "chess_item_2_10": { "name": "铁壁护盾" },
+    "chess_item_3_01": { "name": "回溯沙漏" },
+    "chess_item_4_09": { "name": "共振核心" },
+    "chess_item_5_08": { "name": "寒霜棱镜" },
+    "chess_item_6_12": { "name": "疾行靴" }
+  },
+  "matches": [
+    {
+      "external_id": "10000000-act3autochess-1794132482",
+      "played_at": "2026-11-20T21:12:05+08:00",
+      "protocol": "V3_1",
+      "play": "独立模拟",
+      "difficulty": "规程等级 8",
+      "result": "win",
+      "scenario": "维多利亚分队",
+      "strategy": "精英作战",
+      "initiator": "队友",
+      "rounds": 14,
+      "kills": 138,
+      "coins": 96,
+      "sync_count": 7,
+      "trophies": 42,
+      "duration_seconds": 1620,
+      "bonds": [
+        { "name": "维多利亚", "layers": 6 },
+        { "name": "深海猎人", "layers": 3 },
+        { "name": "术师", "layers": 2 }
+      ],
+      "squad": [
+        { "id": "char_1012_skadi2", "name": "浊心斯卡蒂", "items": ["chess_item_1_01", "chess_item_4_09"] },
+        { "id": "char_263_skadi", "name": "斯卡蒂", "items": ["chess_item_2_10"] },
+        { "id": "char_180_amgoat", "name": "艾雅法拉", "items": ["chess_item_5_08"] },
+        { "id": "char_179_cgbird", "name": "夜莺", "items": [] }
+      ],
+      "bosses": ["霜星", "泥岩"]
+    },
+    {
+      "external_id": "10000000-act3autochess-1794134656",
+      "played_at": "2026-11-20T21:44:18+08:00",
+      "protocol": "V3_1",
+      "play": "独立模拟",
+      "difficulty": "规程等级 8",
+      "result": "loss",
+      "scenario": "深海猎人分队",
+      "strategy": "稳健经营",
+      "initiator": "本人",
+      "rounds": 9,
+      "kills": 87,
+      "coins": 74,
+      "sync_count": 4,
+      "trophies": -18,
+      "duration_seconds": 1080,
+      "bonds": [
+        { "name": "深海猎人", "layers": 5 },
+        { "name": "术师", "layers": 1 }
+      ],
+      "squad": [
+        { "id": "char_263_skadi", "name": "斯卡蒂", "items": ["chess_item_6_12"] },
+        { "id": "char_002_amiya", "name": "阿米娅", "items": ["chess_item_3_01"] }
+      ],
+      "bosses": ["霜星"]
+    },
+    {
+      "external_id": "10000000-act3autochess-1794137001",
+      "played_at": "2026-11-19T22:03:47+08:00",
+      "protocol": "V3_1",
+      "play": "独立模拟",
+      "difficulty": "规程等级 6",
+      "result": "win",
+      "scenario": "术师分队",
+      "strategy": "高台压制",
+      "initiator": "本人",
+      "rounds": 12,
+      "kills": 121,
+      "coins": 88,
+      "sync_count": 6,
+      "trophies": 30,
+      "duration_seconds": 1440,
+      "bonds": [
+        { "name": "术师", "layers": 7 },
+        { "name": "维多利亚", "layers": 2 }
+      ],
+      "squad": [
+        { "id": "char_180_amgoat", "name": "艾雅法拉", "items": ["chess_item_5_08", "chess_item_4_09"] },
+        { "id": "char_2015_dusk", "name": "夕", "items": ["chess_item_1_01"] },
+        { "id": "char_291_aglina", "name": "安洁莉娜", "items": ["chess_item_6_12"] }
+      ],
+      "bosses": []
+    },
+    {
+      "external_id": "10000000-act3autochess-1794140944",
+      "played_at": "2026-11-18T20:31:22+08:00",
+      "protocol": "V3_1",
+      "play": "独立模拟",
+      "difficulty": "规程等级 4",
+      "result": "loss",
+      "scenario": "近卫分队",
+      "rounds": 0,
+      "kills": 0,
+      "coins": 0,
+      "sync_count": 1,
+      "trophies": 0,
+      "duration_seconds": 45,
+      "bonds": [],
+      "squad": [],
+      "bosses": []
+    },
+    {
+      "external_id": "10000000-act3autochess-1794143208",
+      "played_at": "2026-11-17T19:55:09+08:00",
+      "protocol": "V3_1",
+      "play": "独立模拟",
+      "difficulty": "规程等级 7",
+      "result": "win",
+      "scenario": "先锋分队",
+      "strategy": "前期压强",
+      "initiator": "队友",
+      "rounds": 15,
+      "kills": 154,
+      "coins": 102,
+      "sync_count": 8,
+      "trophies": 48,
+      "duration_seconds": 1740,
+      "operators": [
+        { "id": "char_322_lmlee", "name": "令" },
+        { "id": "char_002_amiya", "name": "阿米娅" },
+        { "id": "char_291_aglina", "name": "安洁莉娜" }
+      ],
+      "bonds": [
+        { "name": "术师", "layers": 4 },
+        { "name": "维多利亚", "layers": 3 }
+      ],
+      "bosses": ["锈锤战士"]
+    },
+    {
+      "external_id": "10000000-act3autochess-1794146622",
+      "played_at": "2026-11-16T23:10:30+08:00",
+      "protocol": "V3_1",
+      "play": "联合模拟",
+      "difficulty": "深渊",
+      "result": "loss",
+      "scenario": "重装分队",
+      "strategy": "保守叠甲",
+      "initiator": "本人",
+      "rounds": 11,
+      "kills": 104,
+      "coins": 91,
+      "sync_count": 5,
+      "trophies": -32,
+      "duration_seconds": 1320,
+      "bonds": [
+        { "name": "重装", "layers": 3 },
+        { "name": "深海猎人", "layers": 2 }
+      ],
+      "squad": [
+        { "id": "char_179_cgbird", "name": "夜莺", "items": ["chess_item_2_10", "chess_item_3_01"] },
+        { "id": "char_263_skadi", "name": "斯卡蒂", "items": ["chess_item_6_12"] }
+      ],
+      "bosses": ["泥岩"]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "name": "stronghold-logbook",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "dev": "vite",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "build": "npm run typecheck && vite build"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "vue": "^3.5.24",
+    "vue-router": "^4.6.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.2",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.8",
+    "vue-tsc": "^3.1.5"
+  }
+}

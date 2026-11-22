@@ -1,0 +1,8 @@
+alembic==1.17.2
+argon2-cffi==25.1.0
+fastapi==0.121.3
+psycopg[binary]==3.2.13
+psycopg-pool==3.2.8
+pydantic==2.12.5
+SQLAlchemy==2.0.44
+uvicorn==0.38.0

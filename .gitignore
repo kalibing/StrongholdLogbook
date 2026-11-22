@@ -1,0 +1,28 @@
+# 环境与依赖
+/.env
+/.env.*
+!/.env.example
+/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.log
+/frontend/node_modules/
+/frontend/dist/
+
+# 本地采集脚本、抓包资料与个人战绩原始数据（不进入仓库）
+/online/
+/detail_14/
+/reqable_ca/
+/stronghold-*.tar.gz
+/stronghold-*.zip
+/*.py
+/*.ps1
+/*.csv
+/skland_*.json
+/full_*.json
+/gap_*.json
+
+# 本地研究笔记（采集方式与私有接口记录）
+/README-mumu-reqable.md
+/SKLAND-API.md
