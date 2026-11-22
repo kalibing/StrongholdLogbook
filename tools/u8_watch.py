@@ -3,7 +3,7 @@
 
 用法
 ----
-    python tools\\u8_watch.py --dir "<用户目录>\\Desktop\\新建文件夹" \\
+    python tools\\u8_watch.py --dir "./exports" \\
         --api http://127.0.0.1:8000 --user demo --password <站点密码>
 
     python tools\\u8_watch.py --dir <抓包目录> --api ... --once      # 只跑一轮

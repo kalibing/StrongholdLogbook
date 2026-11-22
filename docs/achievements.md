@@ -245,7 +245,7 @@ PC 客户端登录后由 SDK 内部向 u8 换 token，换到的 token 同时用�
 ### 9.3 目前最省事的自动化：`tools/u8_watch.py`
 
 ```powershell
-python tools\u8_watch.py --dir "C:\Users\kali\Desktop\新建文件夹" `
+python tools\u8_watch.py --dir "<用户目录>\Desktop\新建文件夹" `
   --api http://127.0.0.1:8000 --user demo --password <站点密码> [--once] [--interval 15]
 ```
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import secrets
 import os
 import urllib.error
 import urllib.request
@@ -35,7 +36,7 @@ APP_CODE = "7318def77669979d"
 SIGN_KEY = b"91240f70c09a08a6bc72af1a5c8d4670"
 GRANT_URL = "https://as.hypergryph.com/user/oauth2/v2/grant"
 U8_URL = "https://as.hypergryph.com/u8/user/v1/getToken"
-DEFAULT_DEVICE = "c7d7ec13d0e1d29f941697f93b715fc3"
+DEFAULT_DEVICE = ""  # 空表示每次随机生成（实测 deviceId 不绑定账号）
 CHANNEL = {"appId": "1", "channelId": "1", "worldId": "1", "subChannel": "1"}
 TIMEOUT = 25
 
@@ -82,7 +83,7 @@ def device_id() -> str:
             return value
     except (OSError, ValueError):
         pass
-    return DEFAULT_DEVICE
+    return DEFAULT_DEVICE or secrets.token_hex(16)
 
 
 def load_login() -> tuple[str, str]:
