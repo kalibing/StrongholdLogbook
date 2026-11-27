@@ -85,4 +85,12 @@ SCHEMA = (
         updated_at INTEGER NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS user_profiles (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        display_name TEXT,
+        avatar BLOB,
+        avatar_version INTEGER NOT NULL DEFAULT 0
+    )
+    """,
 )

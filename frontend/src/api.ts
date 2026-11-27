@@ -36,6 +36,13 @@ export function post(value: object): RequestInit {
   }
 }
 
+/** 带 JSON 请求体的非 POST 请求（PATCH / PUT / DELETE）。 */
+export function send(method: 'PATCH' | 'PUT' | 'DELETE', value?: object): RequestInit {
+  return value === undefined
+    ? { method }
+    : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) }
+}
+
 export function query(filters: Filters, extra: Record<string, string> = {}) {
   const params = new URLSearchParams()
   for (const [name, value] of Object.entries({ ...filters, ...extra })) {

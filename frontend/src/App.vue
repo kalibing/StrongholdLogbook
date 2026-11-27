@@ -45,7 +45,7 @@ const overrides = computed<GlobalThemeOverrides>(() => ({
 function measureNav() {
   if (!nav.value) return
   const active = nav.value.querySelector<HTMLElement>('a[aria-current="page"]')
-  // 「我的主页」不在主导航里：收起指示条，而不是停在上一页的位置。
+  // 「个人主页」不在主导航里：收起指示条，而不是停在上一页的位置。
   if (!active) {
     indicator.value = { ...indicator.value, width: 0 }
     return
@@ -178,7 +178,12 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', measureNav)
 })
 
-provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
+function setUser(value: User) {
+  user.value = value
+}
+const accountName = computed(() => user.value?.display_name || user.value?.username || '')
+
+provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleTheme, refresh })
 </script>
 
 <template>
@@ -201,10 +206,11 @@ provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
             <NIcon :key="theme" class="theme-toggle-icon" :component="theme === 'dark' ? SunnyOutline : MoonOutline" />
           </template>
         </NButton>
-        <RouterLink v-if="user" class="account-chip" :to="{ name: 'profile' }" title="我的主页"
+        <RouterLink v-if="user" class="account-chip" :to="{ name: 'profile' }" title="个人主页"
           :aria-current="route.name === 'profile' ? 'page' : undefined">
-          <NIcon :component="PersonCircleOutline" :size="18" aria-hidden="true" />
-          <span>{{ user.username }}</span>
+          <img v-if="user.avatar_url" class="account-chip-avatar" :src="user.avatar_url" alt="">
+          <NIcon v-else :component="PersonCircleOutline" :size="18" aria-hidden="true" />
+          <span>{{ accountName }}</span>
         </RouterLink>
         <NButton v-if="user" size="small" secondary @click="logout">退出登录</NButton>
       </div>
@@ -217,7 +223,7 @@ provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
     <template v-else-if="user || route.meta.public">
       <div class="heading">
         <div class="heading-copy">
-          <p class="eyebrow">卫戍协议 <span>/</span> {{ user?.username ?? '本地资源' }}</p>
+          <p class="eyebrow">卫戍协议 <span>/</span> {{ accountName || '本地资源' }}</p>
           <h1>{{ route.meta.title }}</h1>
           <p class="heading-description">{{ route.meta.description }}</p>
         </div>

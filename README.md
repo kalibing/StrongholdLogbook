@@ -182,6 +182,14 @@ Compose 会先跑 `alembic upgrade head`（`migrate` 服务），再启动 API �
 curl.exe -b cookies.txt -o daily.png "http://localhost:8000/api/daily-review/image"
 ```
 
+## 昵称与头像
+
+登录账号（`username`）只用于登录、不可修改；页面显示的是昵称，没设置时回落到账号名。两者分开存在 `user_profiles` 表（PostgreSQL 迁移 `0004_user_profiles`）。
+
+- 昵称：去掉首尾空白、合并连续空白后 1–16 个字，不允许控制字符；传空串或 `null` 清除。
+- 头像：`PUT /api/profile/avatar`，`Content-Type` 必须是 `image/*`，请求体为图片字节，最大 2 MB、边长不超过 4096。服务端只接受 PNG / JPEG / WebP / GIF，按 EXIF 摆正后居中裁成 256×256 PNG 再入库，原图与元数据不保存。
+- 头像只对本人可读；地址带版本号（`?v=`），换头像后地址会变，所以响应可以长缓存（`Cache-Control: private, max-age=31536000, immutable`）。
+
 ## 导入战绩
 
 在「数据导入」页同步森空岛，或通过 API 补录 JSON 快照：
@@ -228,18 +236,22 @@ curl.exe -X POST "http://localhost:8000/api/imports" `
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/health` | 存活与数据库连通性 |
-| GET / POST / DELETE | `/api/session` | 读取当前登录、登录、退出 |
+| GET / POST / DELETE | `/api/session` | 读取当前登录（含昵称、头像地址）、登录、退出 |
+| GET / PATCH | `/api/profile` | 个人主页资料 / 修改昵称（`{"display_name": "…"}`，空串清除） |
+| GET / PUT / DELETE | `/api/profile/avatar` | 读取 / 上传（请求体为图片字节）/ 移除头像 |
+| GET | `/api/career` | 生涯档案：最高通关、连胜、生涯纪录、近一年活跃度 |
 | GET | `/api/facets` | 可用协议期、方式、难度 |
 | GET | `/api/overview` | 总览与趋势，`scope=recent\|all\|day` |
 | GET | `/api/distribution` | 按模拟方式和难度汇总对局 |
 | GET | `/api/matches` | 分页对局列表，`result=win\|loss`、`page`、`limit` |
 | GET | `/api/matches/{match_id}` | 单局战报 |
 | GET | `/api/operators` | 干员统计，`sort=count\|win\|name`、`q` |
+| GET | `/api/strategies` | 完整策略列表 |
 | GET / POST | `/api/imports` | 导入任务列表 / 上传快照 |
 | POST | `/api/imports/skland` | 同步森空岛 |
 | GET / DELETE | `/api/imports/skland/token` | 查询当前账号是否已保存令牌 / 清除令牌 |
 
-筛选参数在总览、对局、干员三处通用：`protocol`、`play`、`difficulty`、`start`、`end`、`include_exits`。
+筛选参数在总览、生涯档案、对局、干员与策略几处通用：`protocol`、`play`、`difficulty`、`start`、`end`、`include_exits`。
 
 ## 测试与检查
 
