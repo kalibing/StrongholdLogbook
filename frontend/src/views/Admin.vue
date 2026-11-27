@@ -4,6 +4,7 @@ import { NButton, NInput, useDialog } from 'naive-ui'
 import { api, message, post, send, useResource } from '../api'
 import { logbook } from '../context'
 import type { AdminNotice } from '../models'
+import AdminQqGroups from '../components/AdminQqGroups.vue'
 
 // 公告管理：只有管理员账号能打开（后端按管理员名单校验，这里只负责展示）。
 const TITLE_LIMIT = 60
@@ -77,9 +78,10 @@ function confirmRemove(item: AdminNotice) {
 
 <template>
   <section v-if="!allowed" class="panel admin-panel">
-    <p class="muted" role="status">这个页面只对管理员开放。需要发布公告请联系站长授予权限。</p>
+    <p class="muted" role="status">这个页面只对站点管理员开放。</p>
   </section>
   <div v-else class="admin-layout">
+    <AdminQqGroups />
     <section class="panel admin-panel" aria-labelledby="publish-title">
       <div class="section-heading"><h2 id="publish-title">发布通知</h2></div>
       <form class="admin-form" @submit.prevent="publish">

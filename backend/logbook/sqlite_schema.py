@@ -184,6 +184,23 @@ SCHEMA = (
     """,
     "CREATE INDEX IF NOT EXISTS feed_subscriptions_source ON feed_subscriptions (bot_app_id, source)",
     """
+    CREATE TABLE IF NOT EXISTS qq_feed_groups (
+        bot_app_id TEXT NOT NULL,
+        group_openid TEXT NOT NULL,
+        group_number TEXT,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (bot_app_id, group_openid),
+        UNIQUE (bot_app_id, group_number)
+    )
+    """,
+    """
+    INSERT INTO qq_feed_groups (bot_app_id, group_openid, updated_at)
+    SELECT bot_app_id, target_openid, max(created_at) FROM feed_subscriptions
+    WHERE target_type = 'group'
+    GROUP BY bot_app_id, target_openid
+    ON CONFLICT DO NOTHING
+    """,
+    """
     CREATE TABLE IF NOT EXISTS bili_credentials (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         cookie TEXT NOT NULL,

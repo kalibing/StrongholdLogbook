@@ -75,9 +75,9 @@ const navItems = [
   { route: 'achievements', title: '成就档案', icon: RibbonOutline },
   { route: 'data-import', title: '数据导入', icon: CloudDownloadOutline },
 ]
-/** 管理员额外看到「公告管理」；真正的权限校验在后端。 */
+/** 管理员额外看到管理后台，权限由后端校验。 */
 const visibleNav = computed(() => user.value?.is_admin
-  ? [...navItems, { route: 'admin', title: '公告管理', icon: MegaphoneOutline }]
+  ? [...navItems, { route: 'admin', title: '管理后台', icon: MegaphoneOutline }]
   : navItems)
 
 

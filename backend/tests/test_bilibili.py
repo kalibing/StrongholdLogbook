@@ -3,9 +3,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from logbook import api, bilibili, feeds, qqbot
+from logbook import accounts, api, bilibili, qqbot
 from logbook.credentials import PREFIX
 from logbook.storage import connect
+from test_qqbot import CONFIG, OPENID
 
 GROUP = "G1A2B3C4D5E6F7A8B9C0D1E2F3A4B5C6"
 
@@ -56,17 +57,21 @@ def database(tmp_path, monkeypatch):
     monkeypatch.delenv("BILIBILI_COOKIE", raising=False)
     with TestClient(api.app):
         pass
+    with connect() as db:
+        admin = accounts.create_for_qq_openid(db, CONFIG.app_id, OPENID)
+        db.execute("INSERT INTO admins (user_id) VALUES (%s)", (admin["id"],))
     yield
 
 
-def run(client, fake, target_type="group"):
-    qqbot.handle_bili(client, target_type, GROUP, "msg-1", get=fake, sleep=lambda _: None)
+def run(client, fake, target_type="c2c", actor=OPENID):
+    destination = GROUP if target_type == "group" else actor
+    qqbot.handle_bili(client, CONFIG, target_type, destination, "msg-1", actor, get=fake, sleep=lambda _: None)
 
 
 def test_logged_in_reports_status_without_qr(database, monkeypatch):
     monkeypatch.setenv("BILIBILI_COOKIE", "SESSDATA=env")
     client, fake = FakeClient(), FakeBili(logged_in_cookie="SESSDATA=env")
-    run(client, fake)
+    run(client, fake, "group")
     assert client.images == [] and "B 站已登录：方舟小号" in client.messages[0][1]
 
 
@@ -75,7 +80,7 @@ def test_qr_login_saves_encrypted_cookie(database):
     with connect() as db:
         assert not bilibili.has_cookie(db)
     run(client, fake)
-    assert client.images == [("group", GROUP, "B 站未登录，请用 B 站 App 扫码并确认登录（3 分钟内有效）。")]
+    assert client.images == [("c2c", OPENID, "B 站未登录，请用 B 站 App 扫码并确认登录（3 分钟内有效）。")]
     assert client.messages == [(2, "B 站登录成功：方舟小号。动态推送会使用这个账号。")]
     with connect() as db:
         raw = db.execute("SELECT cookie, uname FROM bili_credentials").fetchone()
@@ -92,7 +97,7 @@ def test_qr_login_saves_encrypted_cookie(database):
 def test_expired_qr_saves_nothing(database):
     client, fake = FakeClient(), FakeBili(polls=[86101, 86038])
     run(client, fake, "c2c")
-    assert client.messages == [(2, "二维码已过期，需要时请重新 @我 发「B站登录」。")]
+    assert client.messages == [(2, "二维码已过期，请在私聊重新发「B站状态」。")]
     with connect() as db:
         assert not bilibili.has_cookie(db)
 
@@ -111,7 +116,7 @@ def test_only_one_qr_at_a_time(database):
         run(client, fake)
     finally:
         qqbot.bili_login_lock.release()
-    assert client.images == [] and "等待扫码" in client.messages[0][1]
+    assert client.images == [] and "正在等待" in client.messages[0][1]
 
 
 def test_wait_for_scan_times_out():
@@ -120,9 +125,21 @@ def test_wait_for_scan_times_out():
     assert bilibili.wait_for_scan("k", fake, lambda _: None, lifetime=180, clock=lambda: next(ticks)) is None
 
 
-def test_bili_commands_and_subscribe_hint(database):
+def test_bili_commands():
     assert qqbot.is_bili_command(" /B站状态") and qqbot.is_bili_command("b站登录")
     assert not qqbot.is_bili_command("订阅动态")
+
+
+@pytest.mark.parametrize("target_type", ["c2c", "group"])
+def test_bili_status_requires_verified_site_admin(database, target_type):
+    client, fake = FakeClient(), FakeBili()
     with connect() as db:
-        reply = feeds.handle_command(db, "102000001", "group", GROUP, "订阅动态")
-    assert "B站状态" in reply
+        accounts.create_for_qq_openid(db, CONFIG.app_id, "regular-account")
+    run(client, fake, target_type, actor="regular-account")
+    assert "管理员" in client.messages[0][1] and client.images == [] and fake.calls == []
+
+
+def test_admin_is_guided_to_private_chat_if_group_login_needed(database):
+    client, fake = FakeClient(), FakeBili()
+    run(client, fake, "group")
+    assert "私聊" in client.messages[0][1] and client.images == [] and fake.calls == []

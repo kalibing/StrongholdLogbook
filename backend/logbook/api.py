@@ -16,7 +16,7 @@ from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import accounts, achievements, daily_card, daily_review, hypergryph, notifications, profile, qq_binding, skland, stats
+from . import accounts, achievements, daily_card, daily_review, feeds, hypergryph, notifications, profile, qq_binding, skland, stats
 from .config import settings
 from .credentials import ACHIEVEMENTS, SKLAND, CredentialStorageError, initialize_vault
 from .db import connection_pool
@@ -398,6 +398,31 @@ def delete_notification(notice_id: UUID, request: Request, user=Depends(current_
     with request.app.state.pool.connection() as database:
         if not notifications.remove(database, notice_id):
             raise HTTPException(404, "通知不存在")
+
+
+class QqGroupSettings(BaseModel):
+    group_number: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[0-9]{1,20}$")] | None = None
+    sources: list[Literal["ak", "bili"]] = Field(max_length=2)
+
+
+@app.get("/api/admin/qq-groups")
+def admin_qq_groups(request: Request, user=Depends(current_admin)):
+    app_id = settings.qq_app_id
+    with request.app.state.pool.connection() as database:
+        return {"enabled": bool(app_id), "items": feeds.groups(database, app_id) if app_id else []}
+
+
+@app.put("/api/admin/qq-groups/{group_openid}", status_code=status.HTTP_204_NO_CONTENT)
+def configure_qq_group(group_openid: str, details: QqGroupSettings, request: Request, user=Depends(current_admin)):
+    app_id = settings.qq_app_id
+    if not app_id or not accounts.OPENID_PATTERN.fullmatch(group_openid):
+        raise HTTPException(404, "机器人尚未识别此群")
+    try:
+        with request.app.state.pool.connection() as database:
+            if not feeds.configure_group(database, app_id, group_openid, details.group_number, details.sources):
+                raise HTTPException(404, "机器人尚未识别此群")
+    except UniqueConflict:
+        raise HTTPException(409, "该 QQ 群号已经关联到其他群") from None
 
 
 @app.delete("/api/session", status_code=status.HTTP_204_NO_CONTENT)

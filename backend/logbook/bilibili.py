@@ -126,9 +126,9 @@ def generate_qr(get: Callable = http_get) -> tuple[str, str]:
 
 
 def qr_png(content: str) -> bytes:
-    import qrcode
+    from qrcode import make
 
-    image = qrcode.make(content, box_size=8, border=2)
+    image = make(content, box_size=8, border=2)
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()

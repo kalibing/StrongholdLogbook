@@ -1,9 +1,6 @@
 """QQ 推送：明日方舟游戏公告与 B 站官号动态。
 
-两部分：
-- 订阅指令（由 qqbot 回调进程调用）：群里 @机器人 或单聊发「订阅公告」「订阅动态」「取消订阅」「订阅状态」。
-- 轮询推送进程（python -m logbook.feeds）：定时拉取两个来源，发现新条目后用 QQ 主动消息接口
-  发给所有订阅了该来源的群 / 单聊。
+站点管理员在网页配置推送群。轮询进程发现新条目后通过 QQ 主动消息接口发给相应的群。
 
 数据来源：
 - 游戏公告：https://ak-webview.hypergryph.com/api/game/bulletinList?target=IOS，
@@ -37,7 +34,7 @@ import re
 import signal
 from threading import Event
 import time
-from typing import Callable, Iterable
+from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request as UrlRequest, urlopen
 
@@ -51,7 +48,6 @@ LOGGER = logging.getLogger(__name__)
 AK = "ak"
 BILI = "bili"
 SOURCES = {AK: "明日方舟游戏公告", BILI: "明日方舟 B 站动态"}
-TARGET_TYPES = ("group", "c2c")
 
 AK_LIST_URL = "https://ak-webview.hypergryph.com/api/game/bulletinList?target=IOS"
 AK_DETAIL_URL = "https://ak-webview.hypergryph.com/api/game/bulletin/{cid}"
@@ -71,100 +67,60 @@ SUMMARY_LIMIT = 150
 SEND_GAP = 1.5
 
 
-# ---------------------------------------------------------------- 订阅
+# ---------------------------------------------------------------- 推送群
 
 
-COMMANDS = {
-    "订阅公告": ("add", (AK,)),
-    "订阅动态": ("add", (BILI,)),
-    "订阅全部": ("add", (AK, BILI)),
-    "取消订阅公告": ("remove", (AK,)),
-    "取消订阅动态": ("remove", (BILI,)),
-    "取消订阅": ("remove", (AK, BILI)),
-    "退订": ("remove", (AK, BILI)),
-    "订阅": ("status", ()),
-    "订阅状态": ("status", ()),
-}
-USAGE = (
-    "推送指令：\n"
-    "订阅公告 · 明日方舟游戏内公告\n"
-    "订阅动态 · 明日方舟 B 站官号动态\n"
-    "订阅全部 / 取消订阅公告 / 取消订阅动态 / 取消订阅 / 订阅状态\n"
-    "B站状态 · 查看动态推送用的 B 站登录，未登录时发扫码二维码"
-)
+def observe_group(database, app_id: str, openid: str) -> None:
+    database.execute("""
+        INSERT INTO qq_feed_groups (bot_app_id, group_openid, updated_at)
+        VALUES (%s, %s, now())
+        ON CONFLICT (bot_app_id, group_openid) DO UPDATE SET updated_at = excluded.updated_at
+    """, (app_id, openid))
 
 
-def normalize_command(text: str) -> str:
-    return re.sub(r"\s+", "", text or "").lstrip("/")
+def groups(database, app_id: str) -> list[dict]:
+    rows = database.execute("""
+        SELECT group_openid, group_number, updated_at FROM qq_feed_groups
+        WHERE bot_app_id = %s ORDER BY updated_at DESC, group_openid
+    """, (app_id,)).fetchall()
+    by_group = {row["group_openid"]: {**row, "sources": []} for row in rows}
+    for row in database.execute("""
+        SELECT target_openid, source FROM feed_subscriptions
+        WHERE bot_app_id = %s AND target_type = 'group' ORDER BY source
+    """, (app_id,)).fetchall():
+        if row["target_openid"] in by_group and row["source"] in SOURCES:
+            by_group[row["target_openid"]]["sources"].append(row["source"])
+    return list(by_group.values())
 
 
-def is_command(text: str) -> bool:
-    return normalize_command(text) in COMMANDS
+def configure_group(database, app_id: str, openid: str, group_number: str | None, sources: list[str]) -> bool:
+    with database.transaction():
+        group = database.execute("""
+            UPDATE qq_feed_groups SET group_number = %s
+            WHERE bot_app_id = %s AND group_openid = %s RETURNING group_openid
+        """, (group_number, app_id, openid)).fetchone()
+        if group is None:
+            return False
+        for source in SOURCES:
+            if source in sources:
+                database.execute("""
+                    INSERT INTO feed_subscriptions (bot_app_id, target_type, target_openid, source)
+                    VALUES (%s, 'group', %s, %s) ON CONFLICT DO NOTHING
+                """, (app_id, openid, source))
+            else:
+                database.execute("""
+                    DELETE FROM feed_subscriptions
+                    WHERE bot_app_id = %s AND target_type = 'group' AND target_openid = %s AND source = %s
+                """, (app_id, openid, source))
+    return True
 
 
-def subscribed(database, app_id: str, target_type: str, openid: str) -> list[str]:
-    rows = database.execute(
-        "SELECT source FROM feed_subscriptions WHERE bot_app_id = %s AND target_type = %s AND target_openid = %s",
-        (app_id, target_type, openid),
-    ).fetchall()
-    return sorted((row["source"] for row in rows if row["source"] in SOURCES), key=list(SOURCES).index)
-
-
-def subscribe(database, app_id: str, target_type: str, openid: str, sources: Iterable[str]) -> None:
-    for source in sources:
-        database.execute(
-            "INSERT INTO feed_subscriptions (bot_app_id, target_type, target_openid, source) "
-            "VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
-            (app_id, target_type, openid, source),
-        )
-
-
-def unsubscribe(database, app_id: str, target_type: str, openid: str, sources: Iterable[str]) -> None:
-    for source in sources:
-        database.execute(
-            "DELETE FROM feed_subscriptions WHERE bot_app_id = %s AND target_type = %s "
-            "AND target_openid = %s AND source = %s",
-            (app_id, target_type, openid, source),
-        )
-
-
-def targets(database, app_id: str, source: str) -> list[tuple[str, str]]:
-    rows = database.execute(
-        "SELECT target_type, target_openid FROM feed_subscriptions WHERE bot_app_id = %s AND source = %s "
-        "ORDER BY created_at, target_openid",
-        (app_id, source),
-    ).fetchall()
-    return [(row["target_type"], row["target_openid"]) for row in rows]
-
-
-def status_text(sources: list[str]) -> str:
-    if not sources:
-        return "当前没有订阅任何推送。\n" + USAGE
-    return "当前订阅：" + "、".join(SOURCES[source] for source in sources) + "\n" + USAGE
-
-
-def handle_command(database, app_id: str, target_type: str, openid: str, text: str) -> str | None:
-    """处理订阅指令并返回回复文本；不是订阅指令时返回 None。"""
-    command = COMMANDS.get(normalize_command(text))
-    if command is None:
-        return None
-    if target_type not in TARGET_TYPES:
-        raise ValueError("unknown target type")
-    action, sources = command
-    if action == "add":
-        subscribe(database, app_id, target_type, openid, sources)
-        names = "、".join(SOURCES[source] for source in sources)
-        place = "本群" if target_type == "group" else "你"
-        note = ""
-        if BILI in sources and not bilibili.has_cookie(database):
-            note = "\n（B 站还没登录，@我 发「B站状态」扫码登录后才会开始推送动态）"
-        return f"已订阅：{names}。有新内容时会推送给{place}。{note}"
-    if action == "remove":
-        unsubscribe(database, app_id, target_type, openid, sources)
-        remaining = subscribed(database, app_id, target_type, openid)
-        names = "、".join(SOURCES[source] for source in sources)
-        return f"已取消订阅：{names}。" + ("" if not remaining else "\n" + status_text(remaining))
-    return status_text(subscribed(database, app_id, target_type, openid))
+def targets(database, app_id: str, source: str) -> list[str]:
+    rows = database.execute("""
+        SELECT target_openid FROM feed_subscriptions
+        WHERE bot_app_id = %s AND target_type = 'group' AND source = %s ORDER BY created_at, target_openid
+    """, (app_id, source)).fetchall()
+    return [row["target_openid"] for row in rows]
 
 
 # ---------------------------------------------------------------- 抓取
@@ -341,16 +297,13 @@ def new_items(database, source: str, items: list[Item], now: datetime | None = N
 
 def deliver(client, database, app_id: str, source: str, content: str, sleep: Callable = time.sleep) -> int:
     sent = 0
-    for target_type, openid in targets(database, app_id, source):
+    for openid in targets(database, app_id, source):
         try:
-            if target_type == "group":
-                client.send_group(openid, content)
-            else:
-                client.send_c2c(openid, content)
+            client.send_group(openid, content)
             sent += 1
         except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError) as error:
-            # 群把机器人移出、用户关闭主动消息等都会失败；只记类型和状态码，不记 openid。
-            LOGGER.warning("Push to %s failed: %s %s", target_type, type(error).__name__, getattr(error, "code", ""))
+            # 只记发送错误的类型和状态码，不记群 openid。
+            LOGGER.warning("Group push failed: %s %s", type(error).__name__, getattr(error, "code", ""))
         sleep(SEND_GAP)
     return sent
 
@@ -467,7 +420,7 @@ def main():
                         cookie = ""
                     if not cookie:
                         if not warned_no_cookie:
-                            LOGGER.warning("No Bilibili cookie yet; send「B站状态」to the bot to log in")
+                            LOGGER.warning("No Bilibili cookie yet; ask a site administrator to message the bot「B站状态」")
                             warned_no_cookie = True
                         next_bili = now + 60
                     else:
@@ -477,7 +430,7 @@ def main():
                                 LOGGER.info("Pushed %d new Bilibili dynamic(s)", pushed)
                             bili_failures = 0
                         except (BiliBlocked, HTTPError, URLError, TimeoutError, ValueError) as error:
-                            # 风控时按 2 的幂退避，最长 30 分钟；Cookie 失效（-101）时 @机器人「B站状态」重新扫码。
+                            # 风控时按 2 的幂退避，最长 30 分钟；Cookie 失效（-101）时管理员在私聊发「B站状态」重新扫码。
                             bili_failures += 1
                             LOGGER.warning("Bilibili poll failed (%d in a row): %s %s", bili_failures,
                                            type(error).__name__, error if isinstance(error, BiliBlocked) else "")

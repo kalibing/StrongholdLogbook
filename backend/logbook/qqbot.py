@@ -1,5 +1,5 @@
 """QQ 官方机器人 Webhook 接入：单聊里发「登录」，机器人回一个一次性免密登录链接；
-群里 @机器人 或单聊发「订阅公告」「订阅动态」等指令管理推送订阅（推送由 logbook.feeds 进程发送）。
+群里 @机器人发「日报」查询自己的昨日战报。
 
 独立进程运行（uvicorn logbook.qqbot:app），与网页 API 分开：
 - 网页 API 的写请求要校验 Origin，回调请求没有 Origin；分开后两边的防护各自保持严格。
@@ -58,10 +58,8 @@ MAX_CLOCK_SKEW = 10 * 60
 LOGIN_COMMANDS = {"登录", "登陆", "注册", "login", "/登录", "/login"}
 HELP_TEXT = (
     "发送「登录」获取作战档案的一次性登录链接（10 分钟内有效，只能用一次）。\n"
-    "第一次使用会自动为你创建账号，登录后可以设置密码、修改一次账号名。\n\n"
-    + feeds.USAGE
+    "第一次使用会自动为你创建账号，登录后可以设置密码、修改一次账号名。"
 )
-GROUP_HELP_TEXT = "@我 并发送以下指令：\n" + feeds.USAGE
 
 
 @dataclass(frozen=True)
@@ -189,10 +187,6 @@ class QQClient:
         self._post(f"/v2/groups/{quote(group_openid, safe='')}/messages",
                    {"msg_type": 0, "content": content, "msg_id": msg_id, "msg_seq": seq})
 
-    def send_c2c(self, openid: str, content: str) -> None:
-        """主动消息：不带 msg_id。"""
-        self._post(f"/v2/users/{quote(openid, safe='')}/messages", {"msg_type": 0, "content": content})
-
     def send_group(self, group_openid: str, content: str) -> None:
         """主动消息：不带 msg_id。"""
         self._post(f"/v2/groups/{quote(group_openid, safe='')}/messages", {"msg_type": 0, "content": content})
@@ -212,7 +206,7 @@ report_quota = FailureThrottle(limit=3, window=60)
 
 def command_parts(content):
     # QQ normally removes the @ prefix, but some group payloads retain it.
-    text = re.sub(r"^(?:<@!?[A-Za-z0-9_-]{1,128}>\s*)+", "", content).lstrip("/")
+    text = re.sub(r"^(?:<@!?[A-Za-z0-9_-]{1,128}>\s*)+", "", content.strip()).lstrip("/")
     parts = text.split(maxsplit=1)
     if not parts:
         return "", ""
@@ -244,8 +238,10 @@ def binding_reply(config, openid, code):
 
 
 def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
-    author = data.get("author") or {}
-    openid = author.get("user_openid") or author.get("id")
+    author = data.get("author")
+    author = author if isinstance(author, dict) else {}
+    user_openid = author.get("user_openid")
+    openid = user_openid or author.get("id")
     msg_id = data.get("id")
     content = (data.get("content") or "").strip()
     if not isinstance(openid, str) or not isinstance(msg_id, str):
@@ -253,14 +249,11 @@ def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
         return
     try:
         if is_bili_command(content):
-            handle_bili(client, "c2c", openid, msg_id)
-            return
-        if feeds.is_command(content):
-            client.reply_c2c(openid, msg_id, subscription_reply(config, "c2c", openid, content))
+            handle_bili(client, config, "c2c", openid, msg_id, user_openid)
             return
         command, code = command_parts(content)
         if command == settings.qq_bind_command and command not in LOGIN_COMMANDS:
-            client.reply_c2c(openid, msg_id, binding_reply(config, author.get("user_openid"), code))
+            client.reply_c2c(openid, msg_id, binding_reply(config, user_openid, code))
             return
         if content.lower() not in LOGIN_COMMANDS:
             client.reply_c2c(openid, msg_id, HELP_TEXT)
@@ -284,41 +277,39 @@ def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
         LOGGER.warning("QQ reply failed: %s %s", type(error).__name__, getattr(error, "code", ""))
 
 
-def subscription_reply(config: BotConfig, target_type: str, openid: str, content: str) -> str:
-    if not accounts.OPENID_PATTERN.fullmatch(openid):
-        return "暂时无法处理订阅，请稍后再试。"
-    try:
-        with connect() as database:
-            return feeds.handle_command(database, config.app_id, target_type, openid, content) or ""
-    except StorageUnavailable:
-        LOGGER.exception("Could not update feed subscription")
-        return "暂时无法处理订阅，请稍后再试。"
-
-
 BILI_COMMANDS = {"b站", "b站状态", "b站登录", "登录b站", "bilibili", "哔哩哔哩"}
 # 同一时间只挂一张扫码二维码，避免多人同时触发互相覆盖登录态。
 bili_login_lock = Lock()
 
 
 def is_bili_command(content: str) -> bool:
-    return feeds.normalize_command(content).lower() in BILI_COMMANDS
+    return re.sub(r"\s+", "", "".join(command_parts(content))).lower() in BILI_COMMANDS
 
 
-def handle_bili(client: QQClient, target_type: str, openid: str, msg_id: str,
-                get=bilibili.http_get, sleep=time.sleep) -> None:
-    """查询动态推送用的 B 站登录状态；未登录或已失效时发扫码二维码，扫码成功后加密保存 Cookie。
-
-    只有当前没有可用登录态时才发二维码，已登录时任何人都无法通过这个指令替换账号。
-    """
+def handle_bili(client: QQClient, config: BotConfig, target_type: str, openid: str, msg_id: str,
+                actor_openid: str | None, *, get=bilibili.http_get, sleep=time.sleep) -> None:
+    """站点管理员可查询推送账号状态，并在私聊中扫码登录。"""
     def say(text: str, seq: int = 1) -> None:
         client.reply(target_type, openid, msg_id, text, seq)
 
+    denied = "请使用已绑定的站点管理员 QQ 发送「B站状态」。"
+    if not isinstance(actor_openid, str) or not accounts.OPENID_PATTERN.fullmatch(actor_openid):
+        say(denied)
+        return
     try:
         with connect() as database:
-            cookie = bilibili.stored_cookie(database)
+            if target_type == "group":
+                user = qq_binding.group_account(database, config.app_id, openid, actor_openid)
+            else:
+                user = accounts.find_qq_account(database, config.app_id, actor_openid)
+            allowed = user is not None and accounts.is_admin(database, user["id"])
+            cookie = bilibili.stored_cookie(database) if allowed else ""
     except (StorageUnavailable, CredentialStorageError):
-        LOGGER.exception("Could not read Bilibili cookie")
+        LOGGER.warning("Could not authorize or load the Bilibili status request")
         say("暂时无法读取 B 站登录状态，请稍后再试。")
+        return
+    if not allowed:
+        say(denied)
         return
     try:
         logged_in, uname = bilibili.login_status(cookie, get)
@@ -329,14 +320,17 @@ def handle_bili(client: QQClient, target_type: str, openid: str, msg_id: str,
     if logged_in:
         say(f"B 站已登录：{uname or '（未取到用户名）'}\n动态推送使用这个账号。")
         return
+    if target_type == "group":
+        say("B 站当前需要登录，请私聊我发「B站状态」扫码。")
+        return
     if not bili_login_lock.acquire(blocking=False):
-        say("已经有一张 B 站登录二维码在等待扫码，请扫那张，或 3 分钟后再试。")
+        say("正在等待已有的 B 站登录请求，请稍后再试。")
         return
     try:
         try:
             url, key = bilibili.generate_qr(get)
             png = bilibili.qr_png(url)
-        except (HTTPError, URLError, TimeoutError, ValueError, RuntimeError) as error:
+        except (HTTPError, URLError, TimeoutError, ValueError, RuntimeError, ImportError) as error:
             LOGGER.warning("Bilibili QR generate failed: %s", type(error).__name__)
             say("B 站未登录，二维码生成失败，请稍后再试。")
             return
@@ -352,10 +346,10 @@ def handle_bili(client: QQClient, target_type: str, openid: str, msg_id: str,
             new_cookie = bilibili.wait_for_scan(key, get, sleep)
         except (HTTPError, URLError, TimeoutError, ValueError, RuntimeError) as error:
             LOGGER.warning("Bilibili QR poll failed: %s", type(error).__name__)
-            say("扫码登录失败，请重新 @我 发「B站登录」。", 2)
+            say("扫码登录失败，请在私聊重新发「B站状态」。", 2)
             return
         if not new_cookie:
-            say("二维码已过期，需要时请重新 @我 发「B站登录」。", 2)
+            say("二维码已过期，请在私聊重新发「B站状态」。", 2)
             return
         try:
             _, uname = bilibili.login_status(new_cookie, get)
@@ -418,23 +412,26 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
     group_openid = data.get("group_openid")
     msg_id = data.get("id")
     content = (data.get("content") or "").strip()
-    if not isinstance(group_openid, str) or not isinstance(msg_id, str):
+    if not isinstance(group_openid, str) or not accounts.OPENID_PATTERN.fullmatch(group_openid) or not isinstance(msg_id, str):
         LOGGER.warning("Group event without group_openid or id; ignored")
         return
+    author = data.get("author")
+    member_openid = author.get("member_openid") if isinstance(author, dict) else None
+    try:
+        with connect() as database:
+            feeds.observe_group(database, config.app_id, group_openid)
+    except StorageUnavailable:
+        LOGGER.warning("Could not record a QQ group event")
     try:
         command, code = command_parts(content)
         if is_bili_command(content):
-            handle_bili(client, "group", group_openid, msg_id)
-        elif feeds.is_command(content):
-            client.reply_group(group_openid, msg_id, subscription_reply(config, "group", group_openid, content))
+            handle_bili(client, config, "group", group_openid, msg_id, member_openid)
         elif command == settings.qq_report_command:
-            author = data.get("author")
-            member_openid = author.get("member_openid") if isinstance(author, dict) else None
             group_report(client, config, group_openid, member_openid, msg_id, code)
         elif command == settings.qq_bind_command:
             client.reply_group(group_openid, msg_id, "请私聊我完成账号绑定，绑定码只发在私聊里。")
         else:
-            client.reply_group(group_openid, msg_id, GROUP_HELP_TEXT)
+            client.reply_group(group_openid, msg_id, f"@我发送「{settings.qq_report_command}」查看自己的昨日战报。")
     except (HTTPError, URLError, RuntimeError, ValueError) as error:
         LOGGER.warning("QQ group reply failed: %s %s", type(error).__name__, getattr(error, "code", ""))
 
