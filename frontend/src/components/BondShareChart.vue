@@ -224,7 +224,7 @@ watch(highlighted, (indices, previous) => {
 .share-row--sub { min-height: 1.95rem; font-size: .8125rem; }
 .share-row--sub .share-name { padding-left: .85rem; }
 .share-row--sub .share-name i { width: .4rem; height: .4rem; }
-.share-name { display: grid; grid-template-columns: .5rem auto minmax(0, 1fr); align-items: center; gap: .3rem; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.share-name { display: grid; grid-template-columns: .5rem 16px minmax(0, 1fr); align-items: center; gap: .3rem; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .share-name i { width: .48rem; height: .48rem; border-radius: 2px; }
 .share-name img { object-fit: contain; }
 .share-name > span { grid-column: 3; }

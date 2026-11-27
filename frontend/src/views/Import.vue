@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { NButton, NInput } from 'naive-ui'
+import { NButton, NInput, NModal } from 'naive-ui'
 import { api, ApiError, message, post } from '../api'
 import { logbook } from '../context'
 import { dateTime } from '../format'
@@ -40,10 +40,13 @@ const token = ref('')
 const submission = shallowRef<ImportReceipt | null>(null)
 const currentJob = shallowRef<ImportJob | null>(null)
 const currentTitle = ref<HTMLHeadingElement | null>(null)
-const firstInput = ref<InstanceType<typeof NInput> | null>(null)
+const tokenInput = ref<InstanceType<typeof NInput> | null>(null)
+const credInput = ref<InstanceType<typeof NInput> | null>(null)
+/** 两种凭据的输入框都常驻（叠放保持高度一致），聚焦时按当前方式挑一个。 */
+const focusInput = () => (mode.value === 'token' ? tokenInput : credInput).value?.focus()
 /** 导入引导当前在第几步（0 起）；到「回填并导入」时自动聚焦输入框。 */
 const importStep = ref(0)
-watch(importStep, step => { if (step === 3) void nextTick(() => firstInput.value?.focus()) })
+watch(importStep, step => { if (step === 3) void nextTick(focusInput) })
 const commandCopied = ref(false)
 
 const passportUrl = 'https://user.hypergryph.com/'
@@ -67,6 +70,13 @@ const credHint = computed(() => {
 })
 const currentStatus = computed(() => currentJob.value?.status ?? 'pending')
 const recentJobs = computed(() => jobs.value.filter(job => job.id !== submission.value?.id))
+/** 侧栏只放概要（库内局数 + 最近一次导入），完整记录在对话框里看。 */
+const historyOpen = ref(false)
+const latestJob = computed(() => jobs.value[0] ?? null)
+function openHistory() {
+  historyOpen.value = true
+  void loadJobs()
+}
 const statusLabels = { pending: '等待写入', done: '已写入', failed: '写入失败' }
 
 function statusLabel(status: ImportJob['status']) {
@@ -324,7 +334,7 @@ async function pasteToken() {
   } catch {
     if (!disposed && mode.value === 'token' && showForm.value) {
       pasteHint.value = '请在输入框内手动粘贴 token。'
-      firstInput.value?.focus()
+      focusInput()
     }
   } finally {
     pasting.value = false
@@ -467,14 +477,14 @@ onBeforeUnmount(() => {
           </template>
 
           <template #step-2>
-            <template v-if="mode === 'token'">
+            <div class="mode-stack"><div class="mode-variant" :class="{ 'mode-variant--active': mode === 'token' }" :inert="mode !== 'token' || undefined">
               <h3 class="wizard-heading">打开 token 页面并复制内容</h3>
               <p class="muted">页面会给出整段 JSON，全选复制即可；如果提示未登录，回到上一步登录后再打开。</p>
               <div class="wizard-inline-actions">
                 <NButton tag="a" type="primary" size="small" :href="tokenUrl" target="_blank" rel="noopener noreferrer">打开 token 页面</NButton>
               </div>
-            </template>
-            <template v-else>
+            </div>
+            <div class="mode-variant" :class="{ 'mode-variant--active': mode === 'cred' }" :inert="mode !== 'cred' || undefined">
               <h3 class="wizard-heading">用一条命令取凭据</h3>
               <p class="muted">在森空岛页面按 F12 打开 Console，粘贴这条命令：它读出 cred 与 sign_token，拼成一个字典并复制到剪贴板。</p>
               <figure class="import-cmd">
@@ -485,17 +495,17 @@ onBeforeUnmount(() => {
                 <NButton type="primary" size="small" @click="copyCredCommand">{{ commandCopied ? '已复制命令' : '复制命令' }}</NButton>
               </div>
               <p class="import-step-note">命令取到空值时，退回 Network 面板任选一条 zonai.skland.com 请求，把请求头里的两项写成 <code>{ "cred": "…", "sign_token": "…" }</code> 也能识别。</p>
-            </template>
+            </div></div>
           </template>
 
           <template #step-3>
             <h3 class="wizard-heading">回填并导入
               <span v-if="canSubmit" class="import-step-state">{{ mode === 'token' ? '已回填' : '已识别' }}</span>
             </h3>
-            <template v-if="mode === 'token'">
+            <div class="mode-stack"><div class="mode-variant" :class="{ 'mode-variant--active': mode === 'token' }" :inert="mode !== 'token' || undefined">
               <p id="import-token-help" class="muted">把复制到的内容粘贴到下面，识别到 token 会自动拉取。</p>
               <div class="token-entry">
-                <NInput ref="firstInput" :value="token" type="password" show-password-on="click" placeholder="粘贴页面内容或 token"
+                <NInput ref="tokenInput" :value="token" type="password" show-password-on="click" placeholder="粘贴页面内容或 token"
                   :disabled="pulling" :input-props="{ id: 'import-token', autocomplete: 'off', 'aria-describedby': 'import-token-help import-token-safety' }"
                   @update:value="updateToken" />
                 <NButton secondary :loading="pasting" :disabled="pulling || pasting" @click="pasteToken">粘贴</NButton>
@@ -504,16 +514,16 @@ onBeforeUnmount(() => {
                 {{ pasteHint || '未识别到 token，请复制 token 页面的完整内容。' }}
               </p>
               <p id="import-token-safety" class="import-step-note">战绩成功拉取并进入写入队列后，鹰角 token 会保存在本站账号中。</p>
-            </template>
-            <template v-else>
+            </div>
+            <div class="mode-variant" :class="{ 'mode-variant--active': mode === 'cred' }" :inert="mode !== 'cred' || undefined">
               <p id="import-cred-help" class="muted">把上一步复制的字典整段粘贴到下面，识别成功会自动拉取；中文引号、全角逗号、换行会自动纠正。</p>
-              <NInput ref="firstInput" :value="credText" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }"
+              <NInput ref="credInput" :value="credText" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }"
                 placeholder='{"cred":"…","sign_token":"…"}' :disabled="pulling"
                 :input-props="{ id: 'import-cred', autocomplete: 'off', spellcheck: 'false', style: 'font-family: ui-monospace, Consolas, monospace; font-size: .8rem', 'aria-describedby': 'import-cred-help' }"
                 @update:value="updateCredentials" />
               <p v-if="credHint" class="import-step-status" :data-state="credReady ? 'ready' : 'warn'" role="status">{{ credHint }}</p>
               <p class="import-step-note">凭据只在本次请求里使用；提交时会发送给本站后端，请仅在自己控制的实例中回填。</p>
-            </template>
+            </div></div>
             <p v-if="pullError" class="load-message" role="alert">{{ pullError }}</p>
             <p v-else-if="pulling" class="muted" role="status">正在自动拉取…拉取成功后会进入写入队列。</p>
           </template>
@@ -547,19 +557,40 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="panel import-panel import-history" aria-labelledby="import-history-title">
-      <header class="import-summary">
-        <h2 id="import-history-title">最近导入</h2>
+      <h2 id="import-history-title">最近导入</h2>
+      <dl class="history-facts">
+        <div>
+          <dt>库内对局</dt>
+          <dd><b>{{ totalMatches === null ? '—' : totalMatches }}</b><small v-if="totalMatches !== null">局</small></dd>
+        </div>
+        <div>
+          <dt>上次导入</dt>
+          <dd v-if="latestJob" class="history-latest">
+            <span><span class="import-status" :data-status="latestJob.status">{{ statusLabel(latestJob.status) }}</span> · 已获取 {{ latestJob.total }} 局</span>
+            <time :datetime="latestJob.created_at">{{ dateTime(latestJob.created_at) }}</time>
+          </dd>
+          <dd v-else class="muted">{{ jobsPending ? '读取中…' : '暂无记录' }}</dd>
+        </div>
+      </dl>
+      <p v-if="jobsError" class="load-message" role="alert">{{ jobsError }}</p>
+      <NButton secondary block @click="openHistory">查看导入记录<template v-if="jobs.length">（{{ jobs.length }}）</template></NButton>
+      <p class="muted history-note">按局去重计数：同一局重新导入只覆盖字段，不会累加。</p>
+    </section>
+
+    <NModal v-model:show="historyOpen" preset="card" title="导入记录" class="history-modal" :bordered="false"
+      :style="{ width: 'min(560px, calc(100vw - 32px))' }">
+      <template #header-extra>
         <NButton size="small" quaternary :loading="jobsPending" @click="loadJobs">刷新</NButton>
-      </header>
-      <p class="muted">
+      </template>
+      <p class="muted history-modal-note">
         <template v-if="totalMatches !== null">库内共 <strong>{{ totalMatches }}</strong> 局（不重复计数）。</template>
         同一局重新导入只覆盖字段，不会累加。
       </p>
       <p v-if="jobsError" class="load-message" role="alert">
         {{ jobsError }} <button type="button" @click="loadJobs">重试</button>
       </p>
-      <ul v-if="recentJobs.length" class="job-list">
-        <li v-for="job in recentJobs" :key="job.id" class="job">
+      <ul v-if="jobs.length" class="job-list history-list">
+        <li v-for="job in jobs" :key="job.id" class="job">
           <span>已获取 {{ job.total }} 局 · <span class="import-status" :data-status="job.status">{{ statusLabel(job.status) }}</span><template v-if="job.status === 'pending'"> · {{ job.processed }} / {{ job.total }}</template></span>
           <time :datetime="job.created_at">{{ dateTime(job.created_at) }}</time>
           <progress v-if="job.status === 'pending'" :value="job.processed" :max="Math.max(1, job.total)" aria-label="写入进度"></progress>
@@ -568,8 +599,8 @@ onBeforeUnmount(() => {
         </li>
       </ul>
       <p v-else-if="jobsPending" class="muted" role="status">正在读取导入记录…</p>
-      <p v-else-if="!jobsError" class="muted">{{ submission ? '还没有其他导入记录。' : '还没有导入记录。' }}</p>
-    </section>
+      <p v-else-if="!jobsError" class="muted">还没有导入记录。</p>
+    </NModal>
   </div>
 </template>
 
@@ -619,6 +650,10 @@ onBeforeUnmount(() => {
   color: var(--text); font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
   font-size: .75rem; line-height: 1.65; white-space: pre-wrap; word-break: break-all;
 }
+/* 两种凭据方式的内容叠在同一格里，只显示当前方式：在第一步切换方式时，向导高度和底部按钮都不动。 */
+.mode-stack { display: grid; }
+.mode-variant { grid-area: 1 / 1; display: grid; align-content: start; gap: .75rem; min-width: 0; visibility: hidden; }
+.mode-variant--active { visibility: visible; }
 .token-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .45rem; }
 .import-submit {
   display: flex; align-items: center; justify-content: space-between; gap: .6rem 1rem; flex-wrap: wrap;
@@ -642,8 +677,19 @@ onBeforeUnmount(() => {
 .import-status[data-status='failed'], .current-import .job-error { color: var(--loss); }
 .job progress, .current-import progress { width: 100%; height: .45rem; accent-color: var(--accent); }
 .job-stale { color: var(--loss); font-size: .75rem; }
-.import-history > p.muted { font-size: .8125rem; }
-.import-history > p.muted strong { color: var(--accent); font-variant-numeric: tabular-nums; }
+.history-facts { display: grid; gap: 1px; margin: 0; border: 1px solid var(--line); background: var(--line); }
+.history-facts > div { display: grid; gap: .3rem; padding: .7rem .85rem; background: var(--inset); }
+.history-facts dt { color: var(--muted); font-size: .8rem; }
+.history-facts dd { display: flex; align-items: baseline; gap: .3rem; margin: 0; }
+.history-facts b { color: var(--text); font: 700 1.6rem/1 var(--numbers); }
+.history-facts small { color: var(--muted); font-size: .8rem; }
+.history-latest { flex-wrap: wrap; justify-content: space-between; gap: .2rem .6rem; font-size: .875rem; }
+.history-latest time { color: var(--muted); font: .8125rem var(--numbers); }
+.history-note { font-size: .78rem; }
+.history-modal-note { margin: 0 0 .75rem; font-size: .8125rem; }
+.history-modal-note strong { color: var(--accent); font-variant-numeric: tabular-nums; }
+/* 记录多时在对话框里滚动，不把对话框撑出屏幕 */
+.history-list { max-height: min(60vh, 32rem); overflow-y: auto; overscroll-behavior: contain; }
 @media (max-width: 800px) { .import-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 620px) {
   .import-submit { justify-content: stretch; }

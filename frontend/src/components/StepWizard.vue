@@ -32,17 +32,19 @@ function go(index: number) {
       </li>
     </ol>
 
+    <!-- 所有步骤叠在同一格里，只显示当前一步：内容区高度始终取最高的那一步，切换步骤时底部按钮不会上下跳。 -->
     <div class="wizard-body">
-      <Transition name="wizard" mode="out-in">
-        <div :key="current" class="wizard-pane">
-          <slot :name="`step-${current}`" />
-        </div>
-      </Transition>
+      <div v-for="(title, index) in steps" :key="title" class="wizard-pane" :class="{ 'wizard-pane--active': index === current }"
+        :inert="index !== current || undefined" :aria-hidden="index !== current || undefined">
+        <slot :name="`step-${index}`" />
+      </div>
     </div>
 
+    <!-- 步数和「上一步」固定在左边，主操作固定贴右：哪个按钮出现 / 消失都不会把别的按钮挤动。 -->
     <footer class="wizard-foot">
-      <NButton v-if="current > 0" secondary @click="go(current - 1)">上一步</NButton>
       <span class="wizard-count">{{ current + 1 }} / {{ steps.length }}</span>
+      <NButton v-if="current > 0" secondary @click="go(current - 1)">上一步</NButton>
+      <span class="wizard-spacer" aria-hidden="true"></span>
       <slot name="actions" :step="current" />
       <NButton v-if="current < last" type="primary" :disabled="blocked" @click="go(current + 1)">
         {{ nextLabels[current] ?? '下一步' }}
@@ -80,16 +82,21 @@ function go(index: number) {
 [data-state='done'] .wizard-rail-step { color: var(--text-2); }
 [data-state='done'] .wizard-no { border-color: var(--accent); color: var(--accent); }
 
-.wizard-body { min-height: 9rem; padding: 1.1rem 1.2rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset); }
-.wizard-pane { display: grid; gap: .75rem; }
+.wizard-body {
+  display: grid; min-height: 9rem; padding: 1.1rem 1.2rem; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset);
+}
+.wizard-pane { grid-area: 1 / 1; display: grid; align-content: start; gap: .75rem; min-width: 0; visibility: hidden; opacity: 0; }
+.wizard-pane--active { visibility: visible; opacity: 1; }
 
-.wizard-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .6rem; }
-.wizard-count { margin-right: auto; color: var(--muted); font: 600 .95rem/1 var(--numbers); letter-spacing: .08em; order: -1; }
+.wizard-foot { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; min-height: 34px; }
+.wizard-count { min-width: 2.6rem; color: var(--muted); font: 600 .95rem/1 var(--numbers); letter-spacing: .08em; }
+.wizard-spacer { flex: 1; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .wizard-enter-active, .wizard-leave-active { transition: opacity .16s ease, transform .18s cubic-bezier(.2, .7, .3, 1); }
-  .wizard-enter-from { opacity: 0; transform: translateX(10px); }
-  .wizard-leave-to { opacity: 0; transform: translateX(-6px); }
+  /* 离开的一步立即淡出（visibility 延后到淡出结束再隐藏），新的一步从右侧轻推进来。 */
+  .wizard-pane { transform: translateX(10px); transition: opacity .14s ease, transform .2s cubic-bezier(.2, .7, .3, 1), visibility 0s linear .14s; }
+  .wizard-pane--active { transform: none; transition: opacity .18s ease .06s, transform .22s cubic-bezier(.2, .7, .3, 1) .06s, visibility 0s; }
 }
 @container (max-width: 600px) {
   .wizard-title { display: none; }
