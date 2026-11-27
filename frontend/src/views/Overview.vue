@@ -145,7 +145,7 @@ function openMatch(id: string) {
                   <dt>单项最高</dt>
                   <dd id="peak" class="peak-value" :title="data.peak ? data.peak.names.join('、') : ''">
                     <template v-if="data.peak">
-                      <img v-if="BOND_ICONS[majorBond]" :src="BOND_ICONS[majorBond]" width="22" height="22" :alt="majorBond">
+                      <img v-if="BOND_ICONS[majorBond]" :src="BOND_ICONS[majorBond]" width="30" height="30" :alt="majorBond">
                       <span class="bond-glyph" v-else aria-hidden="true"></span>
                       <span class="peak-name">{{ majorBond }}</span>
                       <b>{{ number(data.peak.layers) }}</b> 层

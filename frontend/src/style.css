@@ -335,10 +335,11 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
 .stat-sub { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-top: .9rem; padding-top: .7rem; border-top: 1px solid var(--line); font-size: .8125rem; }
 .stat-sub dt { color: var(--muted); white-space: nowrap; }
 .stat-sub dd { display: flex; align-items: center; gap: .35rem; min-width: 0; color: var(--muted); white-space: nowrap; }
-.stat-sub dd b { color: var(--text); font: 700 1.25rem/1 var(--numbers); }
-.stat-sub img, .stat-sub .bond-glyph { flex: none; width: 22px; height: 22px; object-fit: contain; }
-.stat-sub .bond-glyph { width: 16px; height: 16px; }
-.peak-name { overflow: hidden; color: var(--text-2); text-overflow: ellipsis; }
+.stat-sub dd b { color: var(--text); font: 700 1.5rem/1 var(--numbers); }
+.stat-sub img, .stat-sub .bond-glyph { flex: none; width: 30px; height: 30px; object-fit: contain; }
+.stat-sub .peak-value { gap: .45rem; font-size: .9375rem; }
+.stat-sub .bond-glyph { width: 20px; height: 20px; }
+.peak-name { overflow: hidden; color: var(--text-2); font-size: 1rem; text-overflow: ellipsis; }
 .funds-value { gap: .32rem; }
 .funds-value img { display: block; flex: none; object-fit: contain; }
 :root[data-theme="light"] :is(.peak-value img, .usage-heading img, .bond-label img, .daily-peak img, .trend-art--bond) { filter: brightness(0) saturate(100%) opacity(.82); }

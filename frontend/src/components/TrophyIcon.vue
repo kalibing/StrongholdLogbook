@@ -25,21 +25,16 @@ const source = computed(() => {
 
 <template>
   <img v-if="source && failed !== source" class="trophy-icon trophy-icon--art" :src="source" :width="size" :height="size"
-    :style="{ padding: `${Math.round(size * .16)}px` }" alt="" @error="failed = source">
+    alt="" @error="failed = source">
   <NIcon v-else class="trophy-icon trophy-icon--generic" :component="TrophyOutline" :size="size" aria-hidden="true" />
 </template>
 
 <style scoped>
-/* 奖杯原画是透明底的橙色徽记 + 白色外发光，直接放在面板上显得发虚。
-   背后垫一圈暖橙色圆形光斑（像游戏里展示道具的光晕），不加框；
-   亮色主题下白描边会融进浅底，再补一圈很淡的阴影把轮廓勾出来。 */
+/* 奖杯原画是透明底的橙色徽记 + 白色外发光，直接放在面板上，不垫底色；
+   亮色主题下白描边会融进浅底，补一圈很淡的阴影把轮廓勾出来。 */
 .trophy-icon { flex: none; }
-.trophy-icon--art {
-  box-sizing: border-box; object-fit: contain; border-radius: 50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, #f2a046 34%, transparent) 30%, color-mix(in srgb, #f2a046 14%, transparent) 75%, transparent);
-}
+.trophy-icon--art { object-fit: contain; }
 :global(:root[data-theme='light'] .trophy-icon--art) {
-  background: radial-gradient(closest-side, color-mix(in srgb, #f0a050 46%, transparent) 30%, color-mix(in srgb, #f0a050 20%, transparent) 75%, transparent);
   filter: drop-shadow(0 0 .6px rgb(60 36 10 / .55)) drop-shadow(0 1px 1px rgb(60 36 10 / .18));
 }
 .trophy-icon--generic { color: var(--muted); }
