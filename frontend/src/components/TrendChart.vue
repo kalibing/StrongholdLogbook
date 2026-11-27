@@ -76,6 +76,13 @@ function buildOption() {
   const averageColor = css('chart-average')
   const panel = css('panel')
   const neutral = css('chart-line')
+  const accent = css('accent')
+  // 数字用站点的窄体数字字体，中文字符在 canvas 里按字体列表逐字回落到正文字体。
+  const fontFamily = `${css('numbers')}, ${getComputedStyle(document.documentElement).fontFamily}`
+  const fade = (color: string, from: number, to: number) => new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+    { offset: 0, color: color + Math.round(from * 255).toString(16).padStart(2, '0') },
+    { offset: 1, color: color + Math.round(to * 255).toString(16).padStart(2, '0') },
+  ])
   const peak = props.metric === 'peak'
   const colorOf = (point: Point) => props.daily ? neutral : point.result === 'loss' ? loss : win
   const axisLabel = (index: number) => props.daily ? items[index].label.slice(5) : String(index + 1)
@@ -99,8 +106,9 @@ function buildOption() {
     position: 'top' as const,
     distance: 6,
     color: text,
-    fontSize: 11,
-    fontWeight: 600,
+    fontFamily,
+    fontSize: 13,
+    fontWeight: 700,
     formatter: ({ dataIndex }: { dataIndex: number }) => {
       const value = valueOf(items[dataIndex])
       return value === null ? '' : number(value)
@@ -109,31 +117,34 @@ function buildOption() {
   const series: BarSeriesOption | LineSeriesOption = peak ? {
     type: 'line',
     connectNulls: false,
-    symbol: 'circle',
-    symbolSize: showLabels ? 9 : 5,
-    lineStyle: { color: css('chart-line'), width: 2 },
+    symbol: 'diamond',
+    symbolSize: showLabels ? 11 : 7,
+    lineStyle: { color: accent, width: 2 },
+    areaStyle: { color: fade(accent, .22, 0) },
+    emphasis: { scale: 1.4 },
     label: { ...label, distance: 8 },
     labelLayout: { hideOverlap: true },
     markLine: peakAverage.value === null ? undefined : {
       silent: true,
       symbol: 'none',
       label: { show: false },
-      lineStyle: { color: averageColor, width: 2, type: 'dashed' },
+      lineStyle: { color: averageColor, width: 1, type: [5, 4] },
       data: [{ yAxis: peakAverage.value }],
     },
     data: items.map(point => ({
       value: valueOf(point),
-      itemStyle: { color: colorOf(point), borderColor: panel, borderWidth: 1 },
+      itemStyle: { color: colorOf(point), borderColor: panel, borderWidth: 2 },
     })),
   } : {
     type: 'bar',
-    barMaxWidth: 32,
+    barMaxWidth: 28,
     label,
     labelLayout: { hideOverlap: true },
     data: items.map(point => {
       const value = valueOf(point)
       const color = colorOf(point)
-      return { value, itemStyle: { color: color + 'b3', borderColor: color, borderWidth: 1, borderRadius: [3, 3, 0, 0] } }
+      // 方角柱：顶部实色、向下渐隐，顶边一道实线像刻度读数。
+      return { value, itemStyle: { color: fade(color, .75, .18), borderColor: color, borderWidth: 0, borderRadius: 0, shadowColor: color, shadowOffsetY: -2 } }
     }),
   }
 
@@ -143,6 +154,7 @@ function buildOption() {
     animationDurationUpdate: 0,
     animationEasing: 'cubicOut' as const,
     backgroundColor: 'transparent',
+    textStyle: { fontFamily },
     grid: { left: 38, right: 12, top: 24, bottom: (showLabels && !props.daily ? 43 : 28) + (hasBondLabels ? 59 : 0) },
     aria: {
       enabled: true,
@@ -158,10 +170,13 @@ function buildOption() {
       confine: true,
       renderMode: 'html',
       className: 'trend-tooltip',
-      backgroundColor: panel,
-      borderColor: css('line'),
+      backgroundColor: 'transparent',
+      borderWidth: 0,
+      padding: 0,
       textStyle: { color: text, fontSize: 12 },
-      axisPointer: peak ? { type: 'line', lineStyle: { color: muted, type: 'dashed' } } : { type: 'shadow' },
+      axisPointer: peak
+        ? { type: 'line', lineStyle: { color: accent, width: 1, type: [3, 3] } }
+        : { type: 'shadow', shadowStyle: { color: accent + '14' } },
       formatter: (params: unknown) => {
         const list = params as { dataIndex: number }[]
         const index = list?.[0]?.dataIndex
@@ -188,8 +203,9 @@ function buildOption() {
       axisTick: { show: false },
       axisLabel: {
         color: muted,
-        fontSize: 11,
-        margin: 8,
+        fontFamily,
+        fontSize: 12,
+        margin: 10,
         interval: showLabels ? 0 : 'auto' as const,
         hideOverlap: !showLabels,
         formatter: (value: string, index: number) => {
@@ -221,13 +237,14 @@ function buildOption() {
       minInterval: 1,
       axisLabel: {
         color: muted,
-        fontSize: 10,
-        margin: 8,
+        fontFamily,
+        fontSize: 11,
+        margin: 10,
         formatter: (value: number) => value >= 1000
           ? `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`
           : number(value),
       },
-      splitLine: { lineStyle: { color: grid } },
+      splitLine: { lineStyle: { color: grid, type: [4, 4] } },
     },
     series: [series],
   }
