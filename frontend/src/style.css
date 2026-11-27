@@ -272,8 +272,9 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
 .filters { display: flex; flex-wrap: wrap; align-items: start; gap: .75rem 1rem; margin-bottom: 1rem; padding: .9rem 1rem; }
 .filter-field { display: grid; min-width: 0; gap: .35rem; color: var(--muted); font-size: .8125rem; letter-spacing: .04em; }
 .filters > .filter-field { width: clamp(9rem, 13.5vw, 12.5rem); }
-/* 基准宽度 = 日期选择器最小宽度 + 快捷区间，图标栏宽度（~1100px）下也能和三个下拉框排在一行。 */
-.filters > .date-range-field { flex: 1 1 25rem; width: auto; }
+/* 基准宽度 = 日期选择器最小宽度 + 快捷区间；最小宽度不低于内容（min-content），
+   一行放不下时整体换到下一行，而不是被压窄后让快捷区间溢出面板。 */
+.filters > .date-range-field { flex: 1 1 25rem; width: auto; min-width: min-content; }
 .filters .filter-field :is(.n-select, .n-date-picker) { width: 100%; min-width: 0; }
 /* 日期范围与快捷区间同一行：选择器可伸缩，快捷区间是一条和选择器等高的分段条。 */
 .date-range-row { display: flex; align-items: stretch; gap: .5rem; }
