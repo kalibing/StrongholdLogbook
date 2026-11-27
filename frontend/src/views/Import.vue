@@ -652,6 +652,7 @@ onBeforeUnmount(() => {
   color: var(--accent); font-size: .8125rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
 }
 /* 命令只是拿来复制的（旁边有复制按钮），单行横向滚动，不再折成好几行把向导撑高。 */
+.import-step-note code { white-space: nowrap; }
 .import-cmd pre { margin: 0; padding: .55rem .6rem; overflow-x: auto; scrollbar-width: thin; }
 .import-cmd code {
   color: var(--text); font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
