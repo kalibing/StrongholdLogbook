@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { NButton, NConfigProvider, NDialogProvider, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, zhCN } from 'naive-ui'
-import { MoonOutline, PersonCircleOutline, SunnyOutline } from '@vicons/ionicons5'
-import type { GlobalThemeOverrides } from 'naive-ui'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { NButton, NConfigProvider, NDialogProvider, NDropdown, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, zhCN } from 'naive-ui'
+import { LogOutOutline, MoonOutline, PersonOutline, SunnyOutline } from '@vicons/ionicons5'
+import type { DropdownOption, GlobalThemeOverrides } from 'naive-ui'
 import { api, ApiError, message, post } from './api'
 import { logbookKey, newFilters, type Theme } from './context'
 import type { Facet, User } from './models'
@@ -11,6 +11,7 @@ import HeadingArt from './components/HeadingArt.vue'
 
 const STORAGE_THEME = 'logbook:theme'
 const route = useRoute()
+const router = useRouter()
 const user = ref<User | null>(null)
 const facets = ref<Facet[]>([])
 const filters = reactive(newFilters())
@@ -182,6 +183,26 @@ function setUser(value: User) {
   user.value = value
 }
 const accountName = computed(() => user.value?.display_name || user.value?.username || '')
+const accountInitial = computed(() => Array.from(accountName.value)[0]?.toUpperCase() ?? '?')
+
+/** 右上角头像的下拉菜单：顶部显示昵称与登录账号，下面是个人主页和退出登录。 */
+const menuIcon = (icon: typeof PersonOutline) => () => h(NIcon, { component: icon })
+const accountMenu = computed<DropdownOption[]>(() => [
+  {
+    key: 'who', type: 'render',
+    render: () => h('div', { class: 'account-menu-head' }, [
+      h('strong', accountName.value),
+      h('small', `账号 ${user.value?.username ?? ''}`),
+    ]),
+  },
+  { key: 'divider', type: 'divider' },
+  { key: 'profile', label: '个人主页', icon: menuIcon(PersonOutline) },
+  { key: 'logout', label: '退出登录', icon: menuIcon(LogOutOutline) },
+])
+function selectAccount(key: string) {
+  if (key === 'profile') void router.push({ name: 'profile' })
+  if (key === 'logout') void logout()
+}
 
 provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleTheme, refresh })
 </script>
@@ -206,13 +227,13 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
             <NIcon :key="theme" class="theme-toggle-icon" :component="theme === 'dark' ? SunnyOutline : MoonOutline" />
           </template>
         </NButton>
-        <RouterLink v-if="user" class="account-chip" :to="{ name: 'profile' }" title="个人主页"
-          :aria-current="route.name === 'profile' ? 'page' : undefined">
-          <img v-if="user.avatar_url" class="account-chip-avatar" :src="user.avatar_url" alt="">
-          <NIcon v-else :component="PersonCircleOutline" :size="18" aria-hidden="true" />
-          <span>{{ accountName }}</span>
-        </RouterLink>
-        <NButton v-if="user" size="small" secondary @click="logout">退出登录</NButton>
+        <NDropdown v-if="user" trigger="click" placement="bottom-end" :options="accountMenu" @select="selectAccount">
+          <button type="button" class="account-avatar" :class="{ 'account-avatar--active': route.name === 'profile' }"
+            :aria-label="`账号菜单：${accountName}`" :title="accountName">
+            <img v-if="user.avatar_url" :src="user.avatar_url" alt="">
+            <span v-else aria-hidden="true">{{ accountInitial }}</span>
+          </button>
+        </NDropdown>
       </div>
     </div>
   </header>
@@ -223,7 +244,6 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
     <template v-else-if="user || route.meta.public">
       <div class="heading">
         <div class="heading-copy">
-          <p class="eyebrow">卫戍协议 <span>/</span> {{ accountName || '本地资源' }}</p>
           <h1>{{ route.meta.title }}</h1>
           <p class="heading-description">{{ route.meta.description }}</p>
         </div>

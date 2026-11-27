@@ -148,8 +148,8 @@ async function removeAvatar() {
 .profile-avatar { display: grid; justify-items: center; gap: .4rem; }
 .profile-emblem {
   position: relative; display: grid; place-items: center; width: 104px; height: 104px; flex: none; padding: 0;
-  border: 0; border-radius: 0; cursor: pointer;
-  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+  border: 0; border-radius: 50%; cursor: pointer;
+  clip-path: circle(50%);
   background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 35%, var(--panel)));
 }
 .profile-emblem > :is(span, img) {

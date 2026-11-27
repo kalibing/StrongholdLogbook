@@ -47,8 +47,7 @@ const trophyStep = computed(() => {
   const total = data.value?.trophy_total?.total
   if (total == null) return null
   const level = data.value?.trophy_badge?.level ?? (TROPHY_STEPS.filter(value => total >= value).length || 1)
-  const next = TROPHY_STEPS.find(value => value > total)
-  return `${level} 级 · ${next === undefined ? '已达最高档' : `距下一档还差 ${next - total}`}`
+  return `${level} 级`
 })
 // 按日期聚合时后端给的是：单日最高总层数、单日单项最高、金币合计、击杀与回合的场均。
 const charts = computed<{ metric: Metric; title: string }[]>(() => daily.value ? [
