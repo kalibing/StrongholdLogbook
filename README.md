@@ -241,6 +241,10 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 链路、字段字典、两种标识的判定依据与已知限制见 [docs/achievements.md](docs/achievements.md)。
 令牌按天失效，过期后页面继续展示上次快照并提示。
 
+### 只发布前端到虚拟主机（FTP）
+
+`scripts/deploy_ftp.py` 把 `frontend/dist` 上传到虚拟主机，并附带 `deploy/htaccess`（Apache 的单页回退与安全响应头）。凭据填在本地的 `deploy/ftp.env`（参考 `deploy/ftp.env.example`，已被 git 忽略），默认走 FTPS。先 `--dry-run` 看文件清单，再正式上传。注意页面依赖同域的 `/api` 后端，只发布前端时无法登录。
+
 ## QQ 机器人
 
 用户在 QQ 里私聊机器人发「登录」，机器人回一个一次性免密登录链接；第一次发会自动建号（账号名 `qq-` 加随机串），登录后网页弹窗提示设置密码，并可改一次账号名。其他消息回复用法说明。

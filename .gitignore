@@ -64,3 +64,6 @@ __pycache__/
 # 部署时放入的本机助手二进制
 /deploy/download/*
 !/deploy/download/README.md
+
+# FTP 发布凭据（由使用者本地填写）
+/deploy/ftp.env

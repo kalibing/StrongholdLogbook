@@ -1,0 +1,35 @@
+# 虚拟主机（Apache）用：发布时由 scripts/deploy_ftp.py 上传为站点根目录的 .htaccess。
+# Nginx 主机会忽略此文件，需要在主机面板里配置同样的回退规则与响应头。
+
+# 单页应用：不存在的路径回退到 index.html（/profile 等前端路由刷新不 404）
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_URI} !^/(api|qqbot|download)/
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# 与 deploy/Caddyfile 一致的安全响应头
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "same-origin"
+  Header always set X-Frame-Options "DENY"
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://web.hycdn.cn; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+  <FilesMatch "^index\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
+<IfModule mod_expires.c>
+  <If "%{REQUEST_URI} =~ m#^/assets/#">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </If>
+</IfModule>
+
+# 不列目录，不暴露隐藏文件
+Options -Indexes
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
