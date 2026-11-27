@@ -1,4 +1,5 @@
-export interface User { username: string }
+/** 登录账号：username 是登录名，不可改；display_name 是昵称，没设置时页面显示 username。 */
+export interface User { username: string; display_name: string | null; avatar_url: string | null }
 export interface Role { id: string; name: string }
 export interface Facet { protocol: string; play: string; difficulty: string }
 export interface Filters {
@@ -251,12 +252,13 @@ export interface AchvEnvelope {
   data: AchvProfile
 }
 
-/** 「我的主页」：账号生涯汇总（/api/profile），不受筛选影响。 */
-export interface Profile {
-  username: string
+/** 个人主页（/api/profile）：站内昵称 / 头像，以及已绑定成就档案时的游戏账号展示信息。 */
+export interface ProfileInfo extends User {
   account: { nickname: string | null; nick_number: string | null; level: number | null; likes: number | null; titles: number } | null
-  trophy_badge: TrophyBadge | null
-  trophy_total: { total: number; source: 'profile' | 'matches' } | null
+}
+
+/** 战绩总览「生涯档案」（/api/career），跟随筛选条件。 */
+export interface Career {
   career: {
     matches: number
     wins: number
@@ -273,9 +275,5 @@ export interface Profile {
   }
   streaks: { best_win: number; current: { result: Result; count: number } | null }
   best: { union: string | null; solo: string | null }
-  plays: { play: string; matches: number; wins: number }[]
-  operators: Operator[]
-  strategies: { name: string; count: number; wins: number; win_rate: number }[]
-  recent_results: Result[]
   activity: { start: string; end: string; days: { day: string; count: number }[] }
 }

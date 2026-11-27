@@ -275,22 +275,62 @@ def test_distribution_uses_prts_levels_and_keeps_unknown_matches(client):
     assert sum(total for group in buckets.values() for _, total in group) == client.get("/api/overview").json()["matches"]
 
 
-def test_profile_summarizes_whole_career_without_secrets(client):
+def test_career_follows_filters_and_profile_has_no_secrets(client):
     matches = [
         {"external_id": "p-1", "played_at": "2026-11-20T21:00:00+08:00", "play": "联合模拟",
-         "difficulty": "绝境模拟", "result": "win", "kills": 90, "trophies": 5},
+         "difficulty": "绝境模拟", "result": "win", "kills": 90},
         {"external_id": "p-2", "played_at": "2026-11-21T21:00:00+08:00", "play": "独立模拟",
          "difficulty": "规程等级 6", "result": "loss", "kills": 30},
     ]
     assert client.post("/api/imports", json=matches, headers=HEADERS).status_code == 202
     drain()
-    data = client.get("/api/profile").json()
-    assert data["username"] == "tester" and data["account"] is None
-    assert data["career"]["matches"] == 2 and data["career"]["wins"] == 1
-    assert data["best"] == {"union": "绝境模拟", "solo": None}
-    assert data["trophy_total"] == {"total": 5, "source": "matches"}
-    assert data["activity"]["days"]
-    assert "uid" not in json.dumps(data)
+    career = client.get("/api/career").json()
+    assert career["career"]["matches"] == 2 and career["career"]["wins"] == 1
+    assert career["best"] == {"union": "绝境模拟", "solo": None}
+    assert career["activity"]["days"]
+    solo = client.get("/api/career", params={"play": "独立模拟"}).json()
+    assert solo["career"]["matches"] == 1 and solo["best"] == {"union": None, "solo": None}
+
+    identity = client.get("/api/profile").json()
+    assert identity == {"username": "tester", "display_name": None, "avatar_url": None, "account": None}
+
+
+def test_display_name_is_separate_from_username(client):
+    assert client.get("/api/session").json() == {"username": "tester", "display_name": None, "avatar_url": None}
+    updated = client.patch("/api/profile", json={"display_name": "  夜  莺 "}, headers=HEADERS)
+    assert updated.status_code == 200 and updated.json()["display_name"] == "夜 莺"
+    assert client.get("/api/session").json()["username"] == "tester"
+    assert client.get("/api/profile").json()["display_name"] == "夜 莺"
+    assert client.patch("/api/profile", json={"display_name": "x" * 17}, headers=HEADERS).status_code == 422
+    assert client.patch("/api/profile", json={"display_name": "x"}).status_code == 403
+    cleared = client.patch("/api/profile", json={"display_name": ""}, headers=HEADERS).json()
+    assert cleared["display_name"] is None and cleared["username"] == "tester"
+
+
+def test_avatar_upload_serve_and_delete(client):
+    from io import BytesIO
+    from PIL import Image
+    source = BytesIO()
+    Image.new("RGB", (300, 120), (10, 200, 120)).save(source, format="JPEG")
+    upload_headers = {**HEADERS, "Content-Type": "image/jpeg"}
+    assert client.put("/api/profile/avatar", content=b"x", headers={**HEADERS, "Content-Type": "text/plain"}).status_code == 415
+    assert client.put("/api/profile/avatar", content=b"junk", headers=upload_headers).status_code == 422
+    assert client.put("/api/profile/avatar", content=b"x" * (2 * 1024 * 1024 + 1), headers=upload_headers).status_code == 413
+
+    saved = client.put("/api/profile/avatar", content=source.getvalue(), headers=upload_headers)
+    assert saved.status_code == 200
+    url = saved.json()["avatar_url"]
+    assert url.startswith("/api/profile/avatar?v=")
+    assert client.get("/api/session").json()["avatar_url"] == url
+    image = client.get(url)
+    assert image.status_code == 200 and image.headers["content-type"] == "image/png"
+    assert "max-age" in image.headers["cache-control"] and image.headers["x-content-type-options"] == "nosniff"
+    assert Image.open(BytesIO(image.content)).size == (256, 256)
+    assert client.get("/api/session").headers["cache-control"] == "no-store"
+
+    removed = client.delete("/api/profile/avatar", headers=HEADERS).json()
+    assert removed["avatar_url"] is None
+    assert client.get("/api/profile/avatar").status_code == 404
 
 
 def test_distribution_counts_boss_ids_and_names_once_per_match(client):
@@ -412,7 +452,7 @@ def test_session_cookie_is_scoped_and_hardened(client):
     lowered = response.headers["set-cookie"].lower()
     assert "httponly" in lowered
     assert "samesite=strict" in lowered
-    assert client.get("/api/session").json() == {"username": "tester"}
+    assert client.get("/api/session").json()["username"] == "tester"
     assert client.delete("/api/session", headers=HEADERS).status_code == 204
     assert client.get("/api/session").status_code == 401
 

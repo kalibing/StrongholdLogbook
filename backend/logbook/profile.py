@@ -1,8 +1,4 @@
-"""「我的主页」：把一个账号的全部对局汇总成生涯档案。
-
-只用已入库的对局（排除疑似直接退出），不依赖筛选条件；成就档案里的昵称、等级等
-由 api 层另外拼进去。
-"""
+"""战绩总览「生涯档案」：把筛选范围内的对局汇总成最高通关、连胜、生涯纪录与活跃度。"""
 
 from datetime import date, timedelta
 import re
@@ -68,12 +64,6 @@ def summarize(rows, excluded: int, today: date) -> dict:
     durations = [row["duration_seconds"] for row in rows if row["duration_seconds"] is not None]
     kills = [row["kills"] for row in rows if row["kills"] is not None]
     days = {stats.day_key(row) for row in rows}
-    plays: dict[str, dict] = {}
-    for row in rows:
-        entry = plays.setdefault(row["play"], {"play": row["play"], "matches": 0, "wins": 0})
-        entry["matches"] += 1
-        entry["wins"] += row["result"] == "win"
-    _, operators = stats.operator_stats(rows)
     return {
         "career": {
             "matches": len(rows),
@@ -91,9 +81,5 @@ def summarize(rows, excluded: int, today: date) -> dict:
         },
         "streaks": streaks(rows),
         "best": best_clears(rows),
-        "plays": sorted(plays.values(), key=lambda entry: -entry["matches"]),
-        "operators": sorted(operators, key=lambda row: (-row["count"], row["name"]))[:5],
-        "strategies": stats.strategy_stats(rows, limit=5),
-        "recent_results": [row["result"] for row in rows[-20:]],
         "activity": heatmap(rows, today),
     }

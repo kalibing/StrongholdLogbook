@@ -45,9 +45,6 @@ def test_summarize_career_and_heatmap():
     assert (career["matches"], career["wins"], career["losses"], career["excluded"]) == (3, 2, 1, 1)
     assert career["active_days"] == 2 and career["play_seconds"] == 900
     assert (career["total_kills"], career["max_kills"], career["max_layers"]) == (140, 100, 6)
-    assert summary["operators"][0]["name"] == "陈" and summary["operators"][0]["count"] == 2
-    assert summary["strategies"][0] == {"name": "条文修正", "count": 2, "wins": 1, "win_rate": .5}
-    assert [entry["play"] for entry in summary["plays"]] == ["联合模拟", "独立模拟"]
     days = summary["activity"]["days"]
     assert len(days) == 7 * (profile.HEATMAP_WEEKS - 1) + 5  # 从 HEATMAP_WEEKS 周前的周一到今天（周五）
     assert date.fromisoformat(days[0]["day"]).weekday() == 0
@@ -57,4 +54,4 @@ def test_summarize_career_and_heatmap():
 def test_summarize_empty():
     summary = profile.summarize([], excluded=0, today=date(2026, 11, 27))
     assert summary["career"]["matches"] == 0 and summary["career"]["win_rate"] is None
-    assert summary["operators"] == [] and summary["best"] == {"union": None, "solo": None}
+    assert summary["best"] == {"union": None, "solo": None} and summary["streaks"]["current"] is None

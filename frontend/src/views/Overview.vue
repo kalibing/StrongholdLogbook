@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, type Component } from 'vue'
 import { NIcon, NSelect } from 'naive-ui'
-import { FlameOutline, LayersOutline, NuclearOutline, PeopleOutline, ShieldOutline, SkullOutline, SpeedometerOutline, TrendingUpOutline } from '@vicons/ionicons5'
+import { FlameOutline, LayersOutline, NuclearOutline, PeopleOutline, RibbonOutline, ShieldOutline, SkullOutline, SpeedometerOutline, TrendingUpOutline } from '@vicons/ionicons5'
 import { logbook } from '../context'
 import { query, useResource } from '../api'
 import { BOND_ICONS, BOSS_MARKS, difficultyIcon, FUNDS_ICON } from '../assets'
@@ -11,6 +11,7 @@ import { strategyIcon, strategyOf, unitOf } from '../bands'
 import type { DistributionGroup, MatchDetail, Overview } from '../models'
 import FiltersBar from '../components/FiltersBar.vue'
 import BondShareChart from '../components/BondShareChart.vue'
+import CareerPanel from '../components/CareerPanel.vue'
 import MatchReport from '../components/MatchReport.vue'
 import TrendChart from '../components/TrendChart.vue'
 import TrophyIcon from '../components/TrophyIcon.vue'
@@ -22,6 +23,7 @@ const sections = [
   { id: 'bonds', label: '盟约分析', icon: LayersOutline },
   { id: 'trend', label: '对局趋势', icon: TrendingUpOutline },
   { id: 'operators', label: '常用阵容', icon: PeopleOutline },
+  { id: 'career', label: '生涯档案', icon: RibbonOutline },
 ] as const
 const section = ref<(typeof sections)[number]['id']>('summary')
 const scope = ref<'recent' | 'all' | 'day'>('recent')
@@ -39,6 +41,14 @@ const { data, pending, error, refresh, resolvedUrl } = useResource<Overview>(url
 const report = useResource<MatchDetail>(detailUrl, revision)
 
 const rate = computed(() => data.value?.matches ? data.value.wins / data.value.matches : 0)
+/** PRTS：累计奖杯 0 / 10 / 30 / 60 / 100 / 150 / 200 / 300+ 对应奖杯 1–8 级，与 TrophyIcon 一致。 */
+const TROPHY_STEPS = [0, 10, 30, 60, 100, 150, 200, 300]
+const trophyStep = computed(() => {
+  const total = data.value?.trophy_total?.total
+  if (total == null) return null
+  const level = data.value?.trophy_badge?.level ?? (TROPHY_STEPS.filter(value => total >= value).length || 1)
+  return `${level} 级`
+})
 // 按日期聚合时后端给的是：单日最高总层数、单日单项最高、金币合计、击杀与回合的场均。
 const charts = computed<{ metric: Metric; title: string }[]>(() => daily.value ? [
   { metric: 'peak', title: '单日单项最高盟约层数' },
@@ -129,6 +139,7 @@ function openMatch(id: string) {
                 <dt><TrophyIcon :badge="data.trophy_badge" :total="data.trophy_total?.total" :size="38" />奖杯总数</dt>
                 <dd class="trophy-change-value">{{ number(data.trophy_total?.total ?? null) }}</dd>
               </div>
+              <p v-if="trophyStep" class="trophy-step muted">{{ trophyStep }}</p>
             </dl>
           </section>
 
@@ -140,7 +151,7 @@ function openMatch(id: string) {
                 <dt>单项最高盟约</dt>
                 <dd id="peak" class="peak-value" :title="data.peak ? data.peak.names.join('、') : ''">
                   <template v-if="data.peak">
-                    <img v-if="BOND_ICONS[majorBond]" :src="BOND_ICONS[majorBond]" width="40" height="40" :alt="majorBond">
+                    <img v-if="BOND_ICONS[majorBond]" :src="BOND_ICONS[majorBond]" width="30" height="30" :alt="majorBond">
                     <span class="bond-glyph" v-else aria-hidden="true"></span>
                     <b>{{ number(data.peak.layers) }} 层</b>
                   </template>
@@ -313,6 +324,10 @@ function openMatch(id: string) {
         <p v-else class="muted">暂无阵容明细</p>
       </section>
       </div>
+
+      <div v-else-if="section === 'career'">
+        <CareerPanel />
+      </div>
     </Transition>
   </template>
 
@@ -323,7 +338,7 @@ function openMatch(id: string) {
 <style scoped>
 .overview-cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: .55rem;
   min-width: 0;
   margin: 1rem 0;
@@ -366,7 +381,7 @@ function openMatch(id: string) {
   .overview-panel-enter-from { opacity: 0; transform: translateY(7px); }
 }
 @media (max-width: 540px) {
-  .overview-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .trend-scope { width: 8rem; }
 /* 常用策略沿用「常用盟约」的卡片样式，只是网格单独声明。 */
@@ -381,4 +396,5 @@ function openMatch(id: string) {
 .overview-trophies dt { display: flex; align-items: center; gap: .65rem; font-weight: 650; }
 .trophy-change-value { color: var(--accent); font: 700 clamp(1.5rem, 3vw, 2rem)/1 var(--numbers); }
 .trophy-change-value--loss { color: var(--loss); }
+.trophy-step { margin-top: .35rem; font-size: .78rem; text-align: right; }
 </style>

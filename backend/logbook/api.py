@@ -14,7 +14,7 @@ from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import achievements, daily_card, daily_review, hypergryph, profile, skland, stats
+from . import accounts, achievements, daily_card, daily_review, hypergryph, profile, skland, stats
 from .config import settings
 from .credentials import ACHIEVEMENTS, SKLAND, CredentialStorageError, initialize_vault
 from .db import connection_pool
@@ -56,7 +56,8 @@ async def protect_requests(request: Request, call_next):
         response = JSONResponse({"detail": "请求来源无效"}, 403)
     else:
         response = await call_next(request)
-    response.headers["Cache-Control"] = "no-store"
+    # 默认不缓存；个别响应（如带版本号的头像）自己声明缓存策略。
+    response.headers.setdefault("Cache-Control", "no-store")
     return response
 
 
@@ -99,8 +100,9 @@ def health(request: Request):
 
 
 @app.get("/api/session")
-def session(user=Depends(current_user)):
-    return {"username": user["username"]}
+def session(request: Request, user=Depends(current_user)):
+    with request.app.state.pool.connection() as database:
+        return accounts.load(database, user)
 
 
 @app.post("/api/session")
@@ -129,11 +131,13 @@ def login(details: Login, request: Request, response: Response):
                              (failures, now + timedelta(minutes=15) if failures >= 8 else None, user["id"]))
     if not authenticated:
         raise HTTPException(401, "用户名或密码错误")
+    with request.app.state.pool.connection() as database:
+        account = accounts.load(database, user)
     response.set_cookie(
         COOKIE, token, max_age=int(SESSION_TTL.total_seconds()), httponly=True,
         secure=settings.cookie_secure, samesite="strict", path="/",
     )
-    return {"username": user["username"]}
+    return account
 
 
 @app.delete("/api/session", status_code=status.HTTP_204_NO_CONTENT)
@@ -258,20 +262,28 @@ def trophy_summary(database, user_id) -> dict:
     return {"trophy_badge": badge, "trophy_total": total}
 
 
-@app.get("/api/profile")
-def my_profile(request: Request, user=Depends(current_user)):
-    """「我的主页」：账号生涯汇总，不受筛选影响；疑似直接退出的对局不计入。"""
+@app.get("/api/career")
+def career(request: Request, filters: Annotated[Filters, Depends()], user=Depends(current_user)):
+    """战绩总览「生涯档案」：最高通关、连胜、生涯纪录与近一年活跃度，跟随筛选条件。"""
+    where, params = filters.model_copy(update={"include_exits": True}).sql(user["id"])
     with request.app.state.pool.connection() as database:
         rows = database.execute(
-            "SELECT played_at, play, difficulty, result, strategy, kills, duration_seconds, suspected_exit, bonds, operators "
-            "FROM matches WHERE user_id = %s ORDER BY played_at, id", (user["id"],),
+            "SELECT played_at, play, difficulty, result, kills, duration_seconds, suspected_exit, bonds "
+            f"FROM matches WHERE {where} ORDER BY played_at, id", params,
         ).fetchall()
+    kept = rows if filters.include_exits else [row for row in rows if not row["suspected_exit"]]
+    return profile.summarize(kept, len(rows) - len(kept), datetime.now(CHINA).date())
+
+
+@app.get("/api/profile")
+def my_profile(request: Request, user=Depends(current_user)):
+    """个人主页：站内昵称 / 头像，以及已绑定成就档案时的游戏昵称（只给展示字段）。"""
+    with request.app.state.pool.connection() as database:
         link = database.execute("SELECT nickname, payload FROM achv_links WHERE user_id = %s", (user["id"],)).fetchone()
-        trophies = trophy_summary(database, user["id"])
-    kept = [row for row in rows if not row["suspected_exit"]]
+        identity = accounts.load(database, user)
     payload = (link["payload"] if link else None) or {}
     player = payload.get("player") or {}
-    # 只给展示用的字段：不返回 uid、手机号、令牌。
+    # 不返回 uid、手机号、令牌。
     account = {
         "nickname": player.get("nickname") or (link["nickname"] if link else None),
         "nick_number": player.get("nick_number"),
@@ -279,10 +291,80 @@ def my_profile(request: Request, user=Depends(current_user)):
         "likes": payload.get("likes"),
         "titles": len(payload.get("titles") or []),
     } if link else None
-    return {
-        "username": user["username"], "account": account, **trophies,
-        **profile.summarize(kept, len(rows) - len(kept), datetime.now(CHINA).date()),
-    }
+    return {**identity, "account": account}
+
+
+class ProfileUpdate(BaseModel):
+    display_name: Annotated[str, StringConstraints(max_length=64)] | None = None
+
+
+@app.patch("/api/profile")
+def update_profile(details: ProfileUpdate, request: Request, user=Depends(current_user)):
+    """改昵称；传空串或 null 清除昵称，页面回落显示用户名。用户名本身不可改。"""
+    try:
+        name = accounts.clean_name(details.display_name)
+    except accounts.AccountError as error:
+        raise HTTPException(422, str(error)) from error
+    with request.app.state.pool.connection() as database:
+        database.execute(
+            "INSERT INTO user_profiles (user_id, display_name) VALUES (%s, %s) "
+            "ON CONFLICT (user_id) DO UPDATE SET display_name = excluded.display_name",
+            (user["id"], name),
+        )
+        return accounts.load(database, user)
+
+
+@app.put("/api/profile/avatar")
+async def upload_avatar(request: Request, user=Depends(current_user)):
+    """请求体直接是图片字节（Content-Type: image/*）；服务端裁成 256×256 PNG 后保存。"""
+    if not request.headers.get("content-type", "").startswith("image/"):
+        raise HTTPException(415, "请上传图片文件")
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > accounts.AVATAR_BYTES:
+        raise HTTPException(413, "图片不能超过 2 MB")
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > accounts.AVATAR_BYTES:
+            raise HTTPException(413, "图片不能超过 2 MB")
+    try:
+        avatar = await run_in_threadpool(accounts.process_avatar, bytes(body))
+    except accounts.AccountError as error:
+        raise HTTPException(422, str(error)) from error
+    version = int(datetime.now(timezone.utc).timestamp() * 1000)
+
+    def save():
+        with request.app.state.pool.connection() as database:
+            database.execute(
+                "INSERT INTO user_profiles (user_id, avatar, avatar_version) VALUES (%s, %s, %s) "
+                "ON CONFLICT (user_id) DO UPDATE SET avatar = excluded.avatar, avatar_version = excluded.avatar_version",
+                (user["id"], avatar, version),
+            )
+            return accounts.load(database, user)
+
+    return await run_in_threadpool(save)
+
+
+@app.delete("/api/profile/avatar")
+def delete_avatar(request: Request, user=Depends(current_user)):
+    with request.app.state.pool.connection() as database:
+        database.execute(
+            "UPDATE user_profiles SET avatar = NULL, avatar_version = 0 WHERE user_id = %s", (user["id"],),
+        )
+        return accounts.load(database, user)
+
+
+@app.get("/api/profile/avatar", response_class=Response, responses={200: {"content": {"image/png": {}}}})
+def avatar(request: Request, user=Depends(current_user)):
+    """只返回当前登录用户自己的头像；URL 带版本号，换头像后地址会变，所以可以长缓存。"""
+    with request.app.state.pool.connection() as database:
+        row = database.execute("SELECT avatar FROM user_profiles WHERE user_id = %s", (user["id"],)).fetchone()
+    if not row or not row["avatar"]:
+        raise HTTPException(404, "还没有设置头像")
+    return Response(bytes(row["avatar"]), media_type="image/png", headers={
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+    })
 
 
 def daily_review_data(request, day, user_id):
