@@ -142,6 +142,37 @@ SCHEMA = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS qq_bind_codes (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        bot_app_id TEXT NOT NULL,
+        code_hash BLOB NOT NULL UNIQUE,
+        expires_at INTEGER NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS qq_group_identities (
+        bot_app_id TEXT NOT NULL,
+        group_openid TEXT NOT NULL,
+        member_openid TEXT NOT NULL,
+        openid TEXT NOT NULL,
+        PRIMARY KEY (bot_app_id, group_openid, member_openid),
+        FOREIGN KEY (bot_app_id, openid) REFERENCES qq_identities(bot_app_id, openid) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS qq_group_codes (
+        bot_app_id TEXT NOT NULL,
+        group_openid TEXT NOT NULL,
+        member_openid TEXT NOT NULL,
+        request_hash BLOB NOT NULL UNIQUE,
+        openid TEXT,
+        confirmation_hash BLOB,
+        expires_at INTEGER NOT NULL,
+        PRIMARY KEY (bot_app_id, group_openid, member_openid),
+        FOREIGN KEY (bot_app_id, openid) REFERENCES qq_identities(bot_app_id, openid) ON DELETE CASCADE
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS feed_subscriptions (
         bot_app_id TEXT NOT NULL,
         target_type TEXT NOT NULL CHECK (target_type IN ('group', 'c2c')),

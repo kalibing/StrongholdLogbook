@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -50,6 +51,25 @@ class Settings:
         value = os.getenv("LOGBOOK_REGISTRATION", "off").strip().lower() or "off"
         if value not in {"off", "open"}:
             raise ValueError("LOGBOOK_REGISTRATION must be 'off' or 'open'")
+        return value
+
+    @property
+    def qq_app_id(self) -> str:
+        return os.getenv("QQBOT_APP_ID", "").strip()
+
+    @property
+    def qq_bind_command(self) -> str:
+        return self._qq_command("QQBOT_BIND_COMMAND", "绑定")
+
+    @property
+    def qq_report_command(self) -> str:
+        return self._qq_command("QQBOT_REPORT_COMMAND", "日报")
+
+    @staticmethod
+    def _qq_command(variable: str, default: str) -> str:
+        value = os.getenv(variable, "").strip() or default
+        if not re.fullmatch(r"[\w-]{1,16}", value):
+            raise ValueError(f"{variable} must be a single command of 1–16 characters")
         return value
 
     @property

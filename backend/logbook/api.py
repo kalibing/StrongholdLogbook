@@ -16,7 +16,7 @@ from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import accounts, achievements, daily_card, daily_review, hypergryph, notifications, profile, skland, stats
+from . import accounts, achievements, daily_card, daily_review, hypergryph, notifications, profile, qq_binding, skland, stats
 from .config import settings
 from .credentials import ACHIEVEMENTS, SKLAND, CredentialStorageError, initialize_vault
 from .db import connection_pool
@@ -66,6 +66,7 @@ user_quotas = {
     "card": (FailureThrottle(limit=2, window=DAY), "战报图片每天最多生成 2 次"),
     "skland": (FailureThrottle(limit=2, window=DAY), "森空岛同步每天最多 2 次"),
     "achv": (FailureThrottle(limit=20, window=60 * 60), "成就绑定尝试太频繁，请稍后再试"),
+    "qq_bind": (FailureThrottle(limit=10, window=60 * 60), "获取 QQ 绑定码太频繁，请稍后再试"),
 }
 
 
@@ -498,27 +499,9 @@ def overview(
             "SELECT id, played_at, result, strategy, rounds, kills, coins, trophies, suspected_exit, bonds, operators "
             f"FROM matches WHERE {where} ORDER BY played_at, id", params,
         ).fetchall()
-        trophies = trophy_summary(database, user["id"])
+        trophies = daily_card.trophy_summary(database, user["id"])
     records = candidates if filters.include_exits else [row for row in candidates if not row["suspected_exit"]]
     return {**stats.overview(records, len(candidates) - len(records), scope), **trophies}
-
-
-def trophy_summary(database, user_id) -> dict:
-    """奖杯是账号累计值，不随筛选变化：优先用成就档案，没绑定时用全部对局的奖杯记录累加兜底。"""
-    link = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user_id,)).fetchone()
-    recorded = database.execute(
-        "SELECT SUM(trophies) AS total, COUNT(trophies) AS counted FROM matches WHERE user_id = %s", (user_id,),
-    ).fetchone()
-    payload = (link["payload"] if link else None) or {}
-    trophy = payload.get("trophy")
-    badge = {"icon": trophy.get("icon"), "level": trophy.get("level")} if trophy else None
-    if trophy and trophy.get("total") is not None:
-        total = {"total": trophy["total"], "source": "profile"}
-    elif recorded and recorded["counted"]:
-        total = {"total": max(0, int(recorded["total"] or 0)), "source": "matches"}
-    else:
-        total = None
-    return {"trophy_badge": badge, "trophy_total": total}
 
 
 @app.get("/api/career")
@@ -540,6 +523,12 @@ def my_profile(request: Request, user=Depends(current_user)):
     with request.app.state.pool.connection() as database:
         link = database.execute("SELECT nickname, payload FROM achv_links WHERE user_id = %s", (user["id"],)).fetchone()
         identity = accounts.load(database, user)
+        app_id = settings.qq_app_id
+        if app_id:
+            identity["qq"] = {
+                "bound": qq_binding.private_bound(database, app_id, user["id"]),
+                "report_command": settings.qq_report_command,
+            }
     payload = (link["payload"] if link else None) or {}
     player = payload.get("player") or {}
     # 不返回 uid、手机号、令牌。
@@ -551,6 +540,21 @@ def my_profile(request: Request, user=Depends(current_user)):
         "titles": len(payload.get("titles") or []),
     } if link else None
     return {**identity, "account": account}
+
+
+@app.post("/api/profile/qq-binding", status_code=201)
+@quota("qq_bind")
+def start_qq_binding(request: Request, user=Depends(current_user)):
+    app_id = settings.qq_app_id
+    if not app_id:
+        raise HTTPException(503, "站点尚未配置 QQ 机器人")
+    command = settings.qq_bind_command
+    try:
+        with request.app.state.pool.connection() as database:
+            code = qq_binding.issue_account_code(database, app_id, user["id"])
+    except accounts.AccountError as error:
+        raise HTTPException(409, str(error)) from None
+    return {"command": f"{command} {code}", "expires_in": int(qq_binding.CODE_TTL.total_seconds())}
 
 
 class ProfileUpdate(BaseModel):
@@ -646,23 +650,9 @@ def daily_review_summary(day: date, request: Request, user=Depends(current_user)
 def daily_review_image(request: Request, day: date | None = None, user=Depends(current_user)):
     """昨日战报图片（PNG）。不传 day 时取北京时间的昨天；口径与网页昨日战报一致。"""
     day = day or (datetime.now(CHINA).date() - timedelta(days=1))
-    where, params = Filters(start=day, end=day, include_exits=True).sql(user["id"])
     with request.app.state.pool.connection() as database:
-        rows = database.execute(
-            "SELECT id, played_at, result, play, difficulty, strategy, rounds, kills, coins, trophies, "
-            f"duration_seconds, suspected_exit, bonds, bosses FROM matches WHERE {where} ORDER BY played_at DESC, id DESC",
-            params,
-        ).fetchall()
-        skland_profile = database.execute(
-            "SELECT nickname FROM skland_profiles WHERE user_id = %s", (user["id"],),
-        ).fetchone()
-        trophies = trophy_summary(database, user["id"])
-    display_name = (skland_profile["nickname"] if skland_profile else None) or user["username"]
-    trophy_total = trophies["trophy_total"]
-    kept = [row for row in rows if not row["suspected_exit"]]
+        card = daily_card.load(database, user, day)
     try:
-        card = daily_card.build(kept, len(rows) - len(kept), day, display_name,
-                                badge=trophies["trophy_badge"], trophy_total=trophy_total["total"] if trophy_total else None)
         png = daily_card.render(card)
     except daily_card.CardFontError as error:
         raise HTTPException(503, str(error)) from error

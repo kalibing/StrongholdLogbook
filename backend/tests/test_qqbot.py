@@ -1,12 +1,14 @@
 """QQ 机器人回调：地址校验、验签、去重、发「登录」拿到可用的一次性链接。"""
 
+from datetime import datetime, timedelta
 import json
 import time
 
 import pytest
 from fastapi.testclient import TestClient
 
-from logbook import api, qqbot
+from logbook import accounts, api, qqbot, storage, worker
+from logbook.records import CHINA
 
 ORIGIN = "http://localhost:8080"
 SECRET = "test-bot-secret"
@@ -17,9 +19,17 @@ OPENID = "E4F1A2B3C4D5E6F7A8B9C0D1E2F3A4B5"
 class FakeClient:
     def __init__(self):
         self.replies = []
+        self.group_replies = []
+        self.images = []
 
     def reply_c2c(self, openid, msg_id, content, seq=1):
         self.replies.append({"openid": openid, "msg_id": msg_id, "content": content})
+
+    def reply_group(self, group_openid, msg_id, content, seq=1):
+        self.group_replies.append((group_openid, msg_id, content))
+
+    def reply_image(self, target_type, openid, msg_id, png, content="", seq=1):
+        self.images.append((target_type, openid, msg_id, png))
 
 
 @pytest.fixture()
@@ -27,6 +37,7 @@ def bot(tmp_path, monkeypatch):
     monkeypatch.setenv("LOGBOOK_DB", "sqlite")
     monkeypatch.setenv("LOGBOOK_SQLITE", str(tmp_path / "logbook.sqlite3"))
     qqbot.link_quota._failures.clear()
+    qqbot.report_quota._failures.clear()
     client = FakeClient()
     with TestClient(api.app):  # 建表
         pass
@@ -52,6 +63,97 @@ def c2c(content="登录", event_id="evt-1", msg_id="msg-1"):
 def post(client, payload, **kwargs):
     body, headers = signed(payload, **kwargs)
     return client.post(qqbot.WEBHOOK_PATH, content=body, headers=headers)
+
+
+def group_at(content, msg_id, *, member="qq-member", group="qq-group", event="GROUP_AT_MESSAGE_CREATE"):
+    return {"op": 0, "id": msg_id, "t": event, "d": {
+        "id": msg_id, "group_openid": group, "content": content, "author": {"member_openid": member},
+    }}
+
+
+def test_bind_web_account_in_private_and_request_group_report(bot, monkeypatch):
+    client, fake = bot
+    monkeypatch.setenv("QQBOT_APP_ID", CONFIG.app_id)
+    origin = {"Origin": ORIGIN}
+    rendered = []
+
+    def render(card):
+        rendered.append(card)
+        return b"test-png"
+
+    monkeypatch.setattr(qqbot.daily_card, "render", render)
+    played_at = (datetime.now(CHINA) - timedelta(days=1)).replace(hour=12)
+    with TestClient(api.app) as web:
+        with storage.connect() as db:
+            user = accounts.create_with_password(db, "existing", "web-user-password")
+            other = accounts.create_with_password(db, "other", "other-user-password")
+            match = {"external_id": "visible", "played_at": played_at.isoformat(),
+                     "play": "独立模拟", "difficulty": "规程等级 8", "result": "win"}
+            db.execute(worker.UPSERT_MATCH, worker.write_parameters(db, user["id"], match))
+            db.execute(worker.UPSERT_MATCH, worker.write_parameters(
+                db, user["id"], {**match, "external_id": "exit", "suspected_exit": True},
+            ))
+            db.execute(worker.UPSERT_MATCH, worker.write_parameters(db, other["id"], match))
+        assert web.post("/api/profile/qq-binding", headers=origin).status_code == 401
+        assert web.post("/api/session", headers=origin, json={
+            "username": "existing", "password": "web-user-password",
+        }).status_code == 200
+        assert web.post("/api/profile/qq-binding").status_code == 403
+        code_response = web.post("/api/profile/qq-binding", headers=origin)
+        assert code_response.status_code == 201
+        command = code_response.json()["command"]
+        assert post(client, group_at(command, "public-bind")).status_code == 200
+        assert "私聊" in fake.group_replies[-1][2]
+        assert web.get("/api/profile").json()["qq"]["bound"] is False
+        assert post(client, c2c(command, "private-bind", "private-bind")).status_code == 200
+        assert "已绑定" in fake.replies[-1]["content"]
+        assert web.get("/api/profile").json()["qq"]["bound"] is True
+        session = web.get("/api/session").json()
+        assert not session["username_editable"] and not session["needs_password"]
+        assert post(client, c2c(command, "replay-bind", "replay-bind")).status_code == 200
+        assert "无效" in fake.replies[-1]["content"]
+        assert post(client, c2c(event_id="private-login", msg_id="private-login")).status_code == 200
+        token = fake.replies[-1]["content"].split("#qq-login=")[1]
+        web.cookies.clear()
+        assert web.post("/api/session/qq-link", headers=origin, json={"token": token}).json()["username"] == "existing"
+
+    replies = len(fake.group_replies)
+    assert post(client, group_at("/日报", "not-at", event="GROUP_MESSAGE_CREATE")).status_code == 200
+    assert len(fake.group_replies) == replies and fake.images == []
+    assert post(client, group_at("<@bot> /日报", "first-report")).status_code == 200
+    request = fake.group_replies[-1][2].rsplit("「", 1)[1].split("」")[0]
+    assert post(client, c2c(request, "private-proof", "private-proof")).status_code == 200
+    proof = fake.replies[-1]["content"].split("「")[1].split("」")[0]
+    assert post(client, group_at(proof, "wrong-member", member="other-qq-member")).status_code == 200
+    assert post(client, group_at(proof, "wrong-group", group="other-qq-group")).status_code == 200
+    assert fake.images == []
+    assert post(client, group_at(proof, "correct-member")).status_code == 200
+    assert post(client, group_at("日报", "repeat-report")).status_code == 200
+    assert fake.images == [
+        ("group", "qq-group", "correct-member", b"test-png"),
+        ("group", "qq-group", "repeat-report", b"test-png"),
+    ]
+    assert all(card.day == played_at.date() and card.wins == 1 and card.excluded == 1 for card in rendered)
+    assert all(card.username != "existing" for card in rendered)
+
+
+def test_qq_signup_binds_openid_for_group_reports(bot, monkeypatch):
+    client, fake = bot
+    monkeypatch.setenv("QQBOT_APP_ID", CONFIG.app_id)
+    assert post(client, group_at("日报", "before-signup", member=OPENID)).status_code == 200
+    assert "私聊" in fake.group_replies[-1][2] and "登录" in fake.group_replies[-1][2]
+    with storage.connect() as db:
+        assert accounts.find_qq_account(db, CONFIG.app_id, OPENID) is None
+
+    assert post(client, c2c(event_id="signup", msg_id="signup")).status_code == 200
+    token = fake.replies[-1]["content"].split("#qq-login=")[1]
+    with TestClient(api.app) as web:
+        response = web.post("/api/session/qq-link", headers={"Origin": ORIGIN}, json={"token": token})
+        assert response.json()["username"].startswith("qq-")
+        assert web.get("/api/profile").json()["qq"]["bound"] is True
+
+    assert post(client, group_at("/日报", "after-signup", member=OPENID)).status_code == 200
+    assert "暂无有效作战记录" in fake.group_replies[-1][2]
 
 
 def test_seed_is_secret_repeated_to_32_bytes():

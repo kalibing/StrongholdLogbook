@@ -3,7 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import { NButton, NIcon, NInput } from 'naive-ui'
 import { CreateOutline } from '@vicons/ionicons5'
 import { logbook } from '../context'
-import { api, message, send, useResource } from '../api'
+import { api, message, post, send, useResource } from '../api'
 import { number } from '../format'
 import type { ProfileInfo, User } from '../models'
 
@@ -17,6 +17,35 @@ const displayName = computed(() => user.value?.display_name || username.value)
 const avatarUrl = computed(() => user.value?.avatar_url ?? null)
 const initial = computed(() => Array.from(displayName.value)[0]?.toUpperCase() ?? '?')
 const account = computed(() => data.value?.account ?? null)
+const qq = computed(() => data.value?.qq ?? null)
+const qqBinding = ref<{ command: string; expires_in: number } | null>(null)
+const qqBusy = ref(false)
+const qqError = ref('')
+const qqCopyStatus = ref('')
+
+async function requestQqBinding() {
+  qqBusy.value = true
+  qqError.value = ''
+  qqCopyStatus.value = ''
+  try {
+    qqBinding.value = await api('/profile/qq-binding', post({}))
+  } catch (reason) {
+    qqError.value = message(reason)
+    refresh()
+  } finally {
+    qqBusy.value = false
+  }
+}
+
+async function copyQqCommand() {
+  if (!qqBinding.value) return
+  try {
+    await navigator.clipboard.writeText(qqBinding.value.command)
+    qqCopyStatus.value = '已复制'
+  } catch {
+    qqCopyStatus.value = '请手动复制指令'
+  }
+}
 
 const NAME_LIMIT = 16
 const editing = ref(false)
@@ -181,6 +210,29 @@ async function removeAvatar() {
             <small v-if="account.level" class="muted">博士等级 {{ account.level }} · 获赞 {{ number(account.likes ?? null) }}</small>
           </dd>
         </div>
+        <div v-if="qq">
+          <dt>QQ 账号</dt>
+          <dd>
+            <template v-if="qq.bound">
+              已绑定 <small class="muted">在群里 @机器人 并发送「{{ qq.report_command }}」，可查询自己的昨日战报。</small>
+            </template>
+            <template v-else>
+              <NButton size="small" secondary :loading="qqBusy" @click="requestQqBinding">
+                {{ qqBinding ? '重新获取绑定码' : '获取 QQ 绑定码' }}
+              </NButton>
+              <div v-if="qqBinding" class="profile-qq-binding">
+                <small class="muted">请在 {{ qqBinding.expires_in / 60 }} 分钟内私聊机器人发送下面的完整指令。</small>
+                <div class="profile-qq-command">
+                  <code>{{ qqBinding.command }}</code>
+                  <NButton size="small" secondary @click="copyQqCommand">复制</NButton>
+                  <small v-if="qqCopyStatus" role="status">{{ qqCopyStatus }}</small>
+                </div>
+                <NButton size="small" text @click="refresh">我已发送，刷新状态</NButton>
+              </div>
+              <small v-if="qqError" class="profile-error" role="alert">{{ qqError }}</small>
+            </template>
+          </dd>
+        </div>
       </dl>
       <p v-if="data && !account" class="profile-bind muted">
         绑定<RouterLink to="/achievements">成就档案</RouterLink>后可在这里看到游戏昵称与博士等级。
@@ -240,6 +292,9 @@ async function removeAvatar() {
 .profile-facts dt { color: var(--muted); font-size: .9375rem; }
 .profile-facts dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; margin: 0; font-weight: 500; }
 .profile-facts small { font-weight: 400; font-size: .9375rem; }
+.profile-qq-binding { display: grid; justify-items: start; gap: .45rem; flex-basis: 100%; min-width: 0; }
+.profile-qq-command { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.profile-qq-command code { padding: .25rem .45rem; background: var(--inset); overflow-wrap: anywhere; }
 .profile-bind a, .profile-tip a { color: var(--accent); margin: 0 .15rem; }
 .profile-tip { margin-top: .75rem; font-size: .9375rem; }
 

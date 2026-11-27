@@ -71,6 +71,9 @@ services:
       LOGBOOK_AI_MODEL: ${LOGBOOK_AI_MODEL:-}
       LOGBOOK_AI_API_KEY: ${LOGBOOK_AI_API_KEY:-}
       LOGBOOK_REGISTRATION: ${LOGBOOK_REGISTRATION:-off}
+      QQBOT_APP_ID: ${QQBOT_APP_ID:-}
+      QQBOT_BIND_COMMAND: ${QQBOT_BIND_COMMAND:-绑定}
+      QQBOT_REPORT_COMMAND: ${QQBOT_REPORT_COMMAND:-日报}
     networks: [data, edge]
     depends_on:
       migrate:
@@ -107,6 +110,8 @@ services:
       <<: *database
       QQBOT_APP_ID: ${QQBOT_APP_ID:-}
       QQBOT_APP_SECRET: ${QQBOT_APP_SECRET:-}
+      QQBOT_BIND_COMMAND: ${QQBOT_BIND_COMMAND:-绑定}
+      QQBOT_REPORT_COMMAND: ${QQBOT_REPORT_COMMAND:-日报}
       LOGBOOK_CREDENTIAL_KEY: ${LOGBOOK_CREDENTIAL_KEY:?Set LOGBOOK_CREDENTIAL_KEY in .env}
     networks: [data, edge]
     depends_on:

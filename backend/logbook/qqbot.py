@@ -22,9 +22,11 @@
 import base64
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 import json
 import logging
 import os
+import re
 from threading import Lock
 import time
 from urllib.error import HTTPError, URLError
@@ -36,11 +38,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from . import accounts, bilibili, feeds
+from . import accounts, bilibili, daily_card, feeds, qq_binding
 from .credentials import CredentialStorageError
 from .config import settings
 from .errors import StorageUnavailable
 from .limits import FailureThrottle, RequestSizeLimit
+from .records import CHINA
 from .storage import connect
 
 LOGGER = logging.getLogger(__name__)
@@ -68,7 +71,7 @@ class BotConfig:
 
     @classmethod
     def from_env(cls) -> "BotConfig":
-        app_id = os.getenv("QQBOT_APP_ID", "").strip()
+        app_id = settings.qq_app_id
         secret = os.getenv("QQBOT_APP_SECRET", "").strip()
         if not app_id or not secret:
             raise RuntimeError("QQBOT_APP_ID and QQBOT_APP_SECRET must be set")
@@ -204,6 +207,40 @@ def login_reply(link: str, username: str) -> str:
 
 # 每个 openid 每小时最多签发 5 个登录链接，防止刷消息。
 link_quota = FailureThrottle(limit=5, window=60 * 60)
+report_quota = FailureThrottle(limit=3, window=60)
+
+
+def command_parts(content):
+    # QQ normally removes the @ prefix, but some group payloads retain it.
+    text = re.sub(r"^(?:<@!?[A-Za-z0-9_-]{1,128}>\s*)+", "", content).lstrip("/")
+    parts = text.split(maxsplit=1)
+    if not parts:
+        return "", ""
+    return parts[0], parts[1].strip().upper() if len(parts) == 2 else ""
+
+
+def binding_reply(config, openid, code):
+    if not isinstance(openid, str) or not accounts.OPENID_PATTERN.fullmatch(openid):
+        return "暂时无法确认你的 QQ 身份，请重新在私聊里发送指令。"
+    if not re.fullmatch(qq_binding.CODE_PATTERN, code):
+        return (
+            f"已有站点账号：在「我的主页」获取绑定码，然后在这里发送「{settings.qq_bind_command} 绑定码」。\n"
+            "新用户：发送「登录」即可注册并自动绑定 QQ。"
+        )
+    try:
+        with connect() as database:
+            if code.startswith("W"):
+                qq_binding.bind_account(database, config.app_id, openid, code)
+                return f"QQ 已绑定。到群里 @我发送「{settings.qq_report_command}」可以查看昨日战报。"
+            if code.startswith("G"):
+                confirmation = qq_binding.confirm_in_private(database, config.app_id, openid, code)
+                return f"回到发起请求的群，@我发送「{settings.qq_report_command} {confirmation}」确认一次。确认码请勿转发。"
+    except accounts.AccountError as error:
+        return str(error)
+    except StorageUnavailable:
+        LOGGER.warning("Could not verify a QQ binding")
+        return "暂时无法处理绑定，请稍后再试。"
+    return "请发送网站绑定码或群里的验证请求码。"
 
 
 def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
@@ -220,6 +257,10 @@ def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
             return
         if feeds.is_command(content):
             client.reply_c2c(openid, msg_id, subscription_reply(config, "c2c", openid, content))
+            return
+        command, code = command_parts(content)
+        if command == settings.qq_bind_command and command not in LOGIN_COMMANDS:
+            client.reply_c2c(openid, msg_id, binding_reply(config, author.get("user_openid"), code))
             return
         if content.lower() not in LOGIN_COMMANDS:
             client.reply_c2c(openid, msg_id, HELP_TEXT)
@@ -332,6 +373,47 @@ def handle_bili(client: QQClient, target_type: str, openid: str, msg_id: str,
         bili_login_lock.release()
 
 
+def group_report(client, config, group_openid, member_openid, msg_id, code):
+    if not isinstance(member_openid, str) or not all(
+        accounts.OPENID_PATTERN.fullmatch(value) for value in (group_openid, member_openid)
+    ):
+        client.reply_group(group_openid, msg_id, "暂时无法确认请求者的 QQ 身份。")
+        return
+    if code and (not code.startswith("C") or not re.fullmatch(qq_binding.CODE_PATTERN, code)):
+        client.reply_group(group_openid, msg_id, f"发「{settings.qq_report_command}」查看昨日战报。")
+        return
+    day = datetime.now(CHINA).date() - timedelta(days=1)
+    try:
+        with connect() as database:
+            user = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
+            if user is None and code:
+                user = qq_binding.confirm_in_group(database, config.app_id, group_openid, member_openid, code)
+            if user is None:
+                request_code = qq_binding.issue_group_code(database, config.app_id, group_openid, member_openid)
+                reply = (
+                    f"请先私聊我认证。已有站点账号可发「{settings.qq_bind_command}」查看绑定方法，新用户发「登录」。\n"
+                    f"已绑定但仍收到提示时，请私聊发「{settings.qq_bind_command} {request_code}」验证本群身份。"
+                )
+            else:
+                reply = ""
+                if report_quota.take(str(user["id"])):
+                    card = daily_card.load(database, user, day, group=True)
+                else:
+                    reply = "查询日报太频繁，请稍后再试。"
+        if reply:
+            client.reply_group(group_openid, msg_id, reply)
+        elif not card.matches:
+            client.reply_group(group_openid, msg_id, f"{day:%m 月 %d 日}暂无有效作战记录。")
+        else:
+            png = daily_card.render(card)
+            client.reply_image("group", group_openid, msg_id, png)
+    except accounts.AccountError as error:
+        client.reply_group(group_openid, msg_id, str(error))
+    except (StorageUnavailable, daily_card.CardFontError) as error:
+        LOGGER.warning("Could not produce a QQ group report: %s", type(error).__name__)
+        client.reply_group(group_openid, msg_id, "暂时无法生成昨日战报，请稍后再试。")
+
+
 def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
     group_openid = data.get("group_openid")
     msg_id = data.get("id")
@@ -340,10 +422,17 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
         LOGGER.warning("Group event without group_openid or id; ignored")
         return
     try:
+        command, code = command_parts(content)
         if is_bili_command(content):
             handle_bili(client, "group", group_openid, msg_id)
         elif feeds.is_command(content):
             client.reply_group(group_openid, msg_id, subscription_reply(config, "group", group_openid, content))
+        elif command == settings.qq_report_command:
+            author = data.get("author")
+            member_openid = author.get("member_openid") if isinstance(author, dict) else None
+            group_report(client, config, group_openid, member_openid, msg_id, code)
+        elif command == settings.qq_bind_command:
+            client.reply_group(group_openid, msg_id, "请私聊我完成账号绑定，绑定码只发在私聊里。")
         else:
             client.reply_group(group_openid, msg_id, GROUP_HELP_TEXT)
     except (HTTPError, URLError, RuntimeError, ValueError) as error:

@@ -274,6 +274,7 @@ export interface AchvEnvelope {
 /** 个人主页（/api/profile）：站内昵称 / 头像，以及已绑定成就档案时的游戏账号展示信息。 */
 export interface ProfileInfo extends User {
   account: { nickname: string | null; nick_number: string | null; level: number | null; likes: number | null; titles: number } | null
+  qq?: { bound: boolean; report_command: string }
 }
 
 /** 战绩总览「生涯档案」（/api/career），跟随筛选条件。 */

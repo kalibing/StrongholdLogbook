@@ -256,7 +256,7 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 **准备**（QQ 开放平台 → 机器人管理）：
 
 1. 取得 AppID 与 AppSecret，写进 `.env` 的 `QQBOT_APP_ID` / `QQBOT_APP_SECRET`。
-2. 事件订阅选 Webhook，回调地址填 `https://你的域名/qqbot/webhook`（平台要求 HTTPS，端口限 80 / 443 / 8080 / 8443），订阅单聊消息事件 `C2C_MESSAGE_CREATE`。
+2. 事件订阅选 Webhook，回调地址填 `https://你的域名/qqbot/webhook`（平台要求 HTTPS，端口限 80 / 443 / 8080 / 8443）。订阅单聊消息 `C2C_MESSAGE_CREATE` 和群 @ 消息 `GROUP_AT_MESSAGE_CREATE`。
 3. 启动：`docker compose --profile qqbot up -d --build`。保存回调地址时平台会发校验请求（op 13），服务会自动应答。
 4. 用测试 QQ 号私聊机器人发「登录」，点开链接即可。
 
@@ -268,6 +268,14 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 - 官方机器人拿不到 QQ 号，账号按 `(AppID, openid)` 唯一。
 
 **未经实测、接入时需要确认的点**：文档没给 op 12 回包示例（当前回 `{"op": 12, "d": 0}`）；纯文本消息里的链接是否会被平台拦截文档没写，若被拦截需改用 Markdown 消息（需在平台申请）。OpenAPI 地址按文档用 `https://api.bot.qq.com`，可用 `QQBOT_API_BASE` / `QQBOT_TOKEN_URL` 覆盖。裸机部署用 `deploy/systemd/logbook-qqbot.service`（监听 127.0.0.1:8001）。
+
+### 绑定已有账号与群日报
+
+新用户私聊机器人发「登录」即可注册并自动绑定 QQ。已有站点账号的用户在「我的主页」获取 QQ 绑定码，把完整指令私聊发给机器人。绑定后，私聊发「登录」会进入已绑定的站点账号。
+
+在群里 @机器人 发「日报」，机器人按北京时间查询发送者自己的昨日战报。QQ 返回相同 OpenID 时直接使用已有绑定。OpenID 不一致时，按提示私聊验证并在原群确认一次即可。群发图片需有 QQ 富媒体权限。
+
+机器人指令可在环境中设置 `QQBOT_BIND_COMMAND`（默认 `绑定`）和 `QQBOT_REPORT_COMMAND`（默认 `日报`）。改名时选用与现有指令不同的单个词，并一起重启 API 和机器人。
 
 ### 公告与动态推送
 

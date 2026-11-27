@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from . import bands, daily_review, stats
 from .bond_names import BOND_NAMES
-from .records import CHINA
+from .records import CHINA, Filters
 
 WIDTH = 1080
 PAD = 40
@@ -122,6 +122,42 @@ def build(rows, excluded, day, username, *, badge=None, trophy_total=None):
     return Card(day=day, username=username, matches=list(rows), excluded=excluded,
                 trophy_change=sum(trophies) if trophies else None, recap=daily_review.summarize(rows),
                 trophy_icon=f"{badge_icon}.png")
+
+
+def load(database, user, day, *, group=False):
+    user_id = user["id"]
+    where, params = Filters(start=day, end=day, include_exits=True).sql(user_id)
+    rows = database.execute(
+        "SELECT id, played_at, result, play, difficulty, strategy, rounds, kills, coins, trophies, "
+        f"duration_seconds, suspected_exit, bonds, bosses FROM matches WHERE {where} ORDER BY played_at DESC, id DESC",
+        params,
+    ).fetchall()
+    profile = database.execute("SELECT nickname FROM skland_profiles WHERE user_id = %s", (user_id,)).fetchone()
+    nickname = profile["nickname"] if profile else None
+    display_name = nickname or ("QQ 群成员" if group else user["username"])
+    trophies = trophy_summary(database, user_id)
+    total = trophies["trophy_total"]
+    kept = [row for row in rows if not row["suspected_exit"]]
+    return build(kept, len(rows) - len(kept), day, display_name, badge=trophies["trophy_badge"],
+                 trophy_total=total["total"] if total else None)
+
+
+def trophy_summary(database, user_id) -> dict:
+    """Prefer the achievement profile's lifetime trophy count, then sum the stored matches."""
+    link = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user_id,)).fetchone()
+    recorded = database.execute(
+        "SELECT SUM(trophies) AS total, COUNT(trophies) AS counted FROM matches WHERE user_id = %s", (user_id,),
+    ).fetchone()
+    payload = (link["payload"] if link else None) or {}
+    trophy = payload.get("trophy")
+    badge = {"icon": trophy.get("icon"), "level": trophy.get("level")} if trophy else None
+    if trophy and trophy.get("total") is not None:
+        total = {"total": trophy["total"], "source": "profile"}
+    elif recorded and recorded["counted"]:
+        total = {"total": max(0, int(recorded["total"] or 0)), "source": "matches"}
+    else:
+        total = None
+    return {"trophy_badge": badge, "trophy_total": total}
 
 
 # ---------------------------------------------------------------- 绘图小工具
