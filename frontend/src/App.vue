@@ -12,6 +12,7 @@ import { logbookKey, newFilters, type Theme } from './context'
 import type { Facet, User } from './models'
 import HeadingArt from './components/HeadingArt.vue'
 import LogoMark from './components/LogoMark.vue'
+import NotificationBell from './components/NotificationBell.vue'
 
 const STORAGE_THEME = 'logbook:theme'
 const route = useRoute()
@@ -292,6 +293,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
               <span class="account-copy"><b>{{ accountName }}</b><small>@{{ user.username }}</small></span>
             </button>
           </NDropdown>
+          <NotificationBell :key="user.username" />
           <NButton quaternary class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
             :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
             <template #icon>

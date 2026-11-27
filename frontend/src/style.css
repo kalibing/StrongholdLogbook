@@ -185,6 +185,24 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
 
 .theme-toggle.n-button { flex: none; width: 38px; height: 38px; padding: 0; border-radius: var(--radius); color: var(--muted); }
 .theme-toggle.n-button:hover { color: var(--accent); }
+.notice-anchor { position: relative; display: inline-flex; flex: none; }
+.notice-badge {
+  position: absolute; top: 2px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink); font: 700 .65rem/16px var(--numbers); text-align: center;
+  pointer-events: none;
+}
+.notice-modal { width: min(34rem, calc(100vw - 32px)); }
+.notice-modal .n-card__content { max-height: min(70vh, 40rem); overflow-y: auto; }
+.notice-empty { margin: 1.5rem 0; text-align: center; }
+.notice-list { display: grid; gap: .75rem; margin: 0; padding: 0; list-style: none; }
+.notice-item { padding: .75rem .9rem; border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: var(--radius); }
+.notice-item--unread { border-left-color: var(--accent); }
+.notice-item header { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
+.notice-item header b { flex: 1; min-width: 0; font-size: .95rem; }
+.notice-item time { color: var(--muted); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.notice-kind { padding: 0 .35rem; border: 1px solid var(--line); border-radius: 2px; color: var(--muted); font-size: .7rem; }
+.notice-item--unread .notice-kind { border-color: var(--accent); color: var(--accent); }
+.notice-item p { margin: .45rem 0 0; white-space: pre-line; overflow-wrap: anywhere; line-height: 1.6; }
 
 /* 窄屏顶栏：只在抽屉模式或未登录时出现 */
 .topbar {

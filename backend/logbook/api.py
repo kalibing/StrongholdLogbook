@@ -17,7 +17,7 @@ from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import accounts, achievements, daily_card, daily_review, hypergryph, profile, skland, stats
+from . import accounts, achievements, daily_card, daily_review, hypergryph, notifications, profile, skland, stats
 from .config import settings
 from .credentials import ACHIEVEMENTS, SKLAND, CredentialStorageError, initialize_vault
 from .db import connection_pool
@@ -213,6 +213,13 @@ def set_session_cookie(response: Response, token: str) -> None:
 
 
 QQ_PATTERN = r"^[1-9][0-9]{4,10}$"
+WELCOME_TITLE = "欢迎来到作战档案"
+WELCOME_BODY = (
+    "账号已创建，登录用户名就是你的 QQ 号。\n"
+    "密码只在注册时显示过一次，本站不会再次展示，也不会通过任何渠道向你索要。"
+    "如果忘记密码，请联系站长重置。\n"
+    "下一步：到「数据导入」同步森空岛战绩。"
+)
 
 
 class Registration(BaseModel):
@@ -248,6 +255,7 @@ def register(details: Registration, request: Request, response: Response):
     try:
         with request.app.state.pool.connection() as database:
             user, password = accounts.create_with_random_password(database, details.qq)
+            notifications.create(database, WELCOME_TITLE, WELCOME_BODY, user["id"])
             token = start_session(database, user["id"], now)
     except UniqueConflict:
         register_failures.hit(client)
@@ -259,6 +267,22 @@ def register(details: Registration, request: Request, response: Response):
     set_session_cookie(response, token)
     # 明文密码只出现在这一次响应里（全局 Cache-Control: no-store），服务端只存 Argon2 哈希。
     return {**account, "password": password}
+
+
+@app.get("/api/notifications")
+def list_notifications(request: Request, user=Depends(current_user)):
+    with request.app.state.pool.connection() as database:
+        return notifications.summary(database, user["id"])
+
+
+class MarkRead(BaseModel):
+    ids: list[UUID] | None = Field(default=None, max_length=notifications.LIST_LIMIT)
+
+
+@app.post("/api/notifications/read", status_code=status.HTTP_204_NO_CONTENT)
+def read_notifications(details: MarkRead, request: Request, user=Depends(current_user)):
+    with request.app.state.pool.connection() as database:
+        notifications.mark_read(database, user["id"], details.ids)
 
 
 @app.delete("/api/session", status_code=status.HTTP_204_NO_CONTENT)

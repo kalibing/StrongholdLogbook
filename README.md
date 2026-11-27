@@ -240,6 +240,21 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 链路、字段字典、两种标识的判定依据与已知限制见 [docs/achievements.md](docs/achievements.md)。
 令牌按天失效，过期后页面继续展示上次快照并提示。
 
+## 站内通知
+
+侧栏左下角的铃铛显示未读数，点开即可查看并全部标为已读。通知是纯文本，网页没有写通知的接口，只能由站长在服务端发布：
+
+```bash
+python -m logbook.admin announce "维护通知" '今晚 23:00 停机维护
+期间无法导入战绩'   # 全站公告，
+ 表示换行
+python -m logbook.admin notify 123456789 "账号提醒" "……"                          # 发给单个账号
+python -m logbook.admin list-notices                                              # 最近 50 条及其 ID
+python -m logbook.admin remove-notice <通知 ID>
+```
+
+Compose 部署在前面加 `docker compose exec api`。新用户注册时会自动收到一条欢迎通知（说明用户名即 QQ 号、密码不会再次显示）。标题最多 60 字，正文最多 2000 字。
+
 ## 昨日战报图片
 
 `GET /api/daily-review/image` 返回当前登录账号的战报 PNG（宽 1080，高度随内容变化），口径与网页「昨日战报」一致：北京时间按开局时间归档，默认排除疑似直接退出。
@@ -308,6 +323,8 @@ curl.exe -X POST "http://localhost:8000/api/imports" `
 | --- | --- | --- |
 | GET | `/api/health` | 存活与数据库连通性 |
 | GET / POST / DELETE | `/api/session` | 读取当前登录（含昵称、头像地址）、登录、退出 |
+| GET | `/api/notifications` | 站内通知（全站公告 + 发给本人的通知，最近 50 条）与未读数 |
+| POST | `/api/notifications/read` | 标记已读：`{"ids": [...]}`，省略 `ids` 表示全部 |
 | GET | `/api/registration` | 是否开放注册、是否需要邀请码 |
 | POST | `/api/register` | 按 QQ 号注册（`{"qq": "…", "invite_code": "…"}`），返回账号与一次性显示的随机密码，并直接登录 |
 | GET / PATCH | `/api/profile` | 个人主页资料 / 修改昵称（`{"display_name": "…"}`，空串清除） |

@@ -93,4 +93,21 @@ SCHEMA = (
         avatar_version INTEGER NOT NULL DEFAULT 0
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS notifications_recent ON notifications (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS notification_reads (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, notification_id)
+    )
+    """,
 )
