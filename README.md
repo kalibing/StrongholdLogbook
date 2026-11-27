@@ -224,6 +224,8 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 - API 只监听 `127.0.0.1:8000`，由 Caddy 反代；同一份 `deploy/Caddyfile` 通过 `API_UPSTREAM` / `SITE_ROOT` 环境变量切换 Compose 与裸机。
 - 两个 unit 带完整的 systemd 沙箱（`ProtectSystem=strict`、`NoNewPrivileges`、系统调用过滤、无任何 capability），唯一可写目录是 `/var/lib/logbook`（权限 700）。SQLite 部署把 `LOGBOOK_SQLITE` 指到该目录。
 - 建账号：`lb logbook.admin create-user alice`（`lb` 为上面定义的 shell 函数，交互输入密码）。
+- 战报图片用到的盟约 / 策略 / 奖杯图标要复制到 `backend/art/`（Docker 镜像构建时会自动做）：`cd frontend/public/art && tar -cf - bond-*.png strategy-band_*.png metric-funds.png metric-bond.png trophy_level*_icon.png | ssh <服务器> 'tar -x -C /opt/logbook/backend/art'`，然后重启 `logbook-api`。
+- 宝塔面板的服务器不要另装 Caddy：把 `deploy/nginx-bt-logbook.conf` 放到 `/www/server/panel/vhost/nginx/extension/<域名>/logbook.conf`，`nginx -t` 通过后 `nginx -s reload`；前端产物放站点根目录。
 - 本机助手 exe 放在 `/var/www/logbook/download/`。
 - 日志：`journalctl -u logbook-api -u logbook-worker -f`。
 
