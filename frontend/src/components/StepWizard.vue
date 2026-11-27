@@ -54,17 +54,16 @@ function go(index: number) {
 <style scoped>
 .wizard { display: grid; gap: 1.1rem; }
 
-/* 进度条：每步一段，段与段之间一条细线，完成的线变主色。 */
-.wizard-rail { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; margin: 0; padding: 0; list-style: none; }
-.wizard-rail li { position: relative; min-width: 0; }
-.wizard-rail li + li::before {
-  content: ""; position: absolute; top: 15px; right: calc(100% - 6px); width: calc(100% - 42px); height: 1px;
-  background: var(--line-strong);
+/* 进度条：编号 → 步骤名 → 一条伸到下一步的细线；走过的线变主色。线跟在文字后面，不会压到字上。 */
+.wizard-rail { display: flex; margin: 0; padding: 0; list-style: none; }
+.wizard-rail li { display: flex; flex: 1; align-items: center; min-width: 0; }
+.wizard-rail li:last-child { flex: none; }
+.wizard-rail li:not(:last-child)::after {
+  content: ""; flex: 1; min-width: 1.5rem; height: 1px; margin-inline: .8rem; background: var(--line-strong);
 }
-.wizard-rail li:is([data-state='done'], [data-state='current']) + li::before { background: var(--line-strong); }
-.wizard-rail li[data-state='done'] + li::before { background: var(--accent); }
+.wizard-rail li[data-state='done']::after { background: var(--accent); }
 .wizard-rail-step {
-  display: flex; align-items: center; gap: .6rem; width: 100%; min-height: 0; padding: 0; justify-content: flex-start;
+  display: flex; flex: none; align-items: center; gap: .6rem; max-width: 100%; min-height: 0; padding: 0; justify-content: flex-start;
   border: 0; background: transparent; color: var(--muted); text-align: left; white-space: nowrap;
 }
 .wizard-rail-step:hover:not(:disabled) { border: 0; color: var(--text); }
@@ -94,6 +93,5 @@ function go(index: number) {
 @media (max-width: 620px) {
   .wizard-title { display: none; }
   [data-state='current'] .wizard-title { display: block; }
-  .wizard-rail li + li::before { width: calc(100% - 38px); }
 }
 </style>
