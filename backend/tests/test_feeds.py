@@ -59,7 +59,7 @@ def test_group_subscribe_status_and_unsubscribe(bot):
     post(client, group_at(" /订阅公告"))
     assert fake.replies[-1][:2] == ("group", GROUP) and "已订阅：明日方舟游戏公告" in fake.replies[-1][2]
     post(client, group_at("订阅动态", "g-2"))
-    assert "B 站 Cookie" in fake.replies[-1][2]
+    assert "B站状态" in fake.replies[-1][2]
     post(client, group_at("订阅状态", "g-3"))
     assert "明日方舟游戏公告、明日方舟 B 站动态" in fake.replies[-1][2]
     with connect() as database:

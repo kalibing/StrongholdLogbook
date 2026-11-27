@@ -153,6 +153,14 @@ SCHEMA = (
     """,
     "CREATE INDEX IF NOT EXISTS feed_subscriptions_source ON feed_subscriptions (bot_app_id, source)",
     """
+    CREATE TABLE IF NOT EXISTS bili_credentials (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        cookie TEXT NOT NULL,
+        uname TEXT NOT NULL DEFAULT '',
+        updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS feed_seen (
         source TEXT NOT NULL,
         item_id TEXT NOT NULL,

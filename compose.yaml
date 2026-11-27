@@ -95,7 +95,8 @@ services:
 
   # QQ 机器人回调（可选）：配好 QQBOT_APP_ID / QQBOT_APP_SECRET 后用
   #   docker compose --profile qqbot up -d --build
-  # 启动。只能访问数据库和 QQ 开放平台，不读会话与导入令牌。
+  # 启动。只能访问数据库、QQ 开放平台与 B 站扫码登录接口，不读会话与导入令牌；
+  # 凭据密钥只用来加密扫码得到的 B 站 Cookie。
   qqbot:
     <<: *hardening
     build: *backend_build
@@ -106,6 +107,7 @@ services:
       <<: *database
       QQBOT_APP_ID: ${QQBOT_APP_ID:-}
       QQBOT_APP_SECRET: ${QQBOT_APP_SECRET:-}
+      LOGBOOK_CREDENTIAL_KEY: ${LOGBOOK_CREDENTIAL_KEY:?Set LOGBOOK_CREDENTIAL_KEY in .env}
     networks: [data, edge]
     depends_on:
       migrate:
@@ -122,6 +124,7 @@ services:
       <<: *database
       QQBOT_APP_ID: ${QQBOT_APP_ID:-}
       QQBOT_APP_SECRET: ${QQBOT_APP_SECRET:-}
+      LOGBOOK_CREDENTIAL_KEY: ${LOGBOOK_CREDENTIAL_KEY:?Set LOGBOOK_CREDENTIAL_KEY in .env}
       BILIBILI_COOKIE: ${BILIBILI_COOKIE:-}
       FEED_BILI_UID: ${FEED_BILI_UID:-161775300}
       FEED_BUSY_HOURS: ${FEED_BUSY_HOURS:-10-18}

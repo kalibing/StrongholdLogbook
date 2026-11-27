@@ -41,6 +41,8 @@ from typing import Callable, Iterable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request as UrlRequest, urlopen
 
+from . import bilibili
+from .credentials import CredentialStorageError
 from .errors import StorageUnavailable
 from .storage import connect
 
@@ -87,7 +89,8 @@ USAGE = (
     "推送指令：\n"
     "订阅公告 · 明日方舟游戏内公告\n"
     "订阅动态 · 明日方舟 B 站官号动态\n"
-    "订阅全部 / 取消订阅公告 / 取消订阅动态 / 取消订阅 / 订阅状态"
+    "订阅全部 / 取消订阅公告 / 取消订阅动态 / 取消订阅 / 订阅状态\n"
+    "B站状态 · 查看动态推送用的 B 站登录，未登录时发扫码二维码"
 )
 
 
@@ -153,8 +156,8 @@ def handle_command(database, app_id: str, target_type: str, openid: str, text: s
         names = "、".join(SOURCES[source] for source in sources)
         place = "本群" if target_type == "group" else "你"
         note = ""
-        if BILI in sources and not os.getenv("BILIBILI_COOKIE", "").strip():
-            note = "\n（B 站动态需要管理员配置 B 站 Cookie 后才会开始推送）"
+        if BILI in sources and not bilibili.has_cookie(database):
+            note = "\n（B 站还没登录，@我 发「B站状态」扫码登录后才会开始推送动态）"
         return f"已订阅：{names}。有新内容时会推送给{place}。{note}"
     if action == "remove":
         unsubscribe(database, app_id, target_type, openid, sources)
@@ -435,9 +438,6 @@ def main():
         idle=interval("FEED_BILI_IDLE", 900, 60), busy_start=start, busy_end=end,
     )
     uid = os.getenv("FEED_BILI_UID", "161775300").strip()
-    cookie = os.getenv("BILIBILI_COOKIE", "").strip()
-    if not cookie:
-        LOGGER.warning("BILIBILI_COOKIE is not set; Bilibili polling disabled")
     if not uid.isdigit():
         raise RuntimeError("FEED_BILI_UID must be numeric")
 
@@ -446,6 +446,7 @@ def main():
         signal.signal(interrupt, lambda *_: stop.set())
     next_ak = next_bili = 0.0
     bili_failures = 0
+    warned_no_cookie = False
     while not stop.is_set():
         now = time.monotonic()
         try:
@@ -457,22 +458,35 @@ def main():
                             LOGGER.info("Pushed %d new bulletin(s)", pushed)
                     except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError) as error:
                         LOGGER.warning("Bulletin poll failed: %s", type(error).__name__)
-                if cookie and now >= next_bili:
+                if now >= next_bili:
+                    # 每轮重新读：机器人扫码登录后不用重启推送进程。
                     try:
-                        if pushed := poller.run_bili(database, uid, cookie):
-                            LOGGER.info("Pushed %d new Bilibili dynamic(s)", pushed)
-                        bili_failures = 0
-                    except (BiliBlocked, HTTPError, URLError, TimeoutError, ValueError) as error:
-                        # 被风控时按 2 的幂退避，最长 30 分钟；Cookie 失效需要人工更新。
-                        bili_failures += 1
-                        LOGGER.warning("Bilibili poll failed (%d in a row): %s %s",
-                                       bili_failures, type(error).__name__, error if isinstance(error, BiliBlocked) else "")
-                    regular = bili_schedule.delay(datetime.now(CHINA))
-                    next_bili = now + (regular if not bili_failures else
-                                       max(regular, min(bili_schedule.busy * 2 ** min(bili_failures, 4), 1800)))
+                        cookie = bilibili.stored_cookie(database)
+                    except CredentialStorageError:
+                        LOGGER.exception("Could not decrypt Bilibili cookie")
+                        cookie = ""
+                    if not cookie:
+                        if not warned_no_cookie:
+                            LOGGER.warning("No Bilibili cookie yet; send「B站状态」to the bot to log in")
+                            warned_no_cookie = True
+                        next_bili = now + 60
+                    else:
+                        warned_no_cookie = False
+                        try:
+                            if pushed := poller.run_bili(database, uid, cookie):
+                                LOGGER.info("Pushed %d new Bilibili dynamic(s)", pushed)
+                            bili_failures = 0
+                        except (BiliBlocked, HTTPError, URLError, TimeoutError, ValueError) as error:
+                            # 风控时按 2 的幂退避，最长 30 分钟；Cookie 失效（-101）时 @机器人「B站状态」重新扫码。
+                            bili_failures += 1
+                            LOGGER.warning("Bilibili poll failed (%d in a row): %s %s", bili_failures,
+                                           type(error).__name__, error if isinstance(error, BiliBlocked) else "")
+                        regular = bili_schedule.delay(datetime.now(CHINA))
+                        backoff = min(bili_schedule.busy * 2 ** min(bili_failures, 4), 1800)
+                        next_bili = now + (max(regular, backoff) if bili_failures else regular)
         except StorageUnavailable:
             LOGGER.warning("Database connection interrupted; retrying")
-        stop.wait(max(1.0, min(next_ak, next_bili if cookie else next_ak) - time.monotonic()))
+        stop.wait(max(1.0, min(next_ak, next_bili) - time.monotonic()))
 
 
 if __name__ == "__main__":

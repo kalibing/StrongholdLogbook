@@ -45,6 +45,7 @@ backend/
     worker.py         导入队列消费进程（幂等 upsert）
     qqbot.py          QQ 官方机器人回调（独立进程，单聊发「登录」取一次性免密链接；订阅指令）
     feeds.py          方舟公告 / B 站动态轮询并用 QQ 主动消息推送（独立进程）
+    bilibili.py       B 站扫码登录与加密保存 Cookie（动态推送用）
     storage.py        存储适配层：PostgreSQL / SQLite 双后端
     sqlite_schema.py  SQLite 建表语句（与 Alembic 迁移逐列一致）
     errors.py         跨驱动的存储异常
@@ -275,13 +276,15 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 | 指令 | 作用 |
 | --- | --- |
 | `订阅公告` | 明日方舟游戏内公告（`ak-webview.hypergryph.com` 公告接口，无需登录） |
-| `订阅动态` | 明日方舟 B 站官号（UID 161775300）动态，需要配置 `BILIBILI_COOKIE` |
+| `订阅动态` | 明日方舟 B 站官号（UID 161775300）动态，需要先让机器人登录 B 站（见 `B站状态`） |
 | `订阅全部` / `取消订阅公告` / `取消订阅动态` / `取消订阅` / `订阅状态` | — |
+| `B站状态`（或 `B站登录`） | 查看推送用的 B 站账号；未登录或登录失效时回一张扫码二维码，用 B 站 App 扫码确认后自动保存 |
 
 - 开放平台的事件订阅需要再勾选群 @ 消息事件 `GROUP_AT_MESSAGE_CREATE`。
 - 推送由独立进程 `python -m logbook.feeds` 完成（Compose 里的 `feeds` 服务随 `--profile qqbot` 启动；裸机用 `deploy/systemd/logbook-feeds.service`）。订阅记在 `feed_subscriptions`，已推送条目记在 `feed_seen`（迁移 `0009`）。某个来源第一次运行只记录现有条目、不推送。超过 3 天的旧条目（如 B 站置顶）也不推送。
 - 轮询按北京时间调度：`FEED_BUSY_HOURS`（默认 `10-18`）是密集时段，时段内整点前后 `:58–:05` 再加密。游戏公告默认 30 / 120 / 600 秒（整点前后 / 时段内其他时间 / 时段外），B 站默认 60 / 180 / 900 秒。B 站被风控（如 `-352`）时按 2 的幂退避，最长 30 分钟。各间隔可用 `FEED_AK_PEAK` / `FEED_AK_INTERVAL` / `FEED_AK_IDLE`、`FEED_BILI_PEAK` / `FEED_BILI_INTERVAL` / `FEED_BILI_IDLE` 调整。
-- B 站会拦截未登录的请求，`BILIBILI_COOKIE` 填一个 B 站账号（建议用小号）的 Cookie，至少包含 `SESSDATA` 和 `buvid3`。Cookie 过期后日志会持续出现 `Bilibili poll failed`，这时需要更新。不填时只推游戏公告。
+- B 站会拦截未登录的请求，所以动态推送要用一个 B 站账号（建议用小号）的登录态。@机器人发 `B站状态`，机器人回二维码（二维码 3 分钟有效，同一时间只发一张）。扫码成功后，Cookie 用 `LOGBOOK_CREDENTIAL_KEY` 加密存进 `bili_credentials`（迁移 `0010`），推送进程下一轮就会用上，不用重启。只有当前没有可用登录态时才会发二维码，已登录时任何人发这个指令都只能看到账号名，换不掉账号。二维码发在群里时，群里任何人都能扫，建议私聊机器人登录。登录失效后日志会出现 `Bilibili poll failed … code -101`，再发一次 `B站状态` 重新扫码即可。也可以手动在 `BILIBILI_COOKIE` 里填 Cookie，库里没有登录态时才会用它。
+- 发二维码用的是 QQ 富媒体消息（先上传图片再发 `msg_type 7`），需要机器人有发图权限。
 - 主动消息受 QQ 平台限制：每群 / 每个用户每天上限 1000 条，用户或群可以在客户端关闭「允许主动发送」，关闭后推送会失败，日志里只记录失败的状态码。推送默认不附链接，因为消息里的链接域名需要先在开放平台配置。配好后设 `FEED_LINKS=1`。
 
 ## 站内通知
