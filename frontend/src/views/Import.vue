@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { NButton, NInput, NModal } from 'naive-ui'
+import { NButton, NIcon, NInput, NModal } from 'naive-ui'
+import { ChevronForwardOutline } from '@vicons/ionicons5'
 import { api, ApiError, message, post } from '../api'
 import { logbook } from '../context'
 import { dateTime } from '../format'
@@ -556,25 +557,30 @@ onBeforeUnmount(() => {
       </section>
     </section>
 
-    <section class="panel import-panel import-history" aria-labelledby="import-history-title">
-      <h2 id="import-history-title">最近导入</h2>
-      <dl class="history-facts">
-        <div>
-          <dt>库内对局</dt>
-          <dd><b>{{ totalMatches === null ? '—' : totalMatches }}</b><small v-if="totalMatches !== null">局</small></dd>
-        </div>
-        <div>
-          <dt>上次导入</dt>
-          <dd v-if="latestJob" class="history-latest">
-            <span><span class="import-status" :data-status="latestJob.status">{{ statusLabel(latestJob.status) }}</span> · 已获取 {{ latestJob.total }} 局</span>
-            <time :datetime="latestJob.created_at">{{ dateTime(latestJob.created_at) }}</time>
-          </dd>
-          <dd v-else class="muted">{{ jobsPending ? '读取中…' : '暂无记录' }}</dd>
-        </div>
-      </dl>
-      <p v-if="jobsError" class="load-message" role="alert">{{ jobsError }}</p>
-      <NButton secondary block @click="openHistory">查看导入记录<template v-if="jobs.length">（{{ jobs.length }}）</template></NButton>
-      <p class="muted history-note">按局去重计数：同一局重新导入只覆盖字段，不会累加。</p>
+    <!-- 整块就是一个按钮：点哪里都打开导入记录对话框。按钮里只能放行内元素，所以用 span 排版。 -->
+    <section class="panel import-history" aria-labelledby="import-history-title">
+      <button type="button" class="history-card" aria-haspopup="dialog" @click="openHistory">
+        <span class="history-card-head">
+          <span id="import-history-title" class="history-card-title">最近导入</span>
+          <span class="history-card-more">{{ jobs.length ? `全部 ${jobs.length} 条` : '查看记录' }}<NIcon :component="ChevronForwardOutline" :size="15" /></span>
+        </span>
+        <span class="history-facts">
+          <span class="history-fact">
+            <span class="history-fact-label">库内对局</span>
+            <span class="history-fact-value"><b>{{ totalMatches === null ? '—' : totalMatches }}</b><small v-if="totalMatches !== null">局</small></span>
+          </span>
+          <span class="history-fact">
+            <span class="history-fact-label">上次导入</span>
+            <span v-if="latestJob" class="history-latest">
+              <span><span class="import-status" :data-status="latestJob.status">{{ statusLabel(latestJob.status) }}</span> · 已获取 {{ latestJob.total }} 局</span>
+              <time :datetime="latestJob.created_at">{{ dateTime(latestJob.created_at) }}</time>
+            </span>
+            <span v-else class="history-latest muted">{{ jobsPending ? '读取中…' : '暂无记录' }}</span>
+          </span>
+        </span>
+        <span class="history-note">按局去重计数：同一局重新导入只覆盖字段，不会累加。</span>
+      </button>
+      <p v-if="jobsError" class="load-message history-error" role="alert">{{ jobsError }}</p>
     </section>
 
     <NModal v-model:show="historyOpen" preset="card" title="导入记录" class="history-modal" :bordered="false"
@@ -645,10 +651,11 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--accent); font-size: .68rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
 }
-.import-cmd pre { margin: 0; padding: .55rem .6rem; overflow-x: auto; }
+/* 命令只是拿来复制的（旁边有复制按钮），单行横向滚动，不再折成好几行把向导撑高。 */
+.import-cmd pre { margin: 0; padding: .55rem .6rem; overflow-x: auto; scrollbar-width: thin; }
 .import-cmd code {
   color: var(--text); font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
-  font-size: .75rem; line-height: 1.65; white-space: pre-wrap; word-break: break-all;
+  font-size: .75rem; line-height: 1.65; white-space: pre;
 }
 /* 两种凭据方式的内容叠在同一格里，只显示当前方式：在第一步切换方式时，向导高度和底部按钮都不动。 */
 .mode-stack { display: grid; }
@@ -677,15 +684,30 @@ onBeforeUnmount(() => {
 .import-status[data-status='failed'], .current-import .job-error { color: var(--loss); }
 .job progress, .current-import progress { width: 100%; height: .45rem; accent-color: var(--accent); }
 .job-stale { color: var(--loss); font-size: .75rem; }
-.history-facts { display: grid; gap: 1px; margin: 0; border: 1px solid var(--line); background: var(--line); }
-.history-facts > div { display: grid; gap: .3rem; padding: .7rem .85rem; background: var(--inset); }
-.history-facts dt { color: var(--muted); font-size: .8rem; }
-.history-facts dd { display: flex; align-items: baseline; gap: .3rem; margin: 0; }
-.history-facts b { color: var(--text); font: 700 1.6rem/1 var(--numbers); }
-.history-facts small { color: var(--muted); font-size: .8rem; }
-.history-latest { flex-wrap: wrap; justify-content: space-between; gap: .2rem .6rem; font-size: .875rem; }
+.import-history { padding: 0; overflow: hidden; }
+.import-history .history-card {
+  display: grid; gap: .85rem; width: 100%; min-height: 0; padding: clamp(.9rem, 2.5vw, 1.4rem);
+  border: 0; border-radius: 0; background: transparent; color: var(--text); text-align: left; white-space: normal; cursor: pointer;
+  transition: background-color .16s ease;
+}
+.import-history .history-card:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 4%, var(--panel)); color: var(--text); }
+.import-history .history-card:focus-visible { outline-offset: -3px; }
+.history-card-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+.history-card-title { font-size: 1.125rem; font-weight: 700; }
+.history-card-more { display: inline-flex; align-items: center; gap: .15rem; color: var(--muted); font-size: .8125rem; transition: color .16s ease; }
+.history-card-more .n-icon { transition: transform .16s ease; }
+.history-card:hover .history-card-more { color: var(--accent); }
+.history-card:hover .history-card-more .n-icon { transform: translateX(2px); }
+.history-facts { display: grid; gap: 1px; border: 1px solid var(--line); background: var(--line); }
+.history-fact { display: grid; gap: .3rem; padding: .7rem .85rem; background: var(--inset); }
+.history-fact-label { color: var(--muted); font-size: .8rem; }
+.history-fact-value { display: flex; align-items: baseline; gap: .3rem; }
+.history-fact-value b { color: var(--text); font: 700 1.6rem/1 var(--numbers); }
+.history-fact-value small { color: var(--muted); font-size: .8rem; }
+.history-latest { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .2rem .6rem; font-size: .875rem; }
 .history-latest time { color: var(--muted); font: .8125rem var(--numbers); }
-.history-note { font-size: .78rem; }
+.history-note { color: var(--muted); font-size: .78rem; line-height: 1.5; }
+.history-error { margin: 0 1.4rem 1.2rem; }
 .history-modal-note { margin: 0 0 .75rem; font-size: .8125rem; }
 .history-modal-note strong { color: var(--accent); font-variant-numeric: tabular-nums; }
 /* 记录多时在对话框里滚动，不把对话框撑出屏幕 */

@@ -258,7 +258,7 @@ onMounted(async () => {
 }
 .report-section .equipment-chip img { width: 17px; height: 17px; flex: none; object-fit: contain; border-radius: 2px; background: var(--chart-label); }
 .equipment-count { flex: none; margin-inline-start: auto; font: 650 .75rem var(--numbers); color: var(--muted); }
-.report-section .equipment-chip--advanced img { outline: 1px solid #d8a044; outline-offset: 1px; }
+.report-section .equipment-chip--advanced img { outline: 1.5px solid #e1a744; outline-offset: 1px; }
 .report-avatar-fallback {
   display: inline-grid; place-items: center; flex: none; width: 36px; aspect-ratio: 1;
   border-radius: var(--radius); color: var(--muted); background: var(--panel);
