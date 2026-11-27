@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { NButton, NConfigProvider, NDialogProvider, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, zhCN } from 'naive-ui'
-import { MoonOutline, SunnyOutline } from '@vicons/ionicons5'
+import { MoonOutline, PersonCircleOutline, SunnyOutline } from '@vicons/ionicons5'
 import type { GlobalThemeOverrides } from 'naive-ui'
 import { api, ApiError, message, post } from './api'
 import { logbookKey, newFilters, type Theme } from './context'
@@ -43,8 +43,13 @@ const overrides = computed<GlobalThemeOverrides>(() => ({
 }))
 
 function measureNav() {
-  const active = nav.value?.querySelector<HTMLElement>('a[aria-current="page"]')
-  if (!active || !nav.value) return
+  if (!nav.value) return
+  const active = nav.value.querySelector<HTMLElement>('a[aria-current="page"]')
+  // 「我的主页」不在主导航里：收起指示条，而不是停在上一页的位置。
+  if (!active) {
+    indicator.value = { ...indicator.value, width: 0 }
+    return
+  }
   const rect = active.getBoundingClientRect()
   const base = nav.value.getBoundingClientRect()
   indicator.value = { left: rect.left - base.left + 8, width: Math.max(12, rect.width - 16) }
@@ -68,8 +73,37 @@ function applyTheme(value: Theme) {
   }
 }
 
-function toggleTheme() {
-  applyTheme(theme.value === 'dark' ? 'light' : 'dark')
+type TransitionDocument = Document & { startViewTransition?: (update: () => Promise<void>) => { ready: Promise<void> } }
+
+/**
+ * 切换光暗：支持 View Transitions 的浏览器里，新主题从切换按钮处以圆形扩散铺开；
+ * 不支持或开启「减少动态效果」时直接切换。
+ */
+async function toggleTheme(event?: Event) {
+  const next: Theme = theme.value === 'dark' ? 'light' : 'dark'
+  const doc = document as TransitionDocument
+  if (!doc.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    applyTheme(next)
+    return
+  }
+  // 用按钮中心而不是鼠标坐标：键盘触发时 clientX/Y 是 0。
+  const target = event?.currentTarget instanceof Element ? event.currentTarget.getBoundingClientRect() : null
+  const x = target ? target.left + target.width / 2 : window.innerWidth - 48
+  const y = target ? target.top + target.height / 2 : 32
+  const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+  const transition = doc.startViewTransition(async () => {
+    applyTheme(next)
+    await nextTick()
+  })
+  try {
+    await transition.ready
+  } catch {
+    return
+  }
+  document.documentElement.animate(
+    { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+    { duration: 560, easing: 'cubic-bezier(.65, 0, .25, 1)', pseudoElement: '::view-transition-new(root)' },
+  )
 }
 
 function resetSession() {
@@ -164,9 +198,14 @@ provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
           :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
           :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
           <template #icon>
-            <NIcon :component="theme === 'dark' ? SunnyOutline : MoonOutline" />
+            <NIcon :key="theme" class="theme-toggle-icon" :component="theme === 'dark' ? SunnyOutline : MoonOutline" />
           </template>
         </NButton>
+        <RouterLink v-if="user" class="account-chip" :to="{ name: 'profile' }" title="我的主页"
+          :aria-current="route.name === 'profile' ? 'page' : undefined">
+          <NIcon :component="PersonCircleOutline" :size="18" aria-hidden="true" />
+          <span>{{ user.username }}</span>
+        </RouterLink>
         <NButton v-if="user" size="small" secondary @click="logout">退出登录</NButton>
       </div>
     </div>

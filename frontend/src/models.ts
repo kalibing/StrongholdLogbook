@@ -250,3 +250,32 @@ export interface AchvEnvelope {
   warnings?: string[]
   data: AchvProfile
 }
+
+/** 「我的主页」：账号生涯汇总（/api/profile），不受筛选影响。 */
+export interface Profile {
+  username: string
+  account: { nickname: string | null; nick_number: string | null; level: number | null; likes: number | null; titles: number } | null
+  trophy_badge: TrophyBadge | null
+  trophy_total: { total: number; source: 'profile' | 'matches' } | null
+  career: {
+    matches: number
+    wins: number
+    losses: number
+    win_rate: number | null
+    excluded: number
+    first_day: string | null
+    last_day: string | null
+    active_days: number
+    play_seconds: number | null
+    total_kills: number | null
+    max_kills: number | null
+    max_layers: number | null
+  }
+  streaks: { best_win: number; current: { result: Result; count: number } | null }
+  best: { union: string | null; solo: string | null }
+  plays: { play: string; matches: number; wins: number }[]
+  operators: Operator[]
+  strategies: { name: string; count: number; wins: number; win_rate: number }[]
+  recent_results: Result[]
+  activity: { start: string; end: string; days: { day: string; count: number }[] }
+}

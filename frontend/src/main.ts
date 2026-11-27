@@ -14,6 +14,7 @@ const router = createRouter({
     { path: '/operators', name: 'operators', component: () => import('./views/Operators.vue'), meta: { title: '干员统计', description: '比较各干员与开局策略的出场率与出场胜率。' } },
     { path: '/achievements', name: 'achievements', component: () => import('./views/Achievements.vue'), meta: { title: '成就档案', description: '六维成就、称号、获赞与分队特殊标识，数据直连鹰角成就接口。' } },
     { path: '/import', name: 'data-import', component: () => import('./views/Import.vue'), meta: { title: '数据导入', description: '从森空岛拉取卫戍协议战绩，查看导入进度。' } },
+    { path: '/profile', name: 'profile', component: () => import('./views/Profile.vue'), meta: { title: '我的主页', description: '生涯档案：段位奖杯、最高通关、活跃度与本命干员。' } },
     { path: '/icons', name: 'mode-icons', component: () => import('./views/ModeIcons.vue'), meta: { title: '难度图标', description: '从 PC 端资源包拆出的模拟难度图标试装页。', public: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
