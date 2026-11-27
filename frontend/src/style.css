@@ -259,15 +259,22 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
 .filters { display: flex; flex-wrap: wrap; align-items: start; gap: .75rem 1rem; margin-bottom: 1rem; padding: .9rem 1rem; }
 .filter-field { display: grid; min-width: 0; gap: .35rem; color: var(--muted); font-size: .8125rem; letter-spacing: .04em; }
 .filters > .filter-field { width: clamp(9rem, 14vw, 12.5rem); }
-.filters > .date-range-field { flex: 1 1 26rem; width: auto; }
+.filters > .date-range-field { flex: 1 1 28rem; width: auto; }
 .filters .filter-field :is(.n-select, .n-date-picker) { width: 100%; min-width: 0; }
-.date-range-row { display: flex; flex-wrap: wrap; align-items: start; gap: .45rem; }
-.date-picker-wrap { display: inline-flex; width: min(19rem, 100%); }
+/* 日期范围与快捷区间同一行：选择器可伸缩，快捷区间是一条和选择器等高的分段条。 */
+.date-range-row { display: flex; align-items: stretch; gap: .5rem; }
+.date-picker-wrap { display: flex; flex: 1 1 13rem; min-width: 11rem; }
 .date-picker-wrap .n-date-picker { width: 100%; }
-.date-presets { display: inline-flex; align-items: stretch; overflow: hidden; border: 1px solid var(--control-line); border-radius: var(--radius); background: var(--inset); }
-.date-presets .n-button { height: 26px; min-width: 0; padding: 0 .55rem; border: 0; border-radius: 0; }
-.date-presets .n-button:not(:first-child) { box-shadow: inset 1px 0 0 var(--line); }
-.date-presets .n-button:not(.n-button--primary-type):hover { color: var(--accent); }
+.date-presets {
+  display: inline-grid; flex: none; grid-auto-flow: column; gap: 1px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--line);
+}
+.date-presets button {
+  min-height: 0; height: 26px; padding: 0 .6rem; border: 0; border-radius: 0;
+  background: var(--panel); color: var(--muted); font-size: .78rem;
+}
+.date-presets button:hover:not(:disabled) { background: var(--raised); color: var(--text); }
+.date-presets button[aria-pressed="true"], .date-presets button[aria-pressed="true"]:hover { background: var(--accent); color: var(--accent-ink); font-weight: 650; }
 .filter-actions { display: flex; flex: 1 1 100%; align-items: center; gap: .75rem; padding-top: .6rem; border-top: 1px solid var(--line); }
 .filter-actions .n-checkbox { margin-left: 0; }
 .filter-actions .n-button { margin-left: auto; }
@@ -630,6 +637,8 @@ dialog::backdrop { background: color-mix(in srgb, var(--bg) 70%, transparent); b
   .filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .65rem; padding: .7rem; }
   .filters > .filter-field { width: 100%; }
   .filters > :is(.date-range-field, .filter-actions) { grid-column: 1 / -1; }
+  .date-range-row { flex-wrap: wrap; }
+  .date-presets { width: 100%; grid-auto-columns: 1fr; }
   .section-heading h2 { font-size: 1.1rem; }
   .trend-canvas { height: 205px; }
   .login-panel { padding: 1.5rem 1.25rem; }

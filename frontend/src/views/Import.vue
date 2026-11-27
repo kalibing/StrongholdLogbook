@@ -600,23 +600,20 @@ onBeforeUnmount(() => {
 .import-form, .current-import { display: grid; gap: .9rem; }
 .import-methods-row { display: grid; gap: .3rem; }
 .import-methods-label { color: var(--muted); font-size: .72rem; letter-spacing: .1em; }
-/* 分段切换：一条整体的轨道，选中项是滑入的实色块，两项等宽。 */
+/* 分段切换：和总览分段卡同一套——整条连在一起，1px 分隔，选中项实色填充 + 深色字。 */
 .import-methods {
-  display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: fit-content; max-width: 100%; min-width: 0;
-  margin: 0; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset);
+  display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 1px; width: fit-content; max-width: 100%; min-width: 0;
+  margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--line);
 }
 .import-methods label {
-  position: relative; display: grid; place-items: center; min-height: 32px; padding: 0 1rem;
-  border-radius: var(--radius); color: var(--muted); cursor: pointer; font-size: .8125rem; white-space: nowrap;
-  transition: color .15s, background-color .15s, box-shadow .15s;
+  position: relative; display: grid; place-items: center; min-height: 34px; padding: 0 1.1rem;
+  background: var(--panel); color: var(--muted); cursor: pointer; font-size: .8125rem; letter-spacing: .04em; white-space: nowrap;
+  transition: color .15s, background-color .15s;
 }
-.import-methods label:hover { color: var(--text); }
+.import-methods label:hover { background: var(--raised); color: var(--text); }
 .import-methods input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
-.import-methods label:has(input:checked) {
-  background: var(--raised, var(--panel)); color: var(--accent); font-weight: 650;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 2px 6px -2px #0000004d;
-}
-.import-methods label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.import-methods label:has(input:checked) { background: var(--accent); color: var(--accent-ink); font-weight: 650; }
+.import-methods label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -3px; }
 .import-methods:disabled label { cursor: default; }
 .import-cmd {
   display: grid; margin: .1rem 0 0; border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));

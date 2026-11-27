@@ -122,8 +122,8 @@ function changePlay(value: string) {
             @update:formatted-value="setRange" />
         </span>
         <div class="date-presets" role="group" aria-label="快捷区间">
-          <NButton v-for="preset in presets" :key="preset.label" size="tiny" :type="activePreset === preset.label ? 'primary' : 'default'"
-            :aria-pressed="activePreset === preset.label" @click="applyPreset(preset.days)">{{ preset.label }}</NButton>
+          <button v-for="preset in presets" :key="preset.label" type="button"
+            :aria-pressed="activePreset === preset.label" @click="applyPreset(preset.days)">{{ preset.label }}</button>
         </div>
       </div>
     </div>
