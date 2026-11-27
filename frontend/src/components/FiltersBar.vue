@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { NButton, NCheckbox, NDatePicker, NSelect } from 'naive-ui'
 import { logbook, newFilters } from '../context'
 import { compareDifficulty, difficultyLabel, playRank, protocolLabel } from '../format'
@@ -30,20 +30,17 @@ const excludeExits = computed({
 
 const range = computed<[string, string] | null>(() => filters.start && filters.end ? [filters.start, filters.end] : null)
 
-/** 本地日期字符串（yyyy-MM-dd），按本地时区而不是 UTC 计算。 */
+/** 北京时间的日期（yyyy-MM-dd）：后端按 UTC+8 归档，快捷区间也必须用同一时区，否则海外时区会错一天。 */
+const DAY = 86_400_000
 function localDate(offsetDays = 0): string {
-  const date = new Date()
-  date.setDate(date.getDate() + offsetDays)
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
+  return new Date(Date.now() + 8 * 3_600_000 + offsetDays * DAY).toISOString().slice(0, 10)
 }
 
-/** 只允许选到今天和明天，更晚的日期在面板里直接禁用。 */
-const maxDate = localDate(1)
+/** 只允许选到明天（北京时间），更晚的日期在面板里直接禁用。每次调用都重新取当天，跨午夜不会过期。 */
 function disabledDate(timestamp: number): boolean {
-  const limit = new Date()
-  limit.setDate(limit.getDate() + 1)
-  limit.setHours(23, 59, 59, 999)
-  return timestamp > limit.getTime()
+  const picked = new Date(timestamp)
+  const pickedDay = `${picked.getFullYear()}-${String(picked.getMonth() + 1).padStart(2, '0')}-${String(picked.getDate()).padStart(2, '0')}`
+  return pickedDay > localDate(1)
 }
 
 const presets: { label: string; days: number | null }[] = [
@@ -69,9 +66,15 @@ function applyPreset(days: number | null) {
 
 function setRange(value: string | string[] | null) {
   const [rawStart = '', rawEnd = ''] = Array.isArray(value) ? value : []
+  const maxDate = localDate(1)
   filters.start = rawStart > maxDate ? maxDate : rawStart
   filters.end = rawEnd > maxDate ? maxDate : rawEnd
 }
+
+/** 手机上筛选栏默认收起，只露一行摘要，展开后才是完整表单。桌面始终展开（由 CSS 控制）。 */
+const expanded = ref(false)
+const activeCount = computed(() => [filters.protocol, filters.play, filters.difficulty, filters.start || filters.end, filters.include_exits]
+  .filter(Boolean).length)
 
 function clearFilters() {
   Object.assign(filters, newFilters())
@@ -91,7 +94,12 @@ function changePlay(value: string) {
 </script>
 
 <template>
-  <div class="filters" role="group" aria-label="战绩筛选">
+  <div class="filters" :class="{ 'filters--open': expanded }" role="group" aria-label="战绩筛选">
+    <button type="button" class="filters-toggle" :aria-expanded="expanded" @click="expanded = !expanded">
+      <span>筛选</span>
+      <small>{{ activeCount ? `已设 ${activeCount} 项` : '全部对局' }}{{ activePreset && activePreset !== '全部' ? ` · ${activePreset}` : '' }}</small>
+      <i aria-hidden="true">{{ expanded ? '收起' : '展开' }}</i>
+    </button>
     <label class="filter-field">协议期
       <NSelect :value="filters.protocol" :options="protocolOptions" size="small" aria-label="协议期"
         @update:value="changeProtocol" />
@@ -126,3 +134,17 @@ function changePlay(value: string) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.filters-toggle { display: none; }
+@media (max-width: 730px) {
+  .filters-toggle {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: .6rem; width: 100%;
+    min-height: 2.25rem; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left;
+  }
+  .filters-toggle span { font-weight: 650; }
+  .filters-toggle small { flex: 1; min-width: 0; color: var(--muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .filters-toggle i { font-style: normal; color: var(--accent); font-size: .8rem; }
+  .filters:not(.filters--open) > :not(.filters-toggle) { display: none; }
+}
+</style>

@@ -72,6 +72,20 @@ def chart_points(rows, scope):
         }
 
 
+def strategy_stats(rows, limit=None):
+    """按开局策略统计出场与胜场，按局数、胜场、名称排序；limit 为 None 时返回全部。"""
+    counts = {}
+    for row in rows:
+        name = (row.get("strategy") or "").strip()
+        if not name:
+            continue
+        entry = counts.setdefault(name, {"name": name, "count": 0, "wins": 0})
+        entry["count"] += 1
+        entry["wins"] += row["result"] == "win"
+    ordered = sorted(counts.values(), key=lambda entry: (-entry["count"], -entry["wins"], entry["name"]))
+    return [{**entry, "win_rate": entry["wins"] / entry["count"]} for entry in ordered[:limit]]
+
+
 def overview(rows, excluded, scope):
     with_squad, operators = operator_stats(rows)
     bonds = defaultdict(list)
@@ -95,6 +109,7 @@ def overview(rows, excluded, scope):
         "average_coins": average(rows, "coins"),
         "with_squad": with_squad,
         "operators": sorted(operators, key=lambda row: (-row["count"], row["name"]))[:6],
+        "strategies": strategy_stats(rows, limit=8),
         "bonds": [{"name": name, "count": len(bonds[name]),
                    "average": round(bond_totals[name] / len(bonds[name]), 1)} for name in ordered_bonds[:8]],
         "bond_layers": [{"name": name, "layers": layers}

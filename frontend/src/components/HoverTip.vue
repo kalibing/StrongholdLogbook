@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, useId } from 'vue'
 
-const props = withDefaults(defineProps<{ as?: 'span' | 'td'; text?: string; placement?: 'top' | 'bottom' }>(), {
+const props = withDefaults(defineProps<{ as?: 'span' | 'td'; text?: string; placement?: 'top' | 'bottom'; focusable?: boolean }>(), {
   as: 'span',
   text: '',
   placement: 'top',
+  // 放在本身可聚焦的行里时关掉，免得一行要按两次 Tab。
+  focusable: true,
 })
 
 const shown = ref(false)
@@ -37,7 +39,7 @@ onBeforeUnmount(() => window.clearTimeout(timer))
 </script>
 
 <template>
-  <component :is="as" ref="trigger" class="hover-tip" :tabindex="text ? 0 : undefined"
+  <component :is="as" ref="trigger" class="hover-tip" :tabindex="text && focusable ? 0 : undefined"
     :aria-describedby="shown ? tipId : undefined" @mouseenter="show" @mouseleave="hide"
     @focusin="show" @focusout="hide" @keydown.escape="hide">
     <slot />

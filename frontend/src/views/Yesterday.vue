@@ -91,7 +91,6 @@ function changePageSize(size: number) {
   <div class="daily">
     <div class="daily-date split">
       <time :datetime="day">{{ day }}</time>
-      <span>北京时间 · 按开局时间统计</span>
     </div>
 
     <p v-if="pending" class="daily-status muted" role="status">正在汇总昨日战绩…</p>
@@ -114,10 +113,9 @@ function changePageSize(size: number) {
         <div class="daily-meter" aria-hidden="true"><i :style="{ width: rate * 100 + '%' }"></i></div>
         <dl class="daily-trophies">
           <div>
-            <dt><TrophyIcon :badge="overview.trophy_badge" :size="25" />奖杯变化</dt>
-            <dd :class="{ loss: (overview.trophy_change ?? 0) < 0 }">
-              {{ (overview.trophy_change ?? 0) > 0 ? '+' : '' }}{{ number(overview.trophy_change ?? null) }}
-            </dd>
+            <!-- 奖杯只在联合模拟通关时获得、不会扣减，所以写「获得奖杯」而不是带正负号的变化量。 -->
+            <dt><TrophyIcon :badge="overview.trophy_badge" :total="overview.trophy_total?.total" :size="25" />获得奖杯</dt>
+            <dd>{{ number(overview.trophy_change ?? null) }}</dd>
           </div>
         </dl>
       </section>
@@ -252,6 +250,9 @@ function changePageSize(size: number) {
 .daily-peak { display: flex; align-items: center; gap: .35rem; }
 .daily-peak img { flex: none; object-fit: contain; }
 .daily-peak b { white-space: nowrap; }
+/* 并列多个盟约时名字会挤成两行，名字降一号，层数保持醒目。 */
+.daily-peak span { font-size: .95rem; line-height: 1.35; }
+.daily-peak b { font-size: 1.3rem; }
 .daily-list-heading { padding: .9rem 1.15rem; flex-wrap: wrap; gap: .3rem .8rem; }
 .daily-list-heading .muted { font-size: .83rem; }
 .daily-list { margin: 0; padding: 0; list-style: none; }
@@ -284,7 +285,7 @@ function changePageSize(size: number) {
 .daily-tag-label { color: var(--muted); font-size: .75rem; margin-inline: .1rem .25rem; }
 .daily-tag { display: inline-flex; align-items: center; gap: .2rem; padding: .12rem .35rem; background: var(--inset); border: 1px solid var(--line); border-radius: 2px; font-size: .78rem; overflow-wrap: anywhere; }
 .daily-tag img { flex: none; object-fit: contain; }
-:global(:root[data-theme="light"]) .daily-bond img { filter: brightness(0) opacity(.82); }
+:root[data-theme="light"] .daily-bond img { filter: brightness(0) opacity(.82); }
 .daily-tag b { color: var(--accent); }
 .daily-match:hover .daily-arrow { color: var(--accent); }
 .daily-status { padding: .5rem 1.15rem .9rem; }

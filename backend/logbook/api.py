@@ -14,7 +14,7 @@ from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import achievements, daily_review, hypergryph, skland, stats
+from . import achievements, daily_card, daily_review, hypergryph, skland, stats
 from .config import settings
 from .credentials import ACHIEVEMENTS, SKLAND, CredentialStorageError, initialize_vault
 from .db import connection_pool
@@ -232,22 +232,32 @@ def overview(
     where, params = filters.model_copy(update={"include_exits": True}).sql(user["id"])
     with request.app.state.pool.connection() as database:
         candidates = database.execute(
-            "SELECT id, played_at, result, rounds, kills, coins, trophies, suspected_exit, bonds, operators "
+            "SELECT id, played_at, result, strategy, rounds, kills, coins, trophies, suspected_exit, bonds, operators "
             f"FROM matches WHERE {where} ORDER BY played_at, id", params,
         ).fetchall()
         profile = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user["id"],)).fetchone()
+        # 奖杯是账号累计值，不随筛选变化：没绑定成就档案时用全部对局的奖杯记录累加兜底。
+        recorded = database.execute(
+            "SELECT SUM(trophies) AS total, COUNT(trophies) AS counted FROM matches WHERE user_id = %s", (user["id"],),
+        ).fetchone()
     records = candidates if filters.include_exits else [row for row in candidates if not row["suspected_exit"]]
     payload = (profile["payload"] if profile else None) or {}
     trophy = payload.get("trophy")
     badge = {"icon": trophy.get("icon"), "level": trophy.get("level")} if trophy else None
-    return {**stats.overview(records, len(candidates) - len(records), scope), "trophy_badge": badge}
+    if trophy and trophy.get("total") is not None:
+        trophy_total = {"total": trophy["total"], "source": "profile"}
+    elif recorded and recorded["counted"]:
+        trophy_total = {"total": max(0, int(recorded["total"] or 0)), "source": "matches"}
+    else:
+        trophy_total = None
+    return {**stats.overview(records, len(candidates) - len(records), scope), "trophy_badge": badge, "trophy_total": trophy_total}
 
 
 def daily_review_data(request, day, user_id):
     where, params = Filters(start=day, end=day).sql(user_id)
     with request.app.state.pool.connection() as database:
         rows = database.execute(
-            "SELECT id, played_at, result, play, difficulty, rounds, kills, duration_seconds, bonds, bosses "
+            "SELECT id, played_at, result, play, difficulty, rounds, kills, coins, duration_seconds, bonds, bosses "
             f"FROM matches WHERE {where} ORDER BY played_at DESC, id DESC", params,
         ).fetchall()
     return daily_review.summarize(rows)
@@ -256,6 +266,28 @@ def daily_review_data(request, day, user_id):
 @app.get("/api/daily-review")
 def daily_review_summary(day: date, request: Request, user=Depends(current_user)):
     return {**daily_review_data(request, day, user["id"]), "ai_available": daily_review.model_config() is not None}
+
+
+@app.get("/api/daily-review/image", response_class=Response, responses={200: {"content": {"image/png": {}}}})
+def daily_review_image(request: Request, day: date | None = None, user=Depends(current_user)):
+    """昨日战报图片（PNG）。不传 day 时取北京时间的昨天；口径与网页昨日战报一致。"""
+    day = day or (datetime.now(CHINA).date() - timedelta(days=1))
+    where, params = Filters(start=day, end=day, include_exits=True).sql(user["id"])
+    with request.app.state.pool.connection() as database:
+        rows = database.execute(
+            "SELECT id, played_at, result, play, difficulty, strategy, rounds, kills, coins, trophies, "
+            f"duration_seconds, suspected_exit, bonds, bosses FROM matches WHERE {where} ORDER BY played_at DESC, id DESC",
+            params,
+        ).fetchall()
+    kept = [row for row in rows if not row["suspected_exit"]]
+    try:
+        png = daily_card.render(daily_card.build(kept, len(rows) - len(kept), day, user["username"]))
+    except daily_card.CardFontError as error:
+        raise HTTPException(503, str(error)) from error
+    return Response(png, media_type="image/png", headers={
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": f'inline; filename="daily-{day.isoformat()}.png"',
+    })
 
 
 @app.post("/api/daily-review")
@@ -337,6 +369,23 @@ def operators(
     }
     rows.sort(key=keys[sort])
     return {"with_squad": with_squad, "operators": rows}
+
+
+@app.get("/api/strategies")
+def strategies(request: Request, filters: Annotated[Filters, Depends()], user=Depends(current_user)):
+    """完整策略列表；记录里可能存 band id 或策略名，展示名与搜索交给前端统一解析。"""
+    where, params = filters.sql(user["id"])
+    with request.app.state.pool.connection() as database:
+        records = database.execute(
+            f"SELECT result, strategy FROM matches WHERE {where} ORDER BY played_at, id", params,
+        ).fetchall()
+    with_strategy = sum(bool((row["strategy"] or "").strip()) for row in records)
+    rows = stats.strategy_stats(records)
+    return {
+        "matches": len(records), "with_strategy": with_strategy,
+        "strategies": [{**row, "losses": row["count"] - row["wins"],
+                        "usage_rate": row["count"] / with_strategy} for row in rows],
+    }
 
 
 @app.get("/api/imports")

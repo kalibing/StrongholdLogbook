@@ -7,6 +7,7 @@ import type { GlobalThemeOverrides } from 'naive-ui'
 import { api, ApiError, message, post } from './api'
 import { logbookKey, newFilters, type Theme } from './context'
 import type { Facet, User } from './models'
+import HeadingArt from './components/HeadingArt.vue'
 
 const STORAGE_THEME = 'logbook:theme'
 const route = useRoute()
@@ -101,12 +102,15 @@ async function login() {
   }
 }
 
+// 退出失败只提示一行，不能借用 error：它会把整页内容换成「重试会话」。
+const logoutError = ref('')
 async function logout() {
+  logoutError.value = ''
   try {
     await api('/session', { method: 'DELETE' })
     resetSession()
   } catch (reason) {
-    error.value = message(reason)
+    logoutError.value = `退出登录失败：${message(reason)}`
   }
 }
 
@@ -172,22 +176,15 @@ provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
     <div v-if="pending" class="loading-shell" role="status">正在读取数据…</div>
 
     <template v-else-if="user || route.meta.public">
-      <div class="heading" :class="{ 'heading-compact': route.name !== 'overview' }">
+      <div class="heading">
         <div class="heading-copy">
           <p class="eyebrow">卫戍协议 <span>/</span> {{ user?.username ?? '本地资源' }}</p>
           <h1>{{ route.meta.title }}</h1>
           <p class="heading-description">{{ route.meta.description }}</p>
         </div>
-        <div v-if="route.name === 'overview'" class="heading-signal" aria-hidden="true">
-          <div class="heading-signal-art">
-            <span class="heading-signal-layer heading-signal-layer--back"></span>
-            <span class="heading-signal-layer heading-signal-layer--middle"></span>
-            <span class="heading-signal-layer heading-signal-layer--front"></span>
-            <span class="heading-signal-mark"></span>
-          </div>
-        </div>
-        <div v-else class="heading-art" aria-hidden="true"><i></i></div>
+        <HeadingArt />
       </div>
+      <p v-if="logoutError" class="load-message" role="alert">{{ logoutError }} <button type="button" @click="logout">重试</button></p>
       <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
       <RouterView v-else v-slot="{ Component, route: pageRoute }">
         <Transition name="page">

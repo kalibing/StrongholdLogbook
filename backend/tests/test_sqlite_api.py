@@ -170,6 +170,11 @@ def test_import_and_query_flow(client, fixtures):
     operators = client.get("/api/operators").json()
     assert operators["with_squad"] == 5
 
+    strategies = client.get("/api/strategies").json()
+    assert strategies["with_strategy"] == sum(row["count"] for row in strategies["strategies"])
+    assert all(row["wins"] + row["losses"] == row["count"] for row in strategies["strategies"])
+    assert abs(sum(row["usage_rate"] for row in strategies["strategies"]) - 1) < 1e-9
+
 
 def test_duplicate_import_is_idempotent(client, fixtures):
     assert upload(client, fixtures).status_code == 202
@@ -338,6 +343,16 @@ def test_daily_review_uses_whole_day_and_sends_only_aggregate_data(client, monke
     assert review["total_duration_seconds"] == 840
     assert review["most_kills"]["kills"] == 140
     assert review["most_kills"]["id"] != row["id"]
+    assert review["most_layers"]["layers"] == 154
+    assert review["most_layers"]["id"] == review["most_kills"]["id"]
+    assert review["most_coins"] is None
+
+    image = client.get("/api/daily-review/image?day=2026-11-22")
+    if image.status_code != 503:  # 没装中文字体的环境返回 503，图片本身由 test_daily_card 覆盖
+        assert image.status_code == 200
+        assert image.headers["content-type"] == "image/png"
+        assert image.content.startswith(b"\x89PNG")
+        assert "no-store" in image.headers["cache-control"]
     assert client.post(url, headers=HEADERS).status_code == 503
 
     def model_response(request, timeout):

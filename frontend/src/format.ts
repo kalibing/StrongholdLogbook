@@ -15,7 +15,9 @@ const clockFormatter = new Intl.DateTimeFormat('zh-CN', {
 })
 
 export const number = (value: number | null) => value === null ? '—' : numberFormatter.format(value)
-export const percent = (value: number) => (value * 100).toFixed(1) + '%'
+/** 增减量：正数补「+」号，便于和总量区分。 */
+export const signed = (value: number | null) => value === null ? '—' : (value > 0 ? '+' : '') + numberFormatter.format(value)
+export const percent =(value: number) => (value * 100).toFixed(1) + '%'
 export const dateTime = (value: string) => dateFormatter.format(new Date(value))
 export const shortTime = (value: string) => shortFormatter.format(new Date(value)).replace(/\//g, '-')
 export const clockTime = (value: string) => clockFormatter.format(new Date(value))

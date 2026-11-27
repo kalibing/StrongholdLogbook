@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { BOND_ICONS, bossName } from '../assets'
 import BossLabel from './BossLabel.vue'
-import { strategyIcon, strategyOf } from '../bands'
+import { strategyIcon, strategyOf, unitOf } from '../bands'
 import { avatarFor, loadDirectory } from '../directory'
 import { resolveEquipment } from '../equipment'
 import { dateTime, difficultyLabel, number, resultLabel } from '../format'
@@ -16,7 +16,12 @@ const dialog = ref<HTMLDialogElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
 const names = ref(new Map<string, string>())
 const missingPortraits = reactive(new Set<string>())
-const initiatorAvatar = computed(() => avatarFor(names.value, props.detail?.initiator ?? null))
+// 发起干员 = 策略对应的分队干员（band 映射）；initiator 多为「本人 / 队友」，表示由谁发起。
+const PARTIES = ['本人', '队友']
+const initiatorName = computed(() => unitOf(props.detail?.strategy)
+  || (props.detail?.initiator && !PARTIES.includes(props.detail.initiator) ? props.detail.initiator : ''))
+const party = computed(() => (props.detail?.initiator && PARTIES.includes(props.detail.initiator) ? props.detail.initiator : ''))
+const initiatorAvatar = computed(() => avatarFor(names.value, initiatorName.value || null))
 const strategy = computed(() => strategyOf(props.detail?.strategy))
 const strategyArt = computed(() => strategyIcon(props.detail?.strategy))
 const itemCounts = (items: string[]) => {
@@ -86,7 +91,7 @@ onMounted(async () => {
       </div>
 
       <div v-else-if="detail" class="report-content">
-        <dl v-if="strategy || detail.initiator" class="report-setup">
+        <dl v-if="strategy || initiatorName || party" class="report-setup">
           <div v-if="strategy">
             <dt>开局策略</dt>
             <dd>
@@ -94,14 +99,18 @@ onMounted(async () => {
               {{ strategy }}
             </dd>
           </div>
-          <div v-if="detail.initiator">
+          <div v-if="initiatorName">
             <dt>发起干员</dt>
             <dd>
               <img v-if="initiatorAvatar && !missingPortraits.has(initiatorAvatar)" :src="initiatorAvatar" width="24" height="24" alt=""
                 @error="missingPortraits.add(initiatorAvatar)">
-              <span v-else class="report-avatar-fallback report-avatar-fallback--small" aria-hidden="true">{{ detail.initiator.slice(0, 1) }}</span>
-              {{ detail.initiator }}
+              <span v-else class="report-avatar-fallback report-avatar-fallback--small" aria-hidden="true">{{ initiatorName.slice(0, 1) }}</span>
+              {{ initiatorName }}
             </dd>
+          </div>
+          <div v-if="party">
+            <dt>发起者</dt>
+            <dd>{{ party }}</dd>
           </div>
         </dl>
 
@@ -111,7 +120,7 @@ onMounted(async () => {
           <div><dt>金币花费</dt><dd>{{ number(detail.coins) }}</dd></div>
           <div><dt>同步次数</dt><dd>{{ number(detail.sync_count) }}</dd></div>
           <div><dt>时长</dt><dd>{{ duration }}</dd></div>
-          <div><dt>奖杯变化</dt><dd>{{ number(detail.trophies) }}</dd></div>
+          <div><dt>获得奖杯</dt><dd :class="{ 'report-gain': (detail.trophies ?? 0) > 0 }">{{ number(detail.trophies) }}</dd></div>
         </dl>
 
         <div class="report-breakdown">
@@ -216,6 +225,7 @@ onMounted(async () => {
 .report-stats > div { min-width: 0; border: 0; border-radius: 0; padding: .55rem .65rem; background: var(--inset); }
 .report-stats dt, .report-setup dt { color: var(--muted); font-size: .75rem; }
 .report-stats dd { font: 700 1.04rem/1.4 var(--numbers); overflow-wrap: anywhere; }
+#detail .report-stats dd.report-gain { color: var(--win); }
 .report-setup { display: flex; flex-wrap: wrap; gap: .45rem 1.4rem; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--inset); }
 .report-setup > div, .report-setup dd { display: flex; gap: .4rem; align-items: center; }
 .report-setup dt { font-size: .82rem; }

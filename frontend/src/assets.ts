@@ -189,17 +189,36 @@ export const EQUIPMENT_ICONS: Record<string, string> = {
 
 export const DIFFICULTY_ICONS: Record<string, string> = {
   "极速模拟": "/art/tier-fast.png",
-  "标准模拟": "/art/tier-standard.png",
+  "标准模拟": "/art/tier-standard-rook.png",
   "险境模拟": "/art/tier-normal.png",
   "绝境模拟": "/art/tier-hard.png",
   "终极模拟": "/art/tier-abyss.png",
+}
+
+/**
+ * 难度图标。独立模拟的「规程等级 N」按四档复用联合模拟的图标（依据 PRTS「卫戍协议·规程」）：
+ * - 关键目标表原文：【标准模拟】或【规程等级1~4】、【险境模拟】或【规程等级5~8】；
+ * - 交叉开放：解锁规程等级 9 时开放【险境模拟】、解锁规程等级 15 时开放【绝境模拟】，
+ *   即打通 8 级相当于险境、打通 14 级相当于绝境，再往上各升一档。
+ * 所以 1–4 标准、5–8 险境、9–14 绝境、15–20 终极；极速模拟单独一个图标。
+ * 标准模拟的图标是游戏选关界面里的素塔（mode_funny_icon 染琥珀色），不是极速模拟的闪电塔。
+ */
+export function difficultyIcon(label: string): string | undefined {
+  if (DIFFICULTY_ICONS[label]) return DIFFICULTY_ICONS[label]
+  const level = /^规程等级\s*(\d+)$/.exec(label.trim())
+  if (!level) return undefined
+  const value = Number(level[1])
+  if (value >= 15) return DIFFICULTY_ICONS['终极模拟']
+  if (value >= 9) return DIFFICULTY_ICONS['绝境模拟']
+  if (value >= 5) return DIFFICULTY_ICONS['险境模拟']
+  return DIFFICULTY_ICONS['标准模拟']
 }
 
 // 从 PC 端 AB 包原生拆出的白色 glyph（ui/autochess/[uc]autochesscommon.ab: mode_*_icon），
 // UI 里可用 CSS filter / mask 换色。
 export const MODE_ICONS: Record<string, string> = {
   "极速模拟": "/art/mode-fast.png",
-  "标准模拟": "/art/mode-fast.png",
+  "标准模拟": "/art/mode-funny.png",
   "险境模拟": "/art/mode-normal.png",
   "绝境模拟": "/art/mode-hard.png",
   "终极模拟": "/art/mode-abyss.png",

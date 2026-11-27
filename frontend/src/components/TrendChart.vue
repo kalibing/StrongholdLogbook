@@ -25,6 +25,8 @@ const props = defineProps<{
   points: Point[]
   metric: Metric
   title: string
+  /** 按日聚合的点：没有单局胜负，标签是日期。 */
+  daily?: boolean
 }>()
 const emit = defineEmits<{ openMatch: [id: string] }>()
 
@@ -53,7 +55,9 @@ function css(name: string): string {
 
 function describe(index: number) {
   const point = props.points[index]
-  const heading = `第 ${index + 1} 局 · ${shortTime(point.label)}`
+  const heading = props.daily
+    ? `${point.label} · ${point.wins ?? 0} 胜 ${point.losses ?? 0} 负`
+    : `第 ${index + 1} 局 · ${shortTime(point.label)}`
   const outcome = point.result === 'loss' ? '负' : point.result === 'win' ? '胜' : ''
   const names = props.metric === 'peak' && point.peak && point.peak.names.length
     ? point.peak.names.join('、')
@@ -71,7 +75,10 @@ function buildOption() {
   const loss = css('loss')
   const averageColor = css('chart-average')
   const panel = css('panel')
+  const neutral = css('chart-line')
   const peak = props.metric === 'peak'
+  const colorOf = (point: Point) => props.daily ? neutral : point.result === 'loss' ? loss : win
+  const axisLabel = (index: number) => props.daily ? items[index].label.slice(5) : String(index + 1)
 
   const showLabels = items.length <= 10
   const peakBonds = peak
@@ -116,7 +123,7 @@ function buildOption() {
     },
     data: items.map(point => ({
       value: valueOf(point),
-      itemStyle: { color: point.result === 'loss' ? loss : win, borderColor: panel, borderWidth: 1 },
+      itemStyle: { color: colorOf(point), borderColor: panel, borderWidth: 1 },
     })),
   } : {
     type: 'bar',
@@ -125,7 +132,7 @@ function buildOption() {
     labelLayout: { hideOverlap: true },
     data: items.map(point => {
       const value = valueOf(point)
-      const color = point.result === 'loss' ? loss : win
+      const color = colorOf(point)
       return { value, itemStyle: { color: color + 'b3', borderColor: color, borderWidth: 1, borderRadius: [3, 3, 0, 0] } }
     }),
   }
@@ -136,7 +143,7 @@ function buildOption() {
     animationDurationUpdate: 0,
     animationEasing: 'cubicOut' as const,
     backgroundColor: 'transparent',
-    grid: { left: 38, right: 12, top: 24, bottom: (showLabels ? 43 : 28) + (hasBondLabels ? 59 : 0) },
+    grid: { left: 38, right: 12, top: 24, bottom: (showLabels && !props.daily ? 43 : 28) + (hasBondLabels ? 59 : 0) },
     aria: {
       enabled: true,
       label: {
@@ -176,7 +183,7 @@ function buildOption() {
     xAxis: {
       type: 'category',
       boundaryGap: true,
-      data: items.map((_, index) => String(index + 1)),
+      data: items.map((_, index) => axisLabel(index)),
       axisLine: { lineStyle: { color: grid } },
       axisTick: { show: false },
       axisLabel: {
@@ -186,7 +193,7 @@ function buildOption() {
         interval: showLabels ? 0 : 'auto' as const,
         hideOverlap: !showLabels,
         formatter: (value: string, index: number) => {
-          const result = showLabels
+          const result = showLabels && !props.daily
             ? (items[index].result === 'loss' ? '\n{loss|负}' : '\n{win|胜}')
             : ''
           const name = peakBonds[index]
@@ -263,7 +270,7 @@ onBeforeUnmount(() => {
   chart?.dispose()
   chart = null
 })
-watch([() => props.points, () => props.metric, () => props.title, theme, reduceMotion], render, { flush: 'post' })
+watch([() => props.points, () => props.metric, () => props.title, () => props.daily, theme, reduceMotion], render, { flush: 'post' })
 </script>
 
 <template>

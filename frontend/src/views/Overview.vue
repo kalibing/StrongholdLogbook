@@ -4,9 +4,10 @@ import { NIcon, NSelect } from 'naive-ui'
 import { FlameOutline, LayersOutline, NuclearOutline, PeopleOutline, ShieldOutline, SkullOutline, SpeedometerOutline, TrendingUpOutline } from '@vicons/ionicons5'
 import { logbook } from '../context'
 import { query, useResource } from '../api'
-import { BOND_ICONS, BOSS_MARKS, DIFFICULTY_ICONS, FUNDS_ICON } from '../assets'
-import { number, percent, pickMajorBond, resultLabel } from '../format'
+import { BOND_ICONS, BOSS_MARKS, difficultyIcon, FUNDS_ICON } from '../assets'
+import { number, percent, pickMajorBond, playRank, resultLabel } from '../format'
 import { portrait } from '../icons'
+import { strategyIcon, strategyOf, unitOf } from '../bands'
 import type { DistributionGroup, MatchDetail, Overview } from '../models'
 import FiltersBar from '../components/FiltersBar.vue'
 import BondShareChart from '../components/BondShareChart.vue'
@@ -20,29 +21,44 @@ const sections = [
   { id: 'summary', label: '作战概况', icon: ShieldOutline },
   { id: 'bonds', label: '盟约分析', icon: LayersOutline },
   { id: 'trend', label: '对局趋势', icon: TrendingUpOutline },
-  { id: 'operators', label: '常用干员', icon: PeopleOutline },
+  { id: 'operators', label: '常用阵容', icon: PeopleOutline },
 ] as const
 const section = ref<(typeof sections)[number]['id']>('summary')
-const scope = ref<'recent' | 'all'>('recent')
-const scopeOptions = [{ label: '近 10 场', value: 'recent' }, { label: '全部对局', value: 'all' }]
+const scope = ref<'recent' | 'all' | 'day'>('recent')
+const scopeOptions = [
+  { label: '近 10 场', value: 'recent' },
+  { label: '全部对局', value: 'all' },
+  { label: '按日期', value: 'day' },
+]
+// 以已到达的数据为准：切换范围时旧数据还在屏幕上，不能提前按日期去解读逐局的点。
+const daily = computed(() => new URLSearchParams(resolvedUrl.value?.split('?')[1]).get('scope') === 'day')
 const detailUrl = ref<string | null>(null)
 const missingPortraits = reactive(new Set<string>())
 const url = computed(() => '/overview' + query(filters, { scope: scope.value }))
-const { data, pending, error, refresh } = useResource<Overview>(url, revision, true)
+const { data, pending, error, refresh, resolvedUrl } = useResource<Overview>(url, revision, true)
 const report = useResource<MatchDetail>(detailUrl, revision)
 
 const rate = computed(() => data.value?.matches ? data.value.wins / data.value.matches : 0)
-const charts: { metric: Metric; title: string }[] = [
+// 按日期聚合时后端给的是：单日最高总层数、单日单项最高、金币合计、击杀与回合的场均。
+const charts = computed<{ metric: Metric; title: string }[]>(() => daily.value ? [
+  { metric: 'peak', title: '单日单项最高盟约层数' },
+  { metric: 'layers', title: '单日最高盟约总层数' },
+  { metric: 'coins', title: '金币花费合计' },
+  { metric: 'kills', title: '场均敌人击杀' },
+  { metric: 'rounds', title: '场均通过回合' },
+] : [
   { metric: 'peak', title: '单项最高盟约层数' },
   { metric: 'layers', title: '盟约总层数' },
   { metric: 'coins', title: '金币花费' },
   { metric: 'kills', title: '敌人击杀' },
   { metric: 'rounds', title: '通过回合' },
-]
+])
 const period = computed(() => data.value?.start ? `${data.value.start} — ${data.value.end}` : '当前筛选无对局')
 const majorBond = computed(() => (data.value?.peak ? pickMajorBond(data.value.peak.names) : ''))
 const distributionUrl = computed(() => '/distribution' + query(filters))
 const distribution = useResource<DistributionGroup[]>(distributionUrl, revision, true)
+/** 与筛选栏同序：独立模拟在前，联合模拟在后。 */
+const distributionGroups = computed(() => [...(distribution.data.value ?? [])].sort((a, b) => playRank(a.play) - playRank(b.play)))
 
 const TIERS: Record<string, { icon: Component; color: string }> = {
   标准模拟: { icon: ShieldOutline, color: '#e0b04a' },
@@ -55,7 +71,7 @@ function tierOf(label: string): { icon: Component; color: string } {
   return TIERS[label] ?? { icon: LayersOutline, color: 'var(--muted)' }
 }
 function tierIcon(label: string): string {
-  return DIFFICULTY_ICONS[label] ?? ''
+  return difficultyIcon(label) ?? ''
 }
 function openMatch(id: string) {
   detailUrl.value = '/matches/' + id
@@ -107,12 +123,11 @@ function openMatch(id: string) {
               </div>
               <small v-if="data.excluded" class="excluded-count">已排除 {{ number(data.excluded) }} 局</small>
             </div>
-            <dl class="overview-trophies" title="汇总当前筛选内有奖杯记录的对局">
+            <dl class="overview-trophies"
+              :title="data.trophy_total?.source === 'profile' ? '来自成就档案的累计奖杯' : '按已导入对局的奖杯记录累计，绑定成就档案后以游戏数据为准'">
               <div>
-                <dt><TrophyIcon :badge="data.trophy_badge" :size="38" />奖杯数</dt>
-                <dd class="trophy-change-value" :class="{ 'trophy-change-value--loss': (data.trophy_change ?? 0) < 0 }">
-                  {{ number(data.trophy_change ?? null) }}
-                </dd>
+                <dt><TrophyIcon :badge="data.trophy_badge" :total="data.trophy_total?.total" :size="38" />奖杯总数</dt>
+                <dd class="trophy-change-value">{{ number(data.trophy_total?.total ?? null) }}</dd>
               </div>
             </dl>
           </section>
@@ -176,7 +191,7 @@ function openMatch(id: string) {
                   </th>
                 </tr>
               </thead>
-              <tbody v-for="group in distribution.data.value" :key="group.play" class="dist-group">
+              <tbody v-for="group in distributionGroups" :key="group.play" class="dist-group">
                 <tr class="dist-group-heading"><th scope="rowgroup" colspan="7">{{ group.play }}</th></tr>
                 <tr v-for="bucket in group.buckets" :key="bucket.label" class="dist-row">
                   <th scope="row">
@@ -240,7 +255,7 @@ function openMatch(id: string) {
           <h2 id="trend-title">对局趋势</h2>
           <div class="chart-controls">
             <span v-if="pending" class="muted" role="status">正在更新…</span>
-            <div v-show="data.points.length" class="chart-legend" aria-label="图例">
+            <div v-show="data.points.length && !daily" class="chart-legend" aria-label="图例">
               <span class="win-key">■ 胜</span><span class="loss-key">■ 负</span>
             </div>
             <NSelect v-model:value="scope" class="trend-scope" size="small" :options="scopeOptions" aria-label="对局范围" />
@@ -248,12 +263,36 @@ function openMatch(id: string) {
         </div>
         <div v-if="data.points.length" class="trend-grid" :aria-busy="pending">
           <TrendChart v-for="chart in charts" :key="chart.metric" :points="data.points" :metric="chart.metric"
-            :title="chart.title" @open-match="openMatch" />
+            :title="chart.title" :daily="daily" @open-match="openMatch" />
         </div>
         <p v-else class="empty-state">当前筛选无对局趋势。</p>
       </section>
 
-      <section v-else-if="section === 'operators'" aria-labelledby="operators-title">
+      <div v-else-if="section === 'operators'">
+      <section v-if="data.strategies" class="content-section" aria-labelledby="strategies-title">
+        <div class="split section-heading">
+          <div>
+            <h2 id="strategies-title">常用策略</h2>
+            <p class="muted">按开局局数排序</p>
+          </div>
+          <RouterLink class="button-link" :to="{ name: 'operators', query: { view: 'strategies' } }">完整策略列表</RouterLink>
+        </div>
+        <div v-if="data.strategies.length" class="strategy-usage">
+          <article v-for="item in data.strategies" :key="item.name" class="usage-card strategy-card" :title="unitOf(item.name) || undefined">
+            <div class="usage-heading">
+              <img v-if="strategyIcon(item.name)" :src="strategyIcon(item.name)" width="36" height="36" alt=""
+                @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
+              <h3>{{ strategyOf(item.name) }}</h3>
+            </div>
+            <dl class="usage-stats">
+              <div><dt>开局</dt><dd><strong>{{ number(item.count) }}</strong><span>局</span></dd></div>
+              <div><dt>胜率</dt><dd><strong>{{ percent(item.win_rate) }}</strong></dd></div>
+            </dl>
+          </article>
+        </div>
+        <p v-else class="muted">当前筛选无策略记录</p>
+      </section>
+      <section aria-labelledby="operators-title">
         <div class="split section-heading">
           <div>
             <h2 id="operators-title">常用干员</h2>
@@ -273,6 +312,7 @@ function openMatch(id: string) {
         </div>
         <p v-else class="muted">暂无阵容明细</p>
       </section>
+      </div>
     </Transition>
   </template>
 
@@ -329,6 +369,10 @@ function openMatch(id: string) {
   .overview-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .trend-scope { width: 8rem; }
+/* 常用策略沿用「常用盟约」的卡片样式，只是网格单独声明。 */
+.strategy-usage { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.75rem; }
+.strategy-card .usage-heading img { object-fit: contain; flex: none; }
+@media (max-width: 900px) { .strategy-usage { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .overview-trophies {
   margin-top: .75rem; padding: .48rem .75rem; border: 1px solid var(--line); border-radius: 3px;
   background: var(--inset); color: var(--text); font-size: .92rem;
