@@ -47,20 +47,14 @@ const overrides = computed<GlobalThemeOverrides>(() => ({
 }))
 
 const navItems = [
-  { route: 'overview', title: '战绩总览', code: 'OVERVIEW', icon: GridOutline },
-  { route: 'yesterday', title: '昨日战报', code: 'DAILY BRIEF', icon: CalendarOutline },
-  { route: 'matches', title: '对局记录', code: 'MATCH LOG', icon: ListOutline },
-  { route: 'operators', title: '干员统计', code: 'OPERATORS', icon: PeopleOutline },
-  { route: 'achievements', title: '成就档案', code: 'ARCHIVE', icon: RibbonOutline },
-  { route: 'data-import', title: '数据导入', code: 'DATA SYNC', icon: CloudDownloadOutline },
+  { route: 'overview', title: '战绩总览', icon: GridOutline },
+  { route: 'yesterday', title: '昨日战报', icon: CalendarOutline },
+  { route: 'matches', title: '对局记录', icon: ListOutline },
+  { route: 'operators', title: '干员统计', icon: PeopleOutline },
+  { route: 'achievements', title: '成就档案', icon: RibbonOutline },
+  { route: 'data-import', title: '数据导入', icon: CloudDownloadOutline },
 ]
-/** 页面编号：侧栏和面包屑里用同一套 01–06，个人主页等不在导航里的页面显示 --。 */
-const pageIndex = computed(() => {
-  const index = navItems.findIndex(item => item.route === route.name)
-  return index < 0 ? '--' : String(index + 1).padStart(2, '0')
-})
-const pageCode = computed(() => navItems.find(item => item.route === route.name)?.code
-  ?? (route.name === 'profile' ? 'PROFILE' : 'RECORD'))
+
 
 function applyTheme(value: Theme) {
   theme.value = value
@@ -215,25 +209,18 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
     <aside v-if="user" id="sidebar" class="sidebar" aria-label="侧边栏">
       <RouterLink class="side-brand" to="/">
         <i class="shield" aria-hidden="true"></i>
-        <span class="side-brand-copy">
-          <b>卫戍协议</b>
-          <small>STRONGHOLD · LOGBOOK</small>
-        </span>
+        <span class="side-brand-copy"><b>卫戍协议</b><small>作战档案</small></span>
       </RouterLink>
-      <i class="hazard" aria-hidden="true"></i>
 
       <nav class="side-nav" aria-label="主导航">
-        <p class="side-label" aria-hidden="true"><span>TACTICAL INDEX</span><i></i></p>
-        <RouterLink v-for="(item, index) in navItems" :key="item.route" class="side-link" :to="{ name: item.route }"
+        <RouterLink v-for="item in navItems" :key="item.route" class="side-link" :to="{ name: item.route }"
           :title="item.title" :aria-current="route.name === item.route ? 'page' : undefined">
-          <span class="side-index" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span>
           <NIcon class="side-icon" :component="item.icon" aria-hidden="true" />
-          <span class="side-text"><b>{{ item.title }}</b><small aria-hidden="true">{{ item.code }}</small></span>
+          <span class="side-text">{{ item.title }}</span>
         </RouterLink>
       </nav>
 
       <div class="side-foot">
-        <p class="side-status" aria-hidden="true"><i></i>LINK ONLINE<span>PRTS</span></p>
         <div class="side-account">
           <NDropdown trigger="click" placement="top-start" :options="accountMenu" @select="selectAccount">
             <button type="button" class="account-card" :class="{ 'account-card--active': route.name === 'profile' }"
@@ -264,7 +251,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
         </NButton>
         <RouterLink class="side-brand side-brand--compact" to="/">
           <i class="shield" aria-hidden="true"></i>
-          <span class="side-brand-copy"><b>卫戍协议</b><small>STRONGHOLD · LOGBOOK</small></span>
+          <span class="side-brand-copy"><b>卫戍协议</b><small>作战档案</small></span>
         </RouterLink>
         <NButton quaternary class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
           :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
@@ -278,13 +265,8 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
         <div v-if="pending" class="loading-shell" role="status"><i aria-hidden="true"></i>正在读取数据…</div>
 
         <template v-else-if="user || route.meta.public">
-          <p class="crumbs" aria-hidden="true">
-            <span>卫戍协议</span><i>/</i><span>作战档案</span><i>/</i><b>{{ route.meta.title }}</b>
-            <em>{{ pageIndex }} · {{ pageCode }}</em>
-          </p>
           <div class="heading">
             <div class="heading-copy">
-              <p class="heading-code" aria-hidden="true">SECTION {{ pageIndex }}<span>{{ pageCode }}</span></p>
               <h1>{{ route.meta.title }}</h1>
               <p class="heading-description">{{ route.meta.description }}</p>
             </div>
@@ -301,10 +283,9 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
 
         <div v-else class="login-layout">
           <section class="panel login-panel" aria-labelledby="login-title">
-            <i class="hazard" aria-hidden="true"></i>
             <header class="login-head">
-              <p class="eyebrow">STRONGHOLD PROTOCOL <span>/</span> 作战档案</p>
-              <h1 id="login-title">身份验证</h1>
+              <p class="eyebrow">卫戍协议 <span>/</span> 作战档案</p>
+              <h1 id="login-title">登录</h1>
               <p class="muted">登录后查看对局记录、盟约趋势和干员出场统计。</p>
             </header>
             <form class="login-form" @submit.prevent="login">
