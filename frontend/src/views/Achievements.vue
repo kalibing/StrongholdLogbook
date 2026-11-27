@@ -464,7 +464,7 @@ onBeforeUnmount(() => {
 }
 .row-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 /* 分步引导内的标题、行内按钮与「等待中」状态 */
-.wizard-heading { font-size: 1rem; }
+.wizard-heading { font-size: 1.125rem; }
 .wizard-inline-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .wizard-waiting { display: flex; align-items: center; gap: .6rem; color: var(--text-2); font-size: .9375rem; }
 .wizard-waiting i { flex: none; width: 8px; height: 8px; background: var(--accent); }
@@ -487,7 +487,7 @@ onBeforeUnmount(() => {
 }
 .risk-box h4 {
   display: flex; align-items: center; gap: .45rem; margin: 0;
-  color: var(--warn); font-size: .9375rem; font-weight: 600; letter-spacing: .08em;
+  color: var(--warn); font-size: 1.0625rem; font-weight: 600; letter-spacing: .08em;
 }
 .risk-box h4::before {
   content: "!"; display: grid; place-items: center; width: 1.05rem; height: .95rem; padding-top: .12rem;
@@ -539,7 +539,7 @@ onBeforeUnmount(() => {
 .strip-actions { display: flex; gap: .4rem; }
 
 .block { padding: 1.15rem clamp(.8rem, 2.5vw, 1.5rem); }
-.block h3 { position: relative; padding-left: .7rem; font-size: 1.05rem; letter-spacing: .02em; }
+.block h3 { position: relative; padding-left: .7rem; font-size: 1.125rem; letter-spacing: .02em; }
 .block h3::before {
   content: ''; position: absolute; left: 0; top: .18em; bottom: .18em; width: 3px;
   background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 25%, transparent));

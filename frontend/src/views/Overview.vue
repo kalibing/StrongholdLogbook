@@ -360,6 +360,7 @@ function openMatch(id: string) {
   background: var(--panel);
   letter-spacing: .08em;
   color: var(--muted);
+  font-size: 1.0625rem;
   font-weight: 500;
   text-align: center;
 }
@@ -383,6 +384,8 @@ function openMatch(id: string) {
   .overview-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .overview-cards label { grid-column: span 2; }
   .overview-cards label:nth-child(n + 4) { grid-column: span 3; }
+  /* 手机上一行三个，回到正文字号、收紧字距，四个字不折行 */
+  .overview-card { gap: .35rem; font-size: 1rem; letter-spacing: .02em; }
 }
 .trend-scope { width: 8rem; }
 /* 常用策略沿用「常用盟约」的卡片样式，只是网格单独声明。 */

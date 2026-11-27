@@ -91,8 +91,8 @@ body::before {
 :root[data-theme="light"] body::before { opacity: .06; filter: invert(1); }
 h1, h2, h3, h4, p, dl, dd { margin: 0; }
 h1 { font-size: clamp(1.75rem, 3.2vw, 2.4rem); font-weight: 700; letter-spacing: .06em; line-height: 1.15; }
-h2 { font-size: 1.1rem; font-weight: 700; letter-spacing: .06em; }
-h3 { font-size: 1rem; font-weight: 500; letter-spacing: .03em; }
+h2 { font-size: 1.3rem; font-weight: 700; letter-spacing: .04em; }
+h3 { font-size: 1.125rem; font-weight: 600; letter-spacing: .03em; }
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; }
 button, input, select { font: inherit; }
@@ -365,7 +365,7 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
 .stat-sub dd { display: flex; align-items: center; gap: .35rem; min-width: 0; color: var(--muted); white-space: nowrap; }
 .stat-sub dd b { color: var(--text); font: 700 1.5rem/1 var(--numbers); }
 .stat-sub img, .stat-sub .bond-glyph { flex: none; width: 30px; height: 30px; object-fit: contain; }
-.stat-sub .peak-value { gap: .45rem; font-size: 1rem; }
+.stat-sub .peak-value { gap: .45rem; font-size: 1.125rem; }
 .stat-sub .bond-glyph { width: 20px; height: 20px; }
 .peak-name { overflow: hidden; color: var(--text-2); font-size: 1rem; text-overflow: ellipsis; }
 .funds-value { gap: .32rem; }
@@ -380,7 +380,7 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
 .loss-key { color: var(--loss); }
 .trend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
 .trend-panel { padding: 1rem 1.1rem .85rem; }
-.trend-panel h3 { font-size: 1rem; }
+.trend-panel h3 { font-size: 1.125rem; }
 .trend-canvas { display: block; width: 100%; height: 230px; margin-top: .45rem; }
 
 /* 常用阵容：干员卡（头像右贴边、文字压底） */
@@ -446,10 +446,10 @@ td .with-avatar { white-space: nowrap; }
   .history-time-col { width: 13%; }
   .history-result-col { width: 7%; }
   .history-mode-col { width: 11%; }
-  .history-tier-col { width: 15%; }
-  .history-strategy-col { width: 19%; }
+  .history-tier-col { width: 14%; }
+  .history-strategy-col { width: 17%; }
   .history-small-col { width: 7%; }
-  .history-value-col { width: 10.5%; }
+  .history-value-col { width: 12%; }
   .match-row { height: var(--history-row-height); }
   .history-table :is(th, td), .history-table .strategy-name { overflow: hidden; text-overflow: ellipsis; }
   .history-table .strategy-cell { max-width: 100%; }

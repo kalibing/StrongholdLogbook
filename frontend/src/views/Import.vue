@@ -578,7 +578,7 @@ onBeforeUnmount(() => {
             <span v-else class="history-latest muted">{{ jobsPending ? '读取中…' : '暂无记录' }}</span>
           </span>
         </span>
-        <span class="history-note">按局去重计数：同一局重新导入只覆盖字段，不会累加。</span>
+        <span class="history-note">按局去重：重复导入只更新，不累加</span>
       </button>
       <p v-if="jobsError" class="load-message history-error" role="alert">{{ jobsError }}</p>
     </section>
@@ -625,7 +625,7 @@ onBeforeUnmount(() => {
   color: var(--accent); font-size: .8125rem; font-weight: 600; letter-spacing: .06em;
 }
 .import-form, .current-import { display: grid; gap: .9rem; }
-.wizard-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; font-size: 1rem; }
+.wizard-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; font-size: 1.125rem; }
 .wizard-inline-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 /* 分段切换：和总览分段卡同一套——整条连在一起，1px 分隔，选中项实色填充 + 深色字。 */
 .import-methods {

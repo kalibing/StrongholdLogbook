@@ -82,6 +82,13 @@ function go(index: number) {
 [data-state='done'] .wizard-rail-step { color: var(--text-2); }
 [data-state='done'] .wizard-no { border-color: var(--accent); color: var(--accent); }
 
+/* 窄容器（手机）里放不下全部步骤名：只显示当前步骤的名字，其余只留编号，避免被截成「…」。 */
+@container (max-width: 560px) {
+  .wizard-rail li:not([data-state='current']) .wizard-title { display: none; }
+  .wizard-rail li[data-state='current'] { flex: none; }
+  .wizard-rail li:not(:last-child)::after { margin-inline: .4rem; }
+}
+
 .wizard-body {
   display: grid; min-height: 9rem; padding: 1.1rem 1.2rem; overflow: hidden;
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset);
