@@ -785,6 +785,18 @@ img { max-width: 100%; }
 }
 .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
 
+/* 切换光暗：新主题以圆形从按钮处铺开（clip-path 由 App.vue 驱动），旧画面原地不动。 */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; }
+@media (prefers-reduced-motion: no-preference) {
+  .theme-toggle-icon { animation: theme-icon-in .5s cubic-bezier(.2, .8, .2, 1); }
+}
+@keyframes theme-icon-in {
+  from { opacity: 0; transform: rotate(-120deg) scale(.4); }
+  to { opacity: 1; transform: none; }
+}
+
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #f3f6f9;
@@ -1159,3 +1171,14 @@ td .with-avatar { white-space: nowrap; }
   .import-step-main { grid-row: 1; grid-column: 2; }
   .import-step-action { grid-row: 2; grid-column: 2; justify-content: flex-start; }
 }
+
+/* 页头右上角的账号入口 → 我的主页 */
+.account-chip {
+  display: inline-flex; align-items: center; gap: .4rem; min-height: 38px; padding: 0 .75rem;
+  border: 1px solid var(--control-line); border-radius: 2px; background: var(--inset);
+  color: var(--muted); font-size: .875rem; white-space: nowrap;
+  transition: color .18s ease, border-color .18s ease;
+}
+.account-chip:hover, .account-chip[aria-current="page"] { color: var(--accent); border-color: var(--accent); }
+.account-chip span { max-width: 8rem; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 560px) { .account-chip span { display: none; } .account-chip { padding: 0 .55rem; } }

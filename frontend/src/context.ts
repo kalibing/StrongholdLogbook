@@ -13,7 +13,7 @@ export interface LogbookContext {
   facets: Ref<Facet[]>
   revision: Ref<number>
   theme: Ref<Theme>
-  toggleTheme: () => void
+  toggleTheme: (event?: Event) => void
   refresh: () => void
 }
 

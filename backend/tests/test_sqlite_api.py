@@ -275,6 +275,24 @@ def test_distribution_uses_prts_levels_and_keeps_unknown_matches(client):
     assert sum(total for group in buckets.values() for _, total in group) == client.get("/api/overview").json()["matches"]
 
 
+def test_profile_summarizes_whole_career_without_secrets(client):
+    matches = [
+        {"external_id": "p-1", "played_at": "2026-11-20T21:00:00+08:00", "play": "联合模拟",
+         "difficulty": "绝境模拟", "result": "win", "kills": 90, "trophies": 5},
+        {"external_id": "p-2", "played_at": "2026-11-21T21:00:00+08:00", "play": "独立模拟",
+         "difficulty": "规程等级 6", "result": "loss", "kills": 30},
+    ]
+    assert client.post("/api/imports", json=matches, headers=HEADERS).status_code == 202
+    drain()
+    data = client.get("/api/profile").json()
+    assert data["username"] == "tester" and data["account"] is None
+    assert data["career"]["matches"] == 2 and data["career"]["wins"] == 1
+    assert data["best"] == {"union": "绝境模拟", "solo": None}
+    assert data["trophy_total"] == {"total": 5, "source": "matches"}
+    assert data["activity"]["days"]
+    assert "uid" not in json.dumps(data)
+
+
 def test_distribution_counts_boss_ids_and_names_once_per_match(client):
     matches = [
         ("win", ["boss_8", "boss_14", "boss_1"], False),
