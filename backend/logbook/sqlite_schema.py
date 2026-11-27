@@ -99,4 +99,40 @@ SCHEMA = (
         avatar_version INTEGER NOT NULL DEFAULT 0
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS notifications_recent ON notifications (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS notification_reads (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, notification_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS qq_identities (
+        bot_app_id TEXT NOT NULL,
+        openid TEXT NOT NULL,
+        user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+        renamed_at INTEGER,
+        password_set_at INTEGER,
+        PRIMARY KEY (bot_app_id, openid)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS qq_login_links (
+        token_hash BLOB PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at INTEGER NOT NULL,
+        used_at INTEGER
+    )
+    """,
 )

@@ -23,7 +23,7 @@ watch(() => [props.src, props.fallbackSrc], () => { attempt.value = 0 }, { flush
 <style scoped>
 .avatar-image {
   display: inline-grid; flex: none; width: var(--avatar-size); aspect-ratio: 1; place-items: center;
-  overflow: hidden; border-radius: 4px;
+  overflow: hidden; border-radius: var(--radius);
 }
 .avatar-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .avatar-initial {

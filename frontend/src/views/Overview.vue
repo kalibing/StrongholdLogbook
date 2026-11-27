@@ -5,7 +5,7 @@ import { FlameOutline, LayersOutline, NuclearOutline, PeopleOutline, RibbonOutli
 import { logbook } from '../context'
 import { query, useResource } from '../api'
 import { BOND_ICONS, BOSS_MARKS, difficultyIcon, FUNDS_ICON } from '../assets'
-import { number, percent, pickMajorBond, playRank, resultLabel } from '../format'
+import { number, percent, firstBond, playRank, resultLabel } from '../format'
 import { portrait } from '../icons'
 import { strategyIcon, strategyOf, unitOf } from '../bands'
 import type { DistributionGroup, MatchDetail, Overview } from '../models'
@@ -41,14 +41,6 @@ const { data, pending, error, refresh, resolvedUrl } = useResource<Overview>(url
 const report = useResource<MatchDetail>(detailUrl, revision)
 
 const rate = computed(() => data.value?.matches ? data.value.wins / data.value.matches : 0)
-/** PRTS：累计奖杯 0 / 10 / 30 / 60 / 100 / 150 / 200 / 300+ 对应奖杯 1–8 级，与 TrophyIcon 一致。 */
-const TROPHY_STEPS = [0, 10, 30, 60, 100, 150, 200, 300]
-const trophyStep = computed(() => {
-  const total = data.value?.trophy_total?.total
-  if (total == null) return null
-  const level = data.value?.trophy_badge?.level ?? (TROPHY_STEPS.filter(value => total >= value).length || 1)
-  return `${level} 级`
-})
 // 按日期聚合时后端给的是：单日最高总层数、单日单项最高、金币合计、击杀与回合的场均。
 const charts = computed<{ metric: Metric; title: string }[]>(() => daily.value ? [
   { metric: 'peak', title: '单日单项最高盟约层数' },
@@ -64,7 +56,7 @@ const charts = computed<{ metric: Metric; title: string }[]>(() => daily.value ?
   { metric: 'rounds', title: '通过回合' },
 ])
 const period = computed(() => data.value?.start ? `${data.value.start} — ${data.value.end}` : '当前筛选无对局')
-const majorBond = computed(() => (data.value?.peak ? pickMajorBond(data.value.peak.names) : ''))
+const majorBond = computed(() => (data.value?.peak ? firstBond(data.value.peak.names) : ''))
 const distributionUrl = computed(() => '/distribution' + query(filters))
 const distribution = useResource<DistributionGroup[]>(distributionUrl, revision, true)
 /** 与筛选栏同序：独立模拟在前，联合模拟在后。 */
@@ -139,34 +131,42 @@ function openMatch(id: string) {
                 <dt><TrophyIcon :badge="data.trophy_badge" :total="data.trophy_total?.total" :size="38" />奖杯总数</dt>
                 <dd class="trophy-change-value">{{ number(data.trophy_total?.total ?? null) }}</dd>
               </div>
-              <p v-if="trophyStep" class="trophy-step muted">{{ trophyStep }}</p>
             </dl>
           </section>
 
           <section class="stat-panel panel" aria-labelledby="stats-title">
             <h2 id="stats-title">盟约与资金</h2>
-            <dl class="stats">
-              <div><dt>单局最高总层数</dt><dd>{{ data.max_layers === null ? '—' : number(data.max_layers) + ' 层' }}</dd></div>
-              <div>
-                <dt>单项最高盟约</dt>
-                <dd id="peak" class="peak-value" :title="data.peak ? data.peak.names.join('、') : ''">
-                  <template v-if="data.peak">
-                    <img v-if="BOND_ICONS[majorBond]" :src="BOND_ICONS[majorBond]" width="30" height="30" :alt="majorBond">
-                    <span class="bond-glyph" v-else aria-hidden="true"></span>
-                    <b>{{ number(data.peak.layers) }} 层</b>
-                  </template>
-                  <template v-else>—</template>
-                </dd>
+            <div class="stat-groups">
+              <div class="stat-group">
+                <p class="stat-group-label">盟约</p>
+                <p class="stat-hero"><b>{{ data.max_layers === null ? '—' : number(data.max_layers) }}</b><span v-if="data.max_layers !== null">层</span></p>
+                <p class="stat-hero-label">单局最高总层数</p>
+                <dl class="stat-sub">
+                  <dt>单项最高</dt>
+                  <dd id="peak" class="peak-value" :title="data.peak ? data.peak.names.join('、') : ''">
+                    <template v-if="data.peak">
+                      <img v-if="BOND_ICONS[majorBond]" :src="BOND_ICONS[majorBond]" width="30" height="30" :alt="majorBond">
+                      <span class="bond-glyph" v-else aria-hidden="true"></span>
+                      <span class="peak-name">{{ majorBond }}</span>
+                      <b>{{ number(data.peak.layers) }}</b> 层
+                    </template>
+                    <template v-else>—</template>
+                  </dd>
+                </dl>
               </div>
-              <div>
-                <dt>金币总花费</dt>
-                <dd class="funds-value">
-                  <img v-if="data.total_coins !== null" :src="FUNDS_ICON" width="26" height="22" alt="">
-                  <span>{{ number(data.total_coins) }}</span>
-                </dd>
+              <div class="stat-group">
+                <p class="stat-group-label">资金</p>
+                <p class="stat-hero funds-value">
+                  <img v-if="data.total_coins !== null" :src="FUNDS_ICON" width="30" height="26" alt="">
+                  <b>{{ number(data.total_coins) }}</b>
+                </p>
+                <p class="stat-hero-label">金币总花费</p>
+                <dl class="stat-sub">
+                  <dt>场均金币</dt>
+                  <dd><b>{{ number(data.average_coins) }}</b></dd>
+                </dl>
               </div>
-              <div><dt>场均金币</dt><dd>{{ number(data.average_coins) }}</dd></div>
-            </dl>
+            </div>
           </section>
         </div>
 
@@ -339,11 +339,14 @@ function openMatch(id: string) {
 .overview-cards {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: .55rem;
+  gap: 1px;
   min-width: 0;
   margin: 1rem 0;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--line);
+  overflow: hidden;
 }
 .overview-cards label { position: relative; min-width: 0; cursor: pointer; }
 .overview-cards input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
@@ -352,36 +355,34 @@ function openMatch(id: string) {
   align-items: center;
   justify-content: center;
   gap: .5rem;
-  min-height: 3rem;
+  min-height: 2.9rem;
   padding: .45rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
   background: var(--panel);
+  letter-spacing: .08em;
   color: var(--muted);
   font-weight: 650;
   text-align: center;
 }
 .overview-card :deep(.n-icon) { flex: none; }
-.overview-cards label:hover .overview-card { border-color: var(--control-line); color: var(--text); }
-.overview-cards input:checked + .overview-card {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
-  color: var(--accent);
-}
-.overview-cards input:focus-visible + .overview-card { outline: 2px solid var(--accent); outline-offset: 2px; }
+.overview-cards label:hover .overview-card { background: var(--raised); color: var(--text); }
+/* 选中：实色填充 + 深色字，和侧栏选中一致。 */
+.overview-cards input:checked + .overview-card { background: var(--accent); color: var(--accent-ink); }
+.overview-cards input:focus-visible + .overview-card { outline: 2px solid var(--accent); outline-offset: -3px; }
 @media (prefers-reduced-motion: no-preference) {
   .overview-card {
-    transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
+    transition: background-color .16s ease, color .16s ease, transform .16s ease;
   }
-  .overview-cards label:hover .overview-card { transform: translateY(-1px); }
   .overview-cards label:active .overview-card { transform: scale(.98); }
   .overview-panel-enter-active {
     transition: opacity .2s ease-out, transform .2s cubic-bezier(.2, .7, .3, 1);
   }
   .overview-panel-enter-from { opacity: 0; transform: translateY(7px); }
 }
+/* 窄屏五个分段排成 3 + 2：六等分网格，第一行每格占 2 份，第二行每格占 3 份，不留空格子。 */
 @media (max-width: 540px) {
-  .overview-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .overview-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .overview-cards label { grid-column: span 2; }
+  .overview-cards label:nth-child(n + 4) { grid-column: span 3; }
 }
 .trend-scope { width: 8rem; }
 /* 常用策略沿用「常用盟约」的卡片样式，只是网格单独声明。 */
@@ -389,12 +390,11 @@ function openMatch(id: string) {
 .strategy-card .usage-heading img { object-fit: contain; flex: none; }
 @media (max-width: 900px) { .strategy-usage { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .overview-trophies {
-  margin-top: .75rem; padding: .48rem .75rem; border: 1px solid var(--line); border-radius: 3px;
+  margin-top: .75rem; padding: .48rem .75rem; border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--inset); color: var(--text); font-size: .92rem;
 }
 .overview-trophies > div { display: flex; align-items: center; justify-content: space-between; gap: .65rem; }
 .overview-trophies dt { display: flex; align-items: center; gap: .65rem; font-weight: 650; }
-.trophy-change-value { color: var(--accent); font: 700 clamp(1.5rem, 3vw, 2rem)/1 var(--numbers); }
+.trophy-change-value { color: var(--text); font: 700 clamp(1.5rem, 3vw, 2rem)/1 var(--numbers); }
 .trophy-change-value--loss { color: var(--loss); }
-.trophy-step { margin-top: .35rem; font-size: .78rem; text-align: right; }
 </style>

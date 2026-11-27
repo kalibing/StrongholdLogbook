@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from logbook import daily_card, skland, storage
+from logbook import api, daily_card, skland, storage
 from logbook.api import app
 from logbook.records import CHINA
 from logbook.security import hasher
@@ -45,6 +45,8 @@ def drain():
 
 
 def test_skland_token_can_be_reused_after_login(client, fixtures, monkeypatch):
+    # 这条用例连续同步多次，放宽每日额度（额度本身在 test_registration.py 里单独测）
+    monkeypatch.setattr(api.user_quotas["skland"][0], "limit", 100)
     snapshot = json.loads((fixtures / "sample-snapshot.json").read_bytes())
     accepted_tokens = {"initial-test-token", "replacement-test-token"}
     exchanged = []
@@ -292,11 +294,11 @@ def test_career_follows_filters_and_profile_has_no_secrets(client):
     assert solo["career"]["matches"] == 1 and solo["best"] == {"union": None, "solo": None}
 
     identity = client.get("/api/profile").json()
-    assert identity == {"username": "tester", "display_name": None, "avatar_url": None, "account": None}
+    assert identity == {"username": "tester", "display_name": None, "avatar_url": None, "username_editable": False, "needs_password": False, "account": None}
 
 
 def test_display_name_is_separate_from_username(client):
-    assert client.get("/api/session").json() == {"username": "tester", "display_name": None, "avatar_url": None}
+    assert client.get("/api/session").json() == {"username": "tester", "display_name": None, "avatar_url": None, "username_editable": False, "needs_password": False}
     updated = client.patch("/api/profile", json={"display_name": "  夜  莺 "}, headers=HEADERS)
     assert updated.status_code == 200 and updated.json()["display_name"] == "夜 莺"
     assert client.get("/api/session").json()["username"] == "tester"

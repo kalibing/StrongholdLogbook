@@ -210,5 +210,5 @@ const levelBands = [
 
 <style scoped>
 /* 白色剪影在浅色背景上会消失，垫一块深色底。 */
-.icon-on-dark { box-sizing: content-box; padding: 6px; border-radius: 4px; background: #1b2230; }
+.icon-on-dark { box-sizing: content-box; padding: 6px; border-radius: 4px; background: #1a2620; }
 </style>

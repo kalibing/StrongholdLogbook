@@ -5,19 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="卫戍协议的个人对局档案、战报与数据统计">
     <title>卫戍协议 · 作战档案</title>
-    <script>
-      try {
-        document.documentElement.dataset.theme = localStorage.getItem('logbook:theme') === 'light' ? 'light' : 'dark'
-      } catch (error) {
-        document.documentElement.dataset.theme = 'dark'
-      }
-    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <script src="/theme-init.js"></script>
     <style>
       /* 首屏关键样式：避免样式表加载前的白闪与布局跳动 */
-      html { background: #0a0b0e; color-scheme: dark; scrollbar-gutter: stable; }
-      html[data-theme="light"] { background: #f3f6f9; color-scheme: light; }
-      body { margin: 0; background: transparent; color: #f3f4f6; font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
-      html[data-theme="light"] body { color: #1a212b; }
+      html { background: #080b0c; color-scheme: dark; scrollbar-gutter: stable; }
+      html[data-theme="light"] { background: #f1f3f2; color-scheme: light; }
+      body { margin: 0; background: transparent; color: #ecf0ee; font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+      html[data-theme="light"] body { color: #162022; }
       #app { min-height: 100vh; }
     </style>
   </head>

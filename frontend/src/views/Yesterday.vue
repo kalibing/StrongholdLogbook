@@ -6,7 +6,7 @@ import { query, useResource } from '../api'
 import { BOND_ICONS, bossName } from '../assets'
 import { strategyIcon, strategyOf } from '../bands'
 import { logbook, newFilters } from '../context'
-import { clockTime, difficultyLabel, number, percent, pickMajorBond, resultLabel } from '../format'
+import { clockTime, difficultyLabel, firstBond, number, percent, resultLabel } from '../format'
 import type { DailyReview, MatchDetail, MatchPage, Overview } from '../models'
 import MatchReport from '../components/MatchReport.vue'
 import TierTag from '../components/TierTag.vue'
@@ -75,7 +75,9 @@ const matchRows = computed(() => (matches.value?.matches ?? []).map(match => {
 
 const rate = computed(() => overview.value?.matches ? overview.value.wins / overview.value.matches : 0)
 const dailyPoint = computed(() => overview.value?.points[0])
-const peakIcon = computed(() => BOND_ICONS[pickMajorBond(overview.value?.peak?.names ?? [])])
+// 单项最高只展示一个盟约：并列时取字典序最靠前的，图标跟名字保持一致。
+const peakBond = computed(() => firstBond(overview.value?.peak?.names ?? []))
+const peakIcon = computed(() => BOND_ICONS[peakBond.value])
 
 function openMatch(id: string) {
   detailUrl.value = '/matches/' + id
@@ -114,7 +116,7 @@ function changePageSize(size: number) {
         <dl class="daily-trophies">
           <div>
             <!-- 奖杯只在联合模拟通关时获得、不会扣减，所以写「获得奖杯」而不是带正负号的变化量。 -->
-            <dt><TrophyIcon :badge="overview.trophy_badge" :total="overview.trophy_total?.total" :size="25" />获得奖杯</dt>
+            <dt><TrophyIcon :badge="overview.trophy_badge" :total="overview.trophy_total?.total" :size="36" />获得奖杯</dt>
             <dd>{{ number(overview.trophy_change ?? null) }}</dd>
           </div>
         </dl>
@@ -125,18 +127,18 @@ function changePageSize(size: number) {
         <dl class="daily-highlight-grid">
           <div>
             <dt>单局最高盟约总层数</dt>
-            <dd>{{ overview.max_layers === null ? '—' : `${number(overview.max_layers)} 层` }}</dd>
+            <dd><b>{{ number(overview.max_layers) }}</b><small v-if="overview.max_layers !== null">层</small></dd>
           </div>
           <div>
             <dt>单项最高盟约</dt>
-            <dd v-if="overview.peak" class="daily-peak">
+            <dd v-if="overview.peak" class="daily-peak" :title="overview.peak.names.length > 1 ? `并列：${overview.peak.names.join('、')}` : undefined">
               <img v-if="peakIcon" :src="peakIcon" width="28" height="28" alt="">
-              <span>{{ overview.peak.names.join('、') }} <b>{{ number(overview.peak.layers) }} 层</b></span>
+              <span class="daily-peak-name">{{ peakBond }}</span><b>{{ number(overview.peak.layers) }}</b><small>层</small>
             </dd>
             <dd v-else>—</dd>
           </div>
-          <div><dt>场均击杀</dt><dd>{{ number(dailyPoint?.kills ?? null) }}</dd></div>
-          <div><dt>金币总花费</dt><dd>{{ number(overview.total_coins) }}</dd></div>
+          <div><dt>场均击杀</dt><dd><b>{{ number(dailyPoint?.kills ?? null) }}</b></dd></div>
+          <div><dt>金币总花费</dt><dd><b>{{ number(overview.total_coins) }}</b></dd></div>
         </dl>
       </section>
     </div>
@@ -226,7 +228,7 @@ function changePageSize(size: number) {
 .daily-rate span, .daily-totals dt { color: var(--muted); font-size: .82rem; }
 .daily-highlight-grid dt { color: var(--muted); font-size: .95rem; }
 .daily-rate strong {
-  color: var(--accent);
+  color: var(--text);
   font: 700 clamp(2.75rem, 5vw, 4.5rem)/.95 var(--numbers);
   letter-spacing: -.035em;
   font-variant-numeric: tabular-nums;
@@ -241,18 +243,19 @@ function changePageSize(size: number) {
 .daily-trophies { border-top: 1px solid var(--line); margin-top: .75rem; padding-top: .55rem; }
 .daily-trophies > div, .daily-trophies dt { display: flex; align-items: center; gap: .5rem; }
 .daily-trophies > div { justify-content: space-between; }
-.daily-trophies dt { font-size: .85rem; color: var(--muted); }
-.daily-trophies dd { color: var(--accent); font: 700 1.5rem/1 var(--numbers); }
+.daily-trophies dt { font-size: .95rem; color: var(--muted); }
+.daily-trophies dd { color: var(--text); font: 700 1.85rem/1 var(--numbers); }
 .daily-trophies .loss { color: var(--loss); }
 .daily-highlight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem 1rem; margin-top: .75rem; }
 .daily-highlight-grid > div { padding-top: .45rem; border-top: 1px solid var(--line); }
-.daily-highlight-grid dd { margin-top: .15rem; font: 650 clamp(1.18rem, 1.9vw, 1.48rem)/1.3 var(--numbers); }
-.daily-peak { display: flex; align-items: center; gap: .35rem; }
-.daily-peak img { flex: none; object-fit: contain; }
-.daily-peak b { white-space: nowrap; }
-/* 并列多个盟约时名字会挤成两行，名字降一号，层数保持醒目。 */
-.daily-peak span { font-size: .95rem; line-height: 1.35; }
-.daily-peak b { font-size: 1.3rem; }
+/* 四项数值统一：数字用窄体数字字体同一字号，单位和盟约名用正文字体、小一号。 */
+.daily-highlight-grid dd { display: flex; align-items: baseline; gap: .3rem; min-height: 2rem; margin-top: .2rem; color: var(--muted); }
+.daily-highlight-grid dd b { color: var(--text); font: 700 1.5rem/1.2 var(--numbers); }
+.daily-highlight-grid dd small { font-size: .85rem; }
+.daily-highlight-grid .daily-peak { gap: .4rem; }
+.daily-peak img { flex: none; align-self: center; object-fit: contain; }
+.daily-peak-name { color: var(--text-2); font-size: .95rem; white-space: nowrap; }
+.daily-peak img + .daily-peak-name { margin-inline-end: .1rem; }
 .daily-list-heading { padding: .9rem 1.15rem; flex-wrap: wrap; gap: .3rem .8rem; }
 .daily-list-heading .muted { font-size: .83rem; }
 .daily-list { margin: 0; padding: 0; list-style: none; }

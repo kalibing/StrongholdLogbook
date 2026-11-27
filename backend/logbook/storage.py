@@ -26,6 +26,7 @@ from .sqlite_schema import SCHEMA
 
 TIMESTAMP_COLUMNS = frozenset({
     "played_at", "created_at", "completed_at", "expires_at", "locked_until", "fetched_at", "updated_at",
+    "renamed_at", "password_set_at", "used_at",
 })
 JSON_COLUMNS = frozenset({"bonds", "squad", "operators", "bosses", "payload"})
 BOOL_COLUMNS = frozenset({"suspected_exit"})

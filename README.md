@@ -43,6 +43,7 @@ backend/
     hypergryph.py     鹰角通行证 → u8 token → playerSummary 取数
     achievements.py   成就档案归一化（六维 / 称号 / 社交 / 特殊标识）
     worker.py         导入队列消费进程（幂等 upsert）
+    qqbot.py          QQ 官方机器人回调（独立进程，单聊发「登录」取一次性免密链接）
     storage.py        存储适配层：PostgreSQL / SQLite 双后端
     sqlite_schema.py  SQLite 建表语句（与 Alembic 迁移逐列一致）
     errors.py         跨驱动的存储异常
@@ -96,6 +97,8 @@ pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 pwsh -File scripts\dev.ps1              # 三个窗口：API 8000 / worker / 网页 5173
 pwsh -File scripts\dev.ps1 -NoWorker    # 只要 API 与网页
 ```
+
+Linux / macOS 用 `scripts/dev.sh`（`--no-worker` 同上），虚拟环境路径是 `.venv/bin/python`。
 
 ### 1. 后端（SQLite，最省事）
 
@@ -155,6 +158,75 @@ docker compose exec api python -m logbook.admin create-user alice
 
 Compose 会先跑 `alembic upgrade head`（`migrate` 服务），再启动 API 与 worker；Caddy 只在 `HOST_BIND` 上发布端口，默认 `127.0.0.1`。对外提供 HTTPS 时把 `SITE_ADDRESS` 设成域名，Caddy 自动申请证书，并把 `PUBLIC_ORIGIN` 改成同一个 `https://` 源。
 
+## Linux 服务器部署
+
+服务端按 Linux 设计：镜像基于 Debian（`python:3.13-slim`、`caddy:2-alpine`），CI 也跑在 Ubuntu 上。只有「本机助手」是给用户电脑用的 Windows 程序，服务器只负责提供下载。
+
+### 方式一：Docker Compose（推荐）
+
+需要 Docker Engine 24+ 与 Compose 插件。域名先解析到服务器，防火墙放行 80 / 443（TCP，443 另放 UDP 以启用 HTTP/3）。
+
+```bash
+git clone <仓库地址> /opt/logbook && cd /opt/logbook
+scripts/init-env.sh logbook.example.com   # 生成 .env：随机数据库密码与凭据密钥，权限 600
+docker compose up -d --build
+docker compose exec api python -m logbook.admin create-user alice
+```
+
+- `init-env.sh` 不带参数时生成仅本机可访问的 `http://localhost:8080` 配置；带域名时监听 `0.0.0.0:80/443`，`PUBLIC_ORIGIN` 设为 `https://域名`，Caddy 自动申请证书。
+- `.env` 里的 `LOGBOOK_CREDENTIAL_KEY` 务必另外备份；丢失后已保存的森空岛 / 成就令牌无法解密，需要用户重新绑定。
+- 本机助手：在 Windows 上运行 `scripts/build-agent.ps1`，把生成的 `ArknightsAchvAgent.exe` 拷到服务器 `deploy/download/`，无需重建镜像。目录里没有文件时下载地址返回 404。
+- 升级：`git pull && docker compose up -d --build`，`migrate` 服务会先执行数据库迁移。
+- 备份：`docker compose exec -T db pg_dump -U logbook -Fc logbook > logbook-$(date +%F).dump`。
+
+Compose 里的安全布置：
+
+| 项 | 做法 |
+| --- | --- |
+| 网络 | `data` 为内部网络（无出网），只有 db / migrate / api / worker；`edge` 连接 Caddy 与 api。只有 Caddy 对宿主机发布端口。 |
+| 容器 | api / worker / migrate / Caddy 均 `read_only`、`no-new-privileges`、`cap_drop: ALL`（Caddy 只保留 `NET_BIND_SERVICE`），后端以 UID 10001 运行。 |
+| 日志 | json-file 轮转，单容器最多 30 MB。 |
+| 来源 IP | uvicorn 启用 `--proxy-headers`，从 Caddy 的 `X-Forwarded-For` 取真实客户端 IP 用于登录限速；api 不对外发布端口，客户端无法绕过 Caddy 伪造该头。 |
+
+### 方式二：裸机 + systemd
+
+适合不想装 Docker 的小机器。以 Debian / Ubuntu 为例：
+
+```bash
+sudo apt install python3 python3-venv fonts-noto-cjk caddy postgresql   # SQLite 部署可不装 postgresql
+sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin logbook
+sudo git clone <仓库地址> /opt/logbook
+sudo python3 -m venv /opt/logbook/.venv
+sudo /opt/logbook/.venv/bin/pip install -r /opt/logbook/backend/requirements.txt
+
+# 环境变量（属主 root、权限 600，systemd 读取后再以 logbook 用户启动服务）
+sudo install -d -m 755 /etc/logbook
+sudo install -m 600 /opt/logbook/deploy/systemd/logbook.env.example /etc/logbook/logbook.env
+sudoedit /etc/logbook/logbook.env
+
+# PostgreSQL：建库后执行迁移（SQLite 跳过这一步，启动时自动建表）
+sudo -u postgres createuser -P logbook && sudo -u postgres createdb -O logbook logbook
+# 与服务相同的用户、环境与目录执行一次性命令
+lb() { sudo systemd-run --pty --wait --collect -q -p User=logbook -p EnvironmentFile=/etc/logbook/logbook.env   -p WorkingDirectory=/opt/logbook/backend -p StateDirectory=logbook /opt/logbook/.venv/bin/python -m "$@"; }
+lb alembic upgrade head
+
+sudo cp /opt/logbook/deploy/systemd/logbook-{api,worker}.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now logbook-api logbook-worker
+
+# 前端：任意机器上 npm ci && npm run build，把 frontend/dist 拷到 /var/www/logbook
+# Caddy：改好 caddy-logbook.conf 里的域名后
+sudo install -d /etc/systemd/system/caddy.service.d
+sudo cp /opt/logbook/deploy/systemd/caddy-logbook.conf /etc/systemd/system/caddy.service.d/logbook.conf
+sudo cp /opt/logbook/deploy/Caddyfile /etc/caddy/Caddyfile
+sudo systemctl daemon-reload && sudo systemctl restart caddy
+```
+
+- API 只监听 `127.0.0.1:8000`，由 Caddy 反代；同一份 `deploy/Caddyfile` 通过 `API_UPSTREAM` / `SITE_ROOT` 环境变量切换 Compose 与裸机。
+- 两个 unit 带完整的 systemd 沙箱（`ProtectSystem=strict`、`NoNewPrivileges`、系统调用过滤、无任何 capability），唯一可写目录是 `/var/lib/logbook`（权限 700）。SQLite 部署把 `LOGBOOK_SQLITE` 指到该目录。
+- 建账号：`lb logbook.admin create-user alice`（`lb` 为上面定义的 shell 函数，交互输入密码）。
+- 本机助手 exe 放在 `/var/www/logbook/download/`。
+- 日志：`journalctl -u logbook-api -u logbook-worker -f`。
+
 ## 成就档案（鹰角通行证）
 
 「成就档案」页直连卫戍协议 H5 的 `playerSummary` 接口，把成就页上的内容搬进本站：
@@ -168,6 +240,43 @@ Compose 会先跑 `alembic upgrade head`（`migrate` 服务），再启动 API �
 
 链路、字段字典、两种标识的判定依据与已知限制见 [docs/achievements.md](docs/achievements.md)。
 令牌按天失效，过期后页面继续展示上次快照并提示。
+
+### 只发布前端到虚拟主机（FTP）
+
+`scripts/deploy_ftp.py` 把 `frontend/dist` 上传到虚拟主机，并附带 `deploy/htaccess`（Apache 的单页回退与安全响应头）。凭据填在本地的 `deploy/ftp.env`（参考 `deploy/ftp.env.example`，已被 git 忽略），默认走 FTPS。先 `--dry-run` 看文件清单，再正式上传。注意页面依赖同域的 `/api` 后端，只发布前端时无法登录。
+
+## QQ 机器人
+
+用户在 QQ 里私聊机器人发「登录」，机器人回一个一次性免密登录链接；第一次发会自动建号（账号名 `qq-` 加随机串），登录后网页弹窗提示设置密码，并可改一次账号名。其他消息回复用法说明。
+
+**准备**（QQ 开放平台 → 机器人管理）：
+
+1. 取得 AppID 与 AppSecret，写进 `.env` 的 `QQBOT_APP_ID` / `QQBOT_APP_SECRET`。
+2. 事件订阅选 Webhook，回调地址填 `https://你的域名/qqbot/webhook`（平台要求 HTTPS，端口限 80 / 443 / 8080 / 8443），订阅单聊消息事件 `C2C_MESSAGE_CREATE`。
+3. 启动：`docker compose --profile qqbot up -d --build`。保存回调地址时平台会发校验请求（op 13），服务会自动应答。
+4. 用测试 QQ 号私聊机器人发「登录」，点开链接即可。
+
+**安全设计**：
+
+- 独立进程 `logbook.qqbot:app`，Caddy 只转发 `POST /qqbot/webhook`，请求体上限 64 KB；不经过网页 API 的 Origin 校验，也不读会话、战绩和导入令牌。
+- 每个业务事件都按文档用 Ed25519 验签（私钥种子由 AppSecret 派生，签名内容为时间戳 + 原始请求体），时间戳与本机相差超过 10 分钟拒绝，同一事件 ID 只处理一次；`X-Bot-Appid` 与配置不符直接 403。
+- 登录链接 10 分钟有效、单次使用，库里只存 SHA-256；每个 openid 每小时最多签发 5 个。日志不记录消息原文、openid、令牌和凭据。
+- 官方机器人拿不到 QQ 号，账号按 `(AppID, openid)` 唯一。
+
+**未经实测、接入时需要确认的点**：文档没给 op 12 回包示例（当前回 `{"op": 12, "d": 0}`）；纯文本消息里的链接是否会被平台拦截文档没写，若被拦截需改用 Markdown 消息（需在平台申请）。OpenAPI 地址按文档用 `https://api.bot.qq.com`，可用 `QQBOT_API_BASE` / `QQBOT_TOKEN_URL` 覆盖。裸机部署用 `deploy/systemd/logbook-qqbot.service`（监听 127.0.0.1:8001）。
+
+## 站内通知
+
+侧栏左下角的铃铛显示未读数，点开即可查看并全部标为已读。通知是纯文本，网页没有写通知的接口，只能由站长在服务端发布：
+
+```bash
+python -m logbook.admin announce "维护通知" '今晚 23:00 停机维护\n期间无法导入战绩'   # 全站公告，\n 表示换行
+python -m logbook.admin notify 123456789 "账号提醒" "……"                          # 发给单个账号
+python -m logbook.admin list-notices                                              # 最近 50 条及其 ID
+python -m logbook.admin remove-notice <通知 ID>
+```
+
+Compose 部署在前面加 `docker compose exec api`。网页注册的新用户会收到一条欢迎通知；QQ 机器人建的账号会收到一条写明系统生成账号名、免密登录方式和设置密码提示的通知。标题最多 60 字，正文最多 2000 字。
 
 ## 昨日战报图片
 
@@ -237,6 +346,13 @@ curl.exe -X POST "http://localhost:8000/api/imports" `
 | --- | --- | --- |
 | GET | `/api/health` | 存活与数据库连通性 |
 | GET / POST / DELETE | `/api/session` | 读取当前登录（含昵称、头像地址）、登录、退出 |
+| GET | `/api/notifications` | 站内通知（全站公告 + 发给本人的通知，最近 50 条）与未读数 |
+| POST | `/api/notifications/read` | 标记已读：`{"ids": [...]}`，省略 `ids` 表示全部 |
+| GET | `/api/registration` | 网页是否开放注册 |
+| POST | `/api/register` | 网页注册（`{"username": "…", "password": "…"}`，密码 10–256 位），注册后直接登录 |
+| POST | `/api/session/qq-link` | QQ 机器人一次性链接免密登录（`{"token": "…"}`） |
+| PUT | `/api/account/password` | QQ 渠道账号首次设置密码（无需旧密码，只能设一次） |
+| PATCH | `/api/account/username` | QQ 机器人注册的账号修改一次登录账号（`{"username": "…"}`） |
 | GET / PATCH | `/api/profile` | 个人主页资料 / 修改昵称（`{"display_name": "…"}`，空串清除） |
 | GET / PUT / DELETE | `/api/profile/avatar` | 读取 / 上传（请求体为图片字节）/ 移除头像 |
 | GET | `/api/career` | 生涯档案：最高通关、连胜、生涯纪录、近一年活跃度 |
@@ -256,7 +372,7 @@ curl.exe -X POST "http://localhost:8000/api/imports" `
 ## 测试与检查
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest          # 后端：80 个用例，无需外部数据库
+.\.venv\Scripts\python.exe -m pytest          # 后端：135 个用例，无需外部数据库
 cd frontend; npm run typecheck                # vue-tsc
 cd frontend; npm run build                    # 生产构建
 ```
@@ -282,9 +398,15 @@ cd frontend; npm run build                    # 生产构建
 ## 安全要点
 
 - 密码用 Argon2 哈希，会话令牌只存 SHA-256 摘要；Cookie 为 `HttpOnly` + `SameSite=Strict`，HTTPS 下自动加 `__Host-` 前缀与 `Secure`。
-- 同一账号连续 8 次密码错误锁定 15 分钟；登录失败分支仍会执行一次哈希校验以避免时序泄露。
-- 所有写请求校验 `Origin`，所有响应带 `Cache-Control: no-store`，Caddy 追加 CSP、`X-Frame-Options` 等头。
-- 上传体积、局数和待处理任务数都有上限。导入由独立进程写库。
+- 账号有两种来源，库里都只存 Argon2 哈希：
+  - **网页注册**：`LOGBOOK_REGISTRATION=open` 时开放（默认 `off`）。账号和密码（10–256 位，不能与账号相同）都由用户自己填写，账号不能以保留前缀 `qq-` 开头，之后不可修改。
+  - **QQ 机器人渠道**：官方机器人拿不到 QQ 号，账号按 `(机器人 AppID, openid)` 唯一（`qq_identities` 表，迁移 `0006`），用户名为 `qq-` 加随机串，建号时没有可用密码；重复调用不会重复建号。机器人用 `accounts.issue_login_link` 签发一次性登录令牌（10 分钟、单次使用、库里只存 SHA-256），把 `{PUBLIC_ORIGIN}/#qq-login=<令牌>` 私聊发给本人；令牌在 `#` 片段里，不进服务器日志，页面读取后立即从地址栏抹掉。进站后弹窗提示设置密码（只能设一次），并可把账号名改一次；改名后会话和 openid 关联都保留。链接登录失败与密码登录共用按 IP 的限速。建号入口 `accounts.create_for_qq_openid` 只能传入验签通过的回调事件里的 AppID 与 openid。
+- 注册按来源 IP 限制：同一 IP（IPv6 按 /64 网段归并）24 小时内最多注册 2 个账号；失败尝试（账号已被占用）每小时最多 10 次；全站每小时最多 20 个新账号。
+- 按账号限额（24 小时滑动窗口，只有成功的调用计数）：AI 复盘、战报图片、森空岛同步各每天 2 次；成就绑定每小时 20 次。限速计数在 API 进程内存中，重启后清零。
+- 同一账号连续 8 次密码错误锁定 15 分钟；同一来源 IP 1 小时内失败 5 次后拒绝继续尝试，直到最早那次失败满 1 小时（防止换账号名撞库）；登录失败分支仍会执行一次哈希校验以避免时序泄露。
+- 所有写请求校验 `Origin`，所有响应带 `Cache-Control: no-store`。Caddy 追加严格 CSP（脚本只允许同源文件，不允许内联脚本）、HSTS、`X-Frame-Options`、`Permissions-Policy`、COOP / CORP 等头。
+- 任何请求体在后端统一限制为 9 MB（Caddy 再兜底 10 MB），上传体积、局数和待处理任务数另有各自的上限。导入由独立进程写库。
+- 部署层的隔离（内部网络、只读容器、systemd 沙箱）见「Linux 服务器部署」。
 
 ### 凭据密钥
 

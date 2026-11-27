@@ -60,3 +60,10 @@ __pycache__/
 !/tools/extract_title_icons.py
 # 本机助手 exe 由源码构建（scripts/build-agent.ps1），二进制不入库
 /frontend/public/download/*.exe
+
+# 部署时放入的本机助手二进制
+/deploy/download/*
+!/deploy/download/README.md
+
+# FTP 发布凭据（由使用者本地填写）
+/deploy/ftp.env

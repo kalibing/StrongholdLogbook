@@ -1,5 +1,13 @@
 /** 登录账号：username 是登录名，不可改；display_name 是昵称，没设置时页面显示 username。 */
-export interface User { username: string; display_name: string | null; avatar_url: string | null }
+export interface User {
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+  /** QQ 机器人注册的账号可以改一次登录账号 */
+  username_editable?: boolean
+  /** QQ 机器人渠道免密登录、还没设置过密码 */
+  needs_password?: boolean
+}
 export interface Role { id: string; name: string }
 export interface Facet { protocol: string; play: string; difficulty: string }
 export interface Filters {

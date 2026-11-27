@@ -5,6 +5,7 @@ import { api, ApiError, message } from '../api'
 import AchievementRadar from '../components/AchievementRadar.vue'
 import AvatarImage from '../components/AvatarImage.vue'
 import TrophyIcon from '../components/TrophyIcon.vue'
+import StepWizard from '../components/StepWizard.vue'
 import type { AchvBadge, AchvBandTop, AchvEnvelope, AchvProfile, AchvState, AchvTitle } from '../models'
 
 const notify = useMessage()
@@ -20,6 +21,8 @@ const agentExe = '/download/ArknightsAchvAgent.exe'
 const agentCommand = computed(() => `.\\ArknightsAchvAgent.exe --api ${agentOrigin} --origin ${agentOrigin}`)
 const agentSourceCommand = computed(() => `python agent\\achv_agent.py --api ${agentOrigin} --origin ${agentOrigin}`)
 const commandCopied = ref(false)
+/** 绑定引导当前在第几步（0 起）。 */
+const bindStep = ref(0)
 let commandTimer: number | undefined
 let agentTimer: number | undefined
 const shanghaiDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', dateStyle: 'short' })
@@ -260,41 +263,31 @@ onBeforeUnmount(() => {
           <p class="muted">成就数据由<b>本机助手</b>读取本机登录态后推送到本站，三步搞定，不用把令牌贴进网页。</p>
         </header>
 
-        <ol class="import-steps" aria-label="绑定步骤">
-          <li class="import-step">
-            <span class="import-step-no" aria-hidden="true">1</span>
-            <div class="import-step-main">
-              <h3 class="import-step-title">确认这台机器登录过明日方舟 PC 端</h3>
-              <p class="muted">助手读的是本机客户端登录态（<code>%LocalAppData%\Low\Hypergryph</code>），不抓包、不启动游戏。</p>
-            </div>
-          </li>
-
-          <li class="import-step" data-state="next">
-            <span class="import-step-no" aria-hidden="true">2</span>
-            <div class="import-step-main">
-              <h3 class="import-step-title">下载并运行本机助手</h3>
-              <p class="muted">单文件 exe，双击或在命令行按下面这条跑，按提示输入本站账号密码。</p>
-              <pre class="agent-command"><code>{{ agentCommand }}</code></pre>
-              <p class="import-step-note">仓库不放二进制：克隆后先跑 <code>scripts\build-agent.ps1</code> 生成；源码 <code>agent/achv_agent.py</code>，spec <code>agent/ArknightsAchvAgent.spec</code>。</p>
-            </div>
-            <div class="import-step-action">
+        <StepWizard v-model="bindStep" :steps="['确认登录 PC 端', '运行本机助手', '等待数据推送']"
+          :next-labels="['已登录，下一步', '已运行，下一步']">
+          <template #step-0>
+            <h3 class="wizard-heading">确认这台机器登录过明日方舟 PC 端</h3>
+            <p class="muted">助手读的是本机客户端登录态（<code>%LocalAppData%\Low\Hypergryph</code>），不抓包、不启动游戏。没登录过的话，先打开 PC 端登录一次再回来。</p>
+          </template>
+          <template #step-1>
+            <h3 class="wizard-heading">下载并运行本机助手</h3>
+            <p class="muted">单文件 exe，双击或在命令行按下面这条跑，按提示输入本站账号密码。</p>
+            <pre class="agent-command"><code>{{ agentCommand }}</code></pre>
+            <div class="wizard-inline-actions">
               <NButton tag="a" type="primary" size="small" :href="agentExe" download="ArknightsAchvAgent.exe">下载助手</NButton>
               <NButton size="small" secondary @click="copyAgentCommand">{{ commandCopied ? '已复制' : '复制命令' }}</NButton>
             </div>
-          </li>
-
-          <li class="import-step">
-            <span class="import-step-no" aria-hidden="true">3</span>
-            <div class="import-step-main">
-              <h3 class="import-step-title">等助手把数据推上来</h3>
-              <p class="muted">助手跑完会直接写入本站；本页每 3 秒检测一次，绑定成功会自动刷新成成就档案。</p>
-              <p class="import-step-note">助手在你自己的机器上运行：读本机登录态 → 换 u8 令牌 → 发到 {{ agentOrigin }}。</p>
-            </div>
-            <div class="import-step-action">
-              <NButton size="small" secondary :loading="busy" @click="load">跑完了，刷新</NButton>
-            </div>
-          </li>
-        </ol>
+            <p class="import-step-note">仓库不放二进制：克隆后先跑 <code>scripts\build-agent.ps1</code> 生成；源码 <code>agent/achv_agent.py</code>，spec <code>agent/ArknightsAchvAgent.spec</code>。</p>
+          </template>
+          <template #step-2>
+            <h3 class="wizard-heading">等助手把数据推上来</h3>
+            <p class="wizard-waiting" role="status"><i aria-hidden="true"></i>正在等待本机助手推送，每 3 秒检测一次；绑定成功会自动刷新成成就档案。</p>
+            <p class="import-step-note">助手在你自己的机器上运行：读本机登录态 → 换 u8 令牌 → 发到 {{ agentOrigin }}。</p>
+          </template>
+          <template #actions="{ step }">
+            <NButton v-if="step === 2" secondary :loading="busy" @click="load">跑完了，刷新</NButton>
+          </template>
+        </StepWizard>
 
         <aside class="risk-box" role="note">
           <h4>使用前必读</h4>
@@ -441,11 +434,11 @@ onBeforeUnmount(() => {
 .achievements-page > .load-message { margin: 0; }
 .connect { padding: 1.5rem; display: grid; gap: 1rem; }
 .connect-head h2 { margin-bottom: .4rem; }
-.connect-head code, .hint code, .steps code { background: var(--inset); border: 1px solid var(--line); border-radius: 4px; padding: 0 .25rem; }
+.connect-head code, .hint code, .steps code { background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 .25rem; }
 .binding-methods { display: flex; gap: .5rem; flex-wrap: wrap; min-width: 0; border: 0; padding: 0; margin: 0; }
 .binding-methods label {
   position: relative;
-  padding: .45rem .9rem; border-radius: 999px; border: 1px solid var(--control-line);
+  padding: .45rem .9rem; border-radius: var(--radius); border: 1px solid var(--control-line);
   background: var(--inset); color: var(--muted); cursor: pointer; font: inherit;
 }
 .binding-methods input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
@@ -463,23 +456,51 @@ onBeforeUnmount(() => {
 .binding-methods label:not(:has(input[value="agent"])):has(input:checked) { opacity: 1; }
 .agent-command {
   margin: 0; padding: .6rem .7rem; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
-  border-radius: 4px; background: var(--inset); overflow-x: auto;
+  border-radius: var(--radius); background: var(--inset); overflow-x: auto;
 }
 .agent-command code {
   font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; font-size: .8125rem;
   line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text);
 }
 .row-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
-.risk-box {
-  border: 1px solid rgba(232, 161, 60, .45); border-radius: 6px;
-  background: rgba(232, 161, 60, .08); padding: .8rem .9rem; display: grid; gap: .45rem;
+/* 分步引导内的标题、行内按钮与「等待中」状态 */
+.wizard-heading { font-size: 1rem; }
+.wizard-inline-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.wizard-waiting { display: flex; align-items: center; gap: .6rem; color: var(--text-2); font-size: .875rem; }
+.wizard-waiting i { flex: none; width: 8px; height: 8px; background: var(--accent); }
+@media (prefers-reduced-motion: no-preference) {
+  .wizard-waiting i { animation: wizard-wait 1.2s ease-in-out infinite; }
 }
-.risk-box h4 { color: #e8a13c; font-size: .8125rem; letter-spacing: .04em; }
-.risk-box ul { margin: 0; padding-left: 1.1rem; display: grid; gap: .3rem; color: var(--muted); font-size: .78rem; line-height: 1.6; }
+@keyframes wizard-wait { 50% { opacity: .25; transform: rotate(45deg); } }
+/* 警示框：左侧一条警戒斜纹 + 三角警示标，配色只用这一处的琥珀色。 */
+.risk-box {
+  --warn: #e8a13c;
+  position: relative; display: grid; gap: .5rem;
+  padding: .85rem 1rem .9rem 1.5rem; border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line)); border-radius: var(--radius);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 9%, transparent), color-mix(in srgb, var(--warn) 3%, transparent));
+  overflow: hidden;
+}
+:root[data-theme='light'] .risk-box { --warn: #b0670f; }
+.risk-box::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 6px;
+  background: repeating-linear-gradient(-45deg, var(--warn) 0 5px, color-mix(in srgb, var(--warn) 15%, transparent) 5px 10px);
+}
+.risk-box h4 {
+  display: flex; align-items: center; gap: .45rem; margin: 0;
+  color: var(--warn); font-size: .875rem; font-weight: 700; letter-spacing: .08em;
+}
+.risk-box h4::before {
+  content: "!"; display: grid; place-items: center; width: 1.05rem; height: .95rem; padding-top: .12rem;
+  background: var(--warn); color: var(--panel); font-size: .65rem; font-weight: 800; line-height: 1;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.risk-box ul { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; color: var(--muted); font-size: .8125rem; line-height: 1.6; }
+.risk-box li { position: relative; padding-left: .9rem; }
+.risk-box li::before { content: ""; position: absolute; left: 0; top: .62em; width: 5px; height: 5px; background: color-mix(in srgb, var(--warn) 70%, transparent); transform: rotate(45deg); }
 .risk-box b { color: var(--text); font-weight: 600; }
 .risk-actions { margin: .2rem 0 0; font-size: .8125rem; display: flex; flex-wrap: wrap; gap: .45rem; align-items: baseline; }
 .risk-actions a { color: var(--accent); text-decoration: underline; }
-.risk-actions code { background: var(--inset); border: 1px solid var(--line); border-radius: 4px; padding: 0 .25rem; }
+.risk-actions code { background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 .25rem; }
 
 .achv-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: clamp(1rem, 3vw, 2rem); }
 .achv-radar { display: grid; grid-template-rows: auto 1fr; min-width: 0; }
@@ -493,17 +514,17 @@ onBeforeUnmount(() => {
 .namecard {
   position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: center; gap: .65rem;
   width: 100%; min-width: 0; min-height: 3.75rem; aspect-ratio: 20 / 7;
-  padding: .45rem .65rem; border-radius: 6px; background: var(--inset);
+  padding: .45rem .65rem; border-radius: var(--radius); background: var(--inset);
 }
 .namecard-art { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .namecard:has(.namecard-art:not([hidden])) {
-  background: transparent; color: #f1f5fa; padding-bottom: calc(.45rem + 2.5%);
+  background: transparent; color: #f1f5f2; padding-bottom: calc(.45rem + 2.5%);
 }
 .namecard:has(.namecard-art:not([hidden]))::before {
-  content: ''; position: absolute; z-index: -1; inset: 0 2.8% 16.5%; border-radius: 6px;
-  background: linear-gradient(90deg, #0c1219b8, #0c121970 53%, transparent 90%);
+  content: ''; position: absolute; z-index: -1; inset: 0 2.8% 16.5%; border-radius: var(--radius);
+  background: linear-gradient(90deg, #0b110eb8, #0b110e70 53%, transparent 90%);
 }
-.namecard:has(.namecard-art:not([hidden])) small { color: #d1d9e4; }
+.namecard:has(.namecard-art:not([hidden])) small { color: #d0dad4; }
 .namecard-avatar { border: 1px solid var(--line); }
 .namecard-copy { display: grid; min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
 .namecard-copy h2 { font-size: clamp(1rem, 1.6vw, 1.2rem); }
@@ -544,7 +565,7 @@ onBeforeUnmount(() => {
 .social-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
 .metric-card, .mate-card {
   min-width: 0; min-height: 5.25rem; padding: .55rem .65rem;
-  background: var(--inset); border: 1px solid var(--line); border-radius: 6px;
+  background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius);
 }
 .metric-card { display: flex; align-items: center; gap: .45rem; }
 .metric-card span, .mate-stats dt { display: block; color: var(--muted); font-size: .8125rem; }
@@ -576,14 +597,14 @@ onBeforeUnmount(() => {
 }
 .badge {
   display: grid; grid-template-rows: auto 1fr; gap: .42rem; justify-items: center; min-width: 0;
-  padding: .45rem .45rem .55rem; border: 1px solid var(--line); border-radius: 6px; background: var(--inset);
+  padding: .45rem .45rem .55rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset);
 }
 .badge-visual { position: relative; width: 100%; max-width: 8rem; aspect-ratio: 1; }
 .badge-art { display: block; width: 100%; height: 100%; object-fit: contain; }
 .badge strong { align-self: center; font-size: .875rem; line-height: 1.3; text-align: center; overflow-wrap: anywhere; }
 .badge-mark {
   position: absolute; top: .2rem; right: .2rem; display: grid; place-items: center;
-  width: 1.65rem; aspect-ratio: 1; border-radius: 4px;
+  width: 1.65rem; aspect-ratio: 1; border-radius: var(--radius);
   border: 1px solid #8ae6d1; background: #102825;
 }
 .badge-mark img { display: block; width: 100%; height: 100%; object-fit: contain; transform: scale(1.25); }
@@ -595,7 +616,7 @@ onBeforeUnmount(() => {
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-areas: "medal name" "medal stats";
   column-gap: 1rem; row-gap: .45rem;
-  min-height: 6.4rem; padding: 1rem 1.15rem 1.05rem 1rem; border-radius: 8px; overflow: hidden;
+  min-height: 6.4rem; padding: 1rem 1.15rem 1.05rem 1rem; border-radius: var(--radius); overflow: hidden;
   background: radial-gradient(75% 120% at 10% 42%, color-mix(in srgb, var(--win) 14%, transparent), transparent 62%), var(--inset);
   border: 1px solid var(--line);
 }
@@ -609,7 +630,7 @@ onBeforeUnmount(() => {
 .band-card[data-rank='1'] .band-medal::before { box-shadow: inset 0 0 0 1px rgba(127, 240, 210, .32); }
 .band-rank {
   position: absolute; top: .5rem; right: .55rem; z-index: 1;
-  padding: .1rem .4rem; border-radius: 3px;
+  padding: .1rem .4rem; border-radius: var(--radius);
   font-family: var(--numbers); font-size: .6875rem; letter-spacing: .12em; color: var(--accent);
   background: rgba(94, 168, 152, .14); border: 1px solid rgba(94, 168, 152, .22);
 }

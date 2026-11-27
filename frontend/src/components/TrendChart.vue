@@ -7,7 +7,7 @@ import { LabelLayout } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BOND_ICONS, BOND_METRIC_ICON, FUNDS_ICON, KILLS_ICON, ROUND_ICON } from '../assets'
 import { logbook } from '../context'
-import { number, pickMajorBond, shortTime } from '../format'
+import { number, firstBond, shortTime } from '../format'
 import type { Point } from '../models'
 
 echarts.use([BarChart, LineChart, GridComponent, MarkLineComponent, TooltipComponent, AriaComponent, LabelLayout, CanvasRenderer])
@@ -76,13 +76,22 @@ function buildOption() {
   const averageColor = css('chart-average')
   const panel = css('panel')
   const neutral = css('chart-line')
+  const accent = css('accent')
+  const raised = css('raised')
+  const lineStrong = css('line-strong')
+  // 数字用站点的窄体数字字体，中文字符在 canvas 里按字体列表逐字回落到正文字体。
+  const fontFamily = `${css('numbers')}, ${getComputedStyle(document.documentElement).fontFamily}`
+  const fade = (color: string, from: number, to: number) => new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+    { offset: 0, color: color + Math.round(from * 255).toString(16).padStart(2, '0') },
+    { offset: 1, color: color + Math.round(to * 255).toString(16).padStart(2, '0') },
+  ])
   const peak = props.metric === 'peak'
   const colorOf = (point: Point) => props.daily ? neutral : point.result === 'loss' ? loss : win
   const axisLabel = (index: number) => props.daily ? items[index].label.slice(5) : String(index + 1)
 
   const showLabels = items.length <= 10
   const peakBonds = peak
-    ? items.map(point => pickMajorBond(point.peak?.names ?? []))
+    ? items.map(point => firstBond(point.peak?.names ?? []))
     : []
   const hasBondLabels = peakBonds.some(Boolean)
   const iconBonds = [...new Set(peakBonds.filter(name => Boolean(BOND_ICONS[name])))]
@@ -99,8 +108,9 @@ function buildOption() {
     position: 'top' as const,
     distance: 6,
     color: text,
-    fontSize: 11,
-    fontWeight: 600,
+    fontFamily,
+    fontSize: 13,
+    fontWeight: 700,
     formatter: ({ dataIndex }: { dataIndex: number }) => {
       const value = valueOf(items[dataIndex])
       return value === null ? '' : number(value)
@@ -109,31 +119,35 @@ function buildOption() {
   const series: BarSeriesOption | LineSeriesOption = peak ? {
     type: 'line',
     connectNulls: false,
-    symbol: 'circle',
-    symbolSize: showLabels ? 9 : 5,
-    lineStyle: { color: css('chart-line'), width: 2 },
-    label: { ...label, distance: 8 },
+    // 数据点：比折线明显大一号的实心菱形，外圈一道面板色描边把它从线上「抠」出来；悬停时放大并带同色辉光。
+    symbol: 'diamond',
+    symbolSize: showLabels ? 17 : 11,
+    lineStyle: { color: accent, width: 2 },
+    areaStyle: { color: fade(accent, .22, 0) },
+    emphasis: { scale: 1.3, itemStyle: { shadowBlur: 10, shadowColor: accent } },
+    label: { ...label, distance: 6 },
     labelLayout: { hideOverlap: true },
     markLine: peakAverage.value === null ? undefined : {
       silent: true,
       symbol: 'none',
       label: { show: false },
-      lineStyle: { color: averageColor, width: 2, type: 'dashed' },
+      lineStyle: { color: averageColor, width: 1, type: [5, 4] },
       data: [{ yAxis: peakAverage.value }],
     },
     data: items.map(point => ({
       value: valueOf(point),
-      itemStyle: { color: colorOf(point), borderColor: panel, borderWidth: 1 },
+      itemStyle: { color: colorOf(point), borderColor: panel, borderWidth: 3 },
     })),
   } : {
     type: 'bar',
-    barMaxWidth: 32,
+    barMaxWidth: 28,
     label,
     labelLayout: { hideOverlap: true },
     data: items.map(point => {
       const value = valueOf(point)
       const color = colorOf(point)
-      return { value, itemStyle: { color: color + 'b3', borderColor: color, borderWidth: 1, borderRadius: [3, 3, 0, 0] } }
+      // 方角柱：顶部实色、向下渐隐，顶边一道实线像刻度读数。
+      return { value, itemStyle: { color: fade(color, .75, .18), borderColor: color, borderWidth: 0, borderRadius: 0, shadowColor: color, shadowOffsetY: -2 } }
     }),
   }
 
@@ -143,7 +157,9 @@ function buildOption() {
     animationDurationUpdate: 0,
     animationEasing: 'cubicOut' as const,
     backgroundColor: 'transparent',
-    grid: { left: 38, right: 12, top: 24, bottom: (showLabels && !props.daily ? 43 : 28) + (hasBondLabels ? 59 : 0) },
+    textStyle: { fontFamily },
+    // 顶部留出数值标签的位置：最高点正好压在 y 轴最大值上时，标签会画到网格外面被裁掉。
+    grid: { left: 38, right: 12, top: showLabels ? 38 : 24, bottom: (showLabels && !props.daily ? 43 : 28) + (hasBondLabels ? 59 : 0) },
     aria: {
       enabled: true,
       label: {
@@ -158,10 +174,17 @@ function buildOption() {
       confine: true,
       renderMode: 'html',
       className: 'trend-tooltip',
-      backgroundColor: panel,
-      borderColor: css('line'),
+      // 必须在配置里给底色：ECharts 把这些写成行内样式，CSS 类覆盖不了；之前是透明底，浮在图上看不清。
+      backgroundColor: raised,
+      borderColor: lineStrong,
+      borderWidth: 1,
+      borderRadius: 2,
+      padding: [8, 11],
+      extraCssText: 'box-shadow: 0 8px 24px rgb(0 0 0 / .35); line-height: 1.55; min-width: 8.5rem;',
       textStyle: { color: text, fontSize: 12 },
-      axisPointer: peak ? { type: 'line', lineStyle: { color: muted, type: 'dashed' } } : { type: 'shadow' },
+      axisPointer: peak
+        ? { type: 'line', lineStyle: { color: accent, width: 1, type: [3, 3] } }
+        : { type: 'shadow', shadowStyle: { color: accent + '14' } },
       formatter: (params: unknown) => {
         const list = params as { dataIndex: number }[]
         const index = list?.[0]?.dataIndex
@@ -188,8 +211,9 @@ function buildOption() {
       axisTick: { show: false },
       axisLabel: {
         color: muted,
-        fontSize: 11,
-        margin: 8,
+        fontFamily,
+        fontSize: 12,
+        margin: 10,
         interval: showLabels ? 0 : 'auto' as const,
         hideOverlap: !showLabels,
         formatter: (value: string, index: number) => {
@@ -221,13 +245,14 @@ function buildOption() {
       minInterval: 1,
       axisLabel: {
         color: muted,
-        fontSize: 10,
-        margin: 8,
+        fontFamily,
+        fontSize: 11,
+        margin: 10,
         formatter: (value: number) => value >= 1000
           ? `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`
           : number(value),
       },
-      splitLine: { lineStyle: { color: grid } },
+      splitLine: { lineStyle: { color: grid, type: [4, 4] } },
     },
     series: [series],
   }

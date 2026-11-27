@@ -24,11 +24,18 @@ const source = computed(() => {
 </script>
 
 <template>
-  <img v-if="source && failed !== source" class="trophy-icon" :src="source" :width="size" :height="size" alt="" @error="failed = source">
+  <img v-if="source && failed !== source" class="trophy-icon trophy-icon--art" :src="source" :width="size" :height="size"
+    alt="" @error="failed = source">
   <NIcon v-else class="trophy-icon trophy-icon--generic" :component="TrophyOutline" :size="size" aria-hidden="true" />
 </template>
 
 <style scoped>
-.trophy-icon { flex: none; object-fit: contain; }
+/* 奖杯原画是透明底的橙色徽记 + 白色外发光，直接放在面板上，不垫底色；
+   亮色主题下白描边会融进浅底，补一圈很淡的阴影把轮廓勾出来。 */
+.trophy-icon { flex: none; }
+.trophy-icon--art { object-fit: contain; }
+:global(:root[data-theme='light'] .trophy-icon--art) {
+  filter: drop-shadow(0 0 .6px rgb(60 36 10 / .55)) drop-shadow(0 1px 1px rgb(60 36 10 / .18));
+}
 .trophy-icon--generic { color: var(--muted); }
 </style>

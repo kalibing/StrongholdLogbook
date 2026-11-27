@@ -45,6 +45,14 @@ class Settings:
             raise ValueError("LOGBOOK_DB must be 'postgres' or 'sqlite'") from None
 
     @property
+    def registration(self) -> str:
+        """LOGBOOK_REGISTRATION=off（默认，只能用命令行建号）| open（网页开放注册）。"""
+        value = os.getenv("LOGBOOK_REGISTRATION", "off").strip().lower() or "off"
+        if value not in {"off", "open"}:
+            raise ValueError("LOGBOOK_REGISTRATION must be 'off' or 'open'")
+        return value
+
+    @property
     def sqlite_path(self) -> Path:
         return Path(os.getenv("LOGBOOK_SQLITE", "logbook.sqlite3")).expanduser()
 
