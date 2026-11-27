@@ -194,7 +194,7 @@ onMounted(async () => {
   padding-block: .9rem; border-bottom: 1px solid var(--line);
 }
 .report-title { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
-.report-title h2 { font-size: 1.2rem; }
+.report-title h2 { font-size: 1.4rem; }
 .report-title .chip:hover { transform: none; }
 .report-meta { display: flex; flex-wrap: wrap; gap: .1rem .6rem; margin-top: .3rem; color: var(--muted); font-size: .9375rem; }
 .report-meta span { white-space: nowrap; }

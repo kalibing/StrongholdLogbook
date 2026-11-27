@@ -287,7 +287,7 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
 /* 区块标题：实心小方块 + 标题，下方一条细线。 */
 .content-section { margin-top: 1.75rem; }
 .section-heading { flex-wrap: wrap; margin-bottom: .8rem; padding-bottom: .55rem; border-bottom: 1px solid var(--line); }
-.section-heading h2 { display: flex; align-items: center; gap: .55rem; font-size: 1.2rem; }
+.section-heading h2 { display: flex; align-items: center; gap: .55rem; font-size: 1.4rem; }
 .section-heading h2::before { content: ""; flex: none; width: 4px; height: 1em; background: var(--accent); }
 .table-heading { padding: 1rem 1.1rem; }
 
@@ -695,7 +695,7 @@ dialog::backdrop { background: color-mix(in srgb, var(--bg) 70%, transparent); b
   .filters > :is(.date-range-field, .filter-actions) { grid-column: 1 / -1; }
   .date-range-row { flex-wrap: wrap; }
   .date-presets { width: 100%; grid-auto-columns: 1fr; }
-  .section-heading h2 { font-size: 1.1rem; }
+  .section-heading h2 { font-size: 1.25rem; }
   .trend-canvas { height: 205px; }
   .login-panel { padding: 1.5rem 1.25rem; }
 
