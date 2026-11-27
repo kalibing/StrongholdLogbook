@@ -1,133 +1,170 @@
 <script setup lang="ts">
-// 页头右侧的动态背景：网格缓慢平移、三层斜切面板错速漂移、周期性扫描光、中心菱形信号向外脉冲、零星光点上浮。
-// 只动 transform / opacity，不触发重排；系统开启「减少动态效果」时整体静止。
-const sparks = [
-  { left: '18%', delay: '0s', duration: '9s', size: '3px' },
-  { left: '34%', delay: '2.6s', duration: '11s', size: '2px' },
-  { left: '52%', delay: '5.1s', duration: '8.5s', size: '3px' },
-  { left: '67%', delay: '1.3s', duration: '10s', size: '2px' },
-  { left: '81%', delay: '3.8s', duration: '12s', size: '3px' },
-  { left: '93%', delay: '6.4s', duration: '9.5s', size: '2px' },
+// 页头右侧的动态背景，参照卫戍协议游戏内的视觉：
+// - 结算页「模拟完成」：近黑的青色底、地形等高线、橙色雷达靶环 + 十字准星；
+// - 战斗 HUD：薄荷青的圆形节点链、角标框；
+// - 隐藏首领警报：红色横向撕裂条一闪而过。
+// 只动 transform / opacity；系统开启「减少动态效果」时整体静止。
+
+/** 不规则的闭合等高线：在椭圆上叠两组正弦扰动，种子不同形状就不同。 */
+function contour(cx: number, cy: number, radius: number, seed: number, squash = .62): string {
+  const steps = 72
+  const points = Array.from({ length: steps }, (_, index) => {
+    const angle = (index / steps) * Math.PI * 2
+    const wobble = 1 + .13 * Math.sin(3 * angle + seed) + .07 * Math.sin(5 * angle + seed * 2.3)
+    const x = cx + Math.cos(angle) * radius * wobble
+    const y = cy + Math.sin(angle) * radius * wobble * squash
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  return `M${points.join('L')}Z`
+}
+
+const TARGET = { x: 590, y: 100 }
+const contours = [
+  ...[38, 70, 104, 140, 178, 218].map((radius, index) => contour(TARGET.x - 20, TARGET.y + 6, radius, 1.7 + index * .45)),
+  ...[26, 52, 80].map((radius, index) => contour(250, 30, radius, 4.1 + index * .6, .55)),
 ]
+const ticks = Array.from({ length: 24 }, (_, index) => index * 15)
+const nodes = [0, 1, 2, 3, 4]
 </script>
 
 <template>
   <div class="hero-art" aria-hidden="true">
-    <div class="hero-grid"></div>
-    <div class="hero-panels">
-      <span class="hero-panel hero-panel--back"></span>
-      <span class="hero-panel hero-panel--middle"></span>
-      <span class="hero-panel hero-panel--front"></span>
-      <div class="hero-mark">
-        <i class="hero-ping"></i>
-        <i class="hero-ping hero-ping--late"></i>
-        <span class="hero-core"></span>
-      </div>
-    </div>
-    <span class="hero-sweep"></span>
-    <span v-for="(spark, index) in sparks" :key="index" class="hero-spark"
-      :style="{ left: spark.left, width: spark.size, animationDelay: spark.delay, animationDuration: spark.duration }"></span>
+    <svg class="hero-svg" viewBox="0 0 800 200" preserveAspectRatio="xMaxYMid slice">
+      <defs>
+        <linearGradient id="hero-sweep-fill" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" style="stop-color: var(--target); stop-opacity: 0" />
+          <stop offset="1" style="stop-color: var(--target); stop-opacity: .38" />
+        </linearGradient>
+        <radialGradient id="hero-glow">
+          <stop offset="0" style="stop-color: var(--target); stop-opacity: .3" />
+          <stop offset="1" style="stop-color: var(--target); stop-opacity: 0" />
+        </radialGradient>
+      </defs>
+
+      <g class="hero-contours">
+        <path v-for="(d, index) in contours" :key="index" :d="d" />
+      </g>
+
+      <!-- 橙色雷达靶环 -->
+      <g class="hero-target">
+        <circle class="hero-glow" :cx="TARGET.x" :cy="TARGET.y" r="92" />
+        <path class="hero-sweep" :d="`M${TARGET.x},${TARGET.y} L${TARGET.x + 86},${TARGET.y} A86,86 0 0,0 ${TARGET.x + 86 * Math.cos(Math.PI / 3)},${TARGET.y - 86 * Math.sin(Math.PI / 3)} Z`" />
+        <circle class="hero-ring hero-ring--faint" :cx="TARGET.x" :cy="TARGET.y" r="86" />
+        <g class="hero-ring-ticks">
+          <line v-for="angle in ticks" :key="angle" :x1="TARGET.x + 64" :y1="TARGET.y" :x2="TARGET.x + (angle % 90 === 0 ? 74 : 69)" :y2="TARGET.y"
+            :transform="`rotate(${angle} ${TARGET.x} ${TARGET.y})`" />
+        </g>
+        <circle class="hero-ring hero-ring--dashed" :cx="TARGET.x" :cy="TARGET.y" r="48" />
+        <circle class="hero-ring" :cx="TARGET.x" :cy="TARGET.y" r="26" />
+        <circle class="hero-ping" :cx="TARGET.x" :cy="TARGET.y" r="26" />
+        <circle class="hero-ping hero-ping--late" :cx="TARGET.x" :cy="TARGET.y" r="26" />
+        <circle class="hero-core" :cx="TARGET.x" :cy="TARGET.y" r="5" />
+        <g class="hero-crosshair">
+          <line :x1="TARGET.x - 104" :y1="TARGET.y" :x2="TARGET.x - 32" :y2="TARGET.y" />
+          <line :x1="TARGET.x + 32" :y1="TARGET.y" :x2="TARGET.x + 104" :y2="TARGET.y" />
+          <line :x1="TARGET.x" :y1="TARGET.y - 96" :x2="TARGET.x" :y2="TARGET.y - 32" />
+          <line :x1="TARGET.x" :y1="TARGET.y + 32" :x2="TARGET.x" :y2="TARGET.y + 96" />
+        </g>
+      </g>
+
+      <!-- 薄荷青 HUD：靶环角标框 + 节点链 -->
+      <g class="hero-hud">
+        <path class="hero-bracket" :d="`M${TARGET.x - 120},${TARGET.y - 58} v-14 h18 M${TARGET.x + 120},${TARGET.y - 58} v-14 h-18 M${TARGET.x - 120},${TARGET.y + 58} v14 h18 M${TARGET.x + 120},${TARGET.y + 58} v14 h-18`" />
+        <line class="hero-chain-line" x1="330" y1="168" x2="450" y2="168" />
+        <circle v-for="index in nodes" :key="index" class="hero-node" :cx="330 + index * 30" cy="168" r="5.5"
+          :style="{ animationDelay: `${index * .45}s` }" />
+        <path class="hero-pointer" :d="`M462,152 L${TARGET.x - 34},${TARGET.y + 18}`" />
+      </g>
+    </svg>
+
+    <!-- 隐藏首领警报式的红色撕裂条 -->
+    <span class="hero-glitch hero-glitch--a"></span>
+    <span class="hero-glitch hero-glitch--b"></span>
+    <span class="hero-glitch hero-glitch--c"></span>
   </div>
 </template>
 
 <style scoped>
 .hero-art {
-  --ink: #9db9e3;
-  --grid-step: 33px;
+  --hud: #43d8bc;
+  --target: #f2a046;
+  --alert: #e2433f;
   position: absolute; inset: 0 0 0 37%; overflow: hidden; pointer-events: none;
-  background: radial-gradient(ellipse at 72% 50%, color-mix(in srgb, var(--ink) 17%, transparent), transparent 68%);
-  mask-image: linear-gradient(90deg, transparent, #000 34%);
+  mask-image: linear-gradient(90deg, transparent, #000 30%);
 }
-:root[data-theme='light'] .hero-art { --ink: #466b98; }
+:root[data-theme='light'] .hero-art { --hud: #1d8f7b; --target: #c8701c; --alert: #c8302d; }
 
-/* 网格比容器宽一个步长，平移一个步长后与起点重合，循环无缝。 */
-.hero-grid {
-  position: absolute; inset: 0 auto 0 calc(var(--grid-step) * -1); width: calc(100% + var(--grid-step) * 2);
-  background:
-    repeating-linear-gradient(0deg, transparent 0 32px, color-mix(in srgb, var(--ink) 8%, transparent) 32px 33px),
-    repeating-linear-gradient(90deg, transparent 0 32px, color-mix(in srgb, var(--ink) 5%, transparent) 32px 33px);
-}
+.hero-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.hero-svg :is(path, line, circle) { fill: none; vector-effect: non-scaling-stroke; }
+.hero-svg .hero-glow { fill: url(#hero-glow); stroke: none; }
+.hero-svg .hero-sweep { fill: url(#hero-sweep-fill); stroke: none; }
 
-.hero-panels { position: absolute; inset-block: 0; right: 9%; width: min(80%, 24rem); }
-.hero-panel {
-  position: absolute; inset-block: -17%; width: 42%; transform: skewX(-26deg);
-  border-inline: 1px solid color-mix(in srgb, var(--ink) 29%, transparent);
-  background: linear-gradient(155deg, color-mix(in srgb, var(--ink) 23%, transparent), transparent 74%);
-}
-.hero-panel--back { right: 4%; }
-.hero-panel--middle { right: 29%; }
-.hero-panel--front {
-  right: 54%;
-  background: linear-gradient(155deg, transparent 32%, color-mix(in srgb, var(--ink) 14%, transparent));
-}
+.hero-contours path { stroke: color-mix(in srgb, var(--hud) 15%, transparent); stroke-width: 1; }
 
-/* 扫描光：一条斜向亮带从左扫到右，大部分时间停在视野外。 */
-.hero-sweep {
-  position: absolute; inset-block: -20%; left: 0; width: 22%; opacity: 0;
-  transform: translateX(-120%) skewX(-26deg);
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 14%, transparent) 45%,
-    color-mix(in srgb, #fff 10%, transparent) 50%, color-mix(in srgb, var(--accent) 14%, transparent) 55%, transparent);
-}
+.hero-ring { stroke: var(--target); stroke-width: 1.4; }
+.hero-ring--faint { stroke: color-mix(in srgb, var(--target) 35%, transparent); stroke-width: 1; }
+.hero-ring--dashed { stroke: color-mix(in srgb, var(--target) 75%, transparent); stroke-dasharray: 10 7; }
+.hero-ring-ticks line { stroke: color-mix(in srgb, var(--target) 55%, transparent); stroke-width: 1; }
+.hero-ping { stroke: var(--target); stroke-width: 1.2; opacity: 0; }
+.hero-svg .hero-core { fill: var(--target); stroke: none; }
+.hero-crosshair line { stroke: color-mix(in srgb, var(--target) 50%, transparent); stroke-width: 1; }
 
-.hero-spark {
-  position: absolute; bottom: -6px; aspect-ratio: 1; opacity: 0;
-  background: var(--accent); box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent);
-}
+.hero-bracket { stroke: var(--hud); stroke-width: 1.4; opacity: .8; }
+.hero-chain-line { stroke: color-mix(in srgb, var(--hud) 40%, transparent); stroke-width: 1; }
+.hero-svg .hero-node { stroke: var(--hud); stroke-width: 1.2; fill: color-mix(in srgb, var(--hud) 12%, transparent); }
+.hero-pointer { stroke: color-mix(in srgb, var(--hud) 55%, transparent); stroke-width: 1.2; stroke-dasharray: 4 5; }
 
-.hero-mark {
-  position: absolute; top: 50%; left: 51%; width: clamp(2.4rem, 5.3vw, 4rem); aspect-ratio: 1;
-  translate: -50% -50%;
+/* 围绕靶心旋转：SVG 元素以 viewBox 坐标作变换原点。 */
+.hero-sweep, .hero-ring--dashed, .hero-ring-ticks, .hero-ping { transform-box: view-box; transform-origin: 590px 100px; }
+
+.hero-glitch {
+  position: absolute; left: 8%; right: 0; opacity: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--alert) 55%, transparent) 18%,
+    color-mix(in srgb, var(--alert) 30%, transparent) 70%, transparent);
+  box-shadow: -6px 0 0 color-mix(in srgb, #3fe0ff 18%, transparent), 6px 0 0 color-mix(in srgb, var(--alert) 25%, transparent);
 }
-.hero-core, .hero-ping {
-  position: absolute; inset: 0; transform: rotate(45deg);
-  border: 1px solid var(--accent);
-}
-.hero-core { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 26%, transparent), transparent); }
-.hero-core::after {
-  content: ''; position: absolute; inset: 25%; border: inherit;
-  background: color-mix(in srgb, var(--accent) 17%, transparent);
-}
-.hero-ping { opacity: 0; }
+.hero-glitch--a { top: 28%; height: 7px; }
+.hero-glitch--b { top: 54%; height: 13px; }
+.hero-glitch--c { top: 71%; height: 4px; }
 
 @media (max-width: 730px) {
-  .hero-art { inset-inline-start: 43%; opacity: .66; }
-  .hero-panels { right: 4%; width: 90%; }
+  .hero-art { inset-inline-start: 34%; opacity: .7; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .hero-grid { animation: hero-grid 9s linear infinite; }
-  .hero-panel { animation: hero-enter .52s cubic-bezier(.2, .7, .2, 1) both, hero-drift 7s ease-in-out .6s infinite alternate; }
-  .hero-panel--middle { animation-delay: .05s, 1.4s; animation-duration: .52s, 9s; }
-  .hero-panel--front { animation-delay: .1s, .9s; animation-duration: .52s, 11s; }
-  .hero-sweep { animation: hero-sweep 7.5s cubic-bezier(.45, 0, .2, 1) 1.2s infinite; }
-  .hero-spark { animation-name: hero-spark; animation-timing-function: linear; animation-iteration-count: infinite; }
-  .hero-core { animation: hero-enter-mark .45s .16s ease-out both, hero-breathe 3.6s ease-in-out .7s infinite; }
-  .hero-ping { animation: hero-ping 3.6s cubic-bezier(.2, .6, .3, 1) .7s infinite; }
-  .hero-ping--late { animation-delay: 2.5s; }
+  .hero-contours { animation: hero-contours 16s ease-in-out infinite alternate; }
+  .hero-sweep { animation: hero-spin 5.5s linear infinite; }
+  .hero-ring--dashed { animation: hero-spin 22s linear infinite reverse; }
+  .hero-ring-ticks { animation: hero-spin 40s linear infinite; }
+  .hero-ping { animation: hero-ping 3.2s cubic-bezier(.2, .6, .3, 1) infinite; }
+  .hero-ping--late { animation-delay: 1.6s; }
+  .hero-core { animation: hero-blink 1.6s ease-in-out infinite; }
+  .hero-bracket { animation: hero-bracket 4s ease-in-out infinite; }
+  .hero-node { animation: hero-node 2.25s ease-in-out infinite; }
+  .hero-pointer { animation: hero-dash 1.4s linear infinite; }
+  .hero-glitch { animation: hero-glitch 9s steps(1, end) 2s infinite; }
+  .hero-glitch--b { animation-delay: 2.06s; }
+  .hero-glitch--c { animation-delay: 2.12s; }
 }
 
-@keyframes hero-grid { to { transform: translateX(var(--grid-step)); } }
-@keyframes hero-enter { from { opacity: 0; translate: 12px 0; } to { opacity: 1; translate: 0 0; } }
-@keyframes hero-enter-mark { from { opacity: 0; scale: .8; } to { opacity: 1; scale: 1; } }
-@keyframes hero-drift { from { translate: 0 0; } to { translate: -14px 0; } }
-@keyframes hero-sweep {
-  0% { opacity: 0; transform: translateX(-120%) skewX(-26deg); }
-  8% { opacity: 1; }
-  45% { opacity: 1; }
-  55%, 100% { opacity: 0; transform: translateX(520%) skewX(-26deg); }
+@keyframes hero-contours { from { transform: translateX(0); } to { transform: translateX(-18px); } }
+@keyframes hero-spin { to { transform: rotate(360deg); } }
+@keyframes hero-ping { 0% { opacity: .75; transform: scale(1); } 100% { opacity: 0; transform: scale(3.2); } }
+@keyframes hero-blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes hero-bracket { 0%, 100% { opacity: .85; } 50% { opacity: .35; } }
+@keyframes hero-node {
+  0%, 100% { fill: color-mix(in srgb, var(--hud) 12%, transparent); }
+  20% { fill: color-mix(in srgb, var(--hud) 80%, transparent); }
+  45% { fill: color-mix(in srgb, var(--hud) 12%, transparent); }
 }
-@keyframes hero-spark {
-  0% { opacity: 0; transform: translateY(0) rotate(45deg); }
-  15% { opacity: .75; }
-  70% { opacity: .35; }
-  100% { opacity: 0; transform: translateY(-190px) rotate(45deg); }
-}
-@keyframes hero-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50% { box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 35%, transparent); }
-}
-@keyframes hero-ping {
-  0% { opacity: .7; scale: 1; }
-  100% { opacity: 0; scale: 2.6; }
+@keyframes hero-dash { to { stroke-dashoffset: -18; } }
+/* 9 秒里只在开头约 0.5 秒闪几下：位移 + 透明度，像信号被撕开。 */
+@keyframes hero-glitch {
+  0% { opacity: .9; transform: translateX(0); }
+  1.2% { opacity: 0; }
+  2% { opacity: .75; transform: translateX(-14px); }
+  3% { opacity: .5; transform: translateX(9px) scaleY(1.6); }
+  4% { opacity: .85; transform: translateX(-4px); }
+  5.5%, 100% { opacity: 0; transform: translateX(0); }
 }
 </style>

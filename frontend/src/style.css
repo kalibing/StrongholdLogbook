@@ -478,7 +478,8 @@ nav a { border-block-width: 2px; letter-spacing: .04em; }
 .heading {
   border-radius: 3px;
   border-color: #303845;
-  background: linear-gradient(112deg, #101620 30%, #131c29 68%, #101a28);
+  /* 卫戍协议结算页式的青黑底色 */
+  background: linear-gradient(112deg, #0f1519 30%, #101c1f 68%, #0e1a1c);
 }
 .heading::before {
   content: "";
