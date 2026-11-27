@@ -74,10 +74,10 @@ function go(index: number) {
 .wizard-no {
   display: grid; place-items: center; flex: none; width: 30px; height: 30px;
   border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--inset);
-  font: 700 .95rem/1 var(--numbers);
+  font: 700 1rem/1 var(--numbers);
 }
-.wizard-title { overflow: hidden; text-overflow: ellipsis; font-size: .875rem; letter-spacing: .04em; }
-[data-state='current'] .wizard-rail-step { color: var(--text); font-weight: 650; }
+.wizard-title { overflow: hidden; text-overflow: ellipsis; font-size: .9375rem; letter-spacing: .04em; }
+[data-state='current'] .wizard-rail-step { color: var(--text); font-weight: 500; }
 [data-state='current'] .wizard-no { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
 [data-state='done'] .wizard-rail-step { color: var(--text-2); }
 [data-state='done'] .wizard-no { border-color: var(--accent); color: var(--accent); }
@@ -90,7 +90,7 @@ function go(index: number) {
 .wizard-pane--active { visibility: visible; opacity: 1; }
 
 .wizard-foot { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; min-height: 34px; }
-.wizard-count { min-width: 2.6rem; color: var(--muted); font: 600 .95rem/1 var(--numbers); letter-spacing: .08em; }
+.wizard-count { min-width: 2.6rem; color: var(--muted); font: 500 1rem/1 var(--numbers); letter-spacing: .08em; }
 .wizard-spacer { flex: 1; }
 
 @media (prefers-reduced-motion: no-preference) {

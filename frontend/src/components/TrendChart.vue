@@ -109,7 +109,7 @@ function buildOption() {
     distance: 6,
     color: text,
     fontFamily,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: 700,
     formatter: ({ dataIndex }: { dataIndex: number }) => {
       const value = valueOf(items[dataIndex])
@@ -181,7 +181,7 @@ function buildOption() {
       borderRadius: 2,
       padding: [8, 11],
       extraCssText: 'box-shadow: 0 8px 24px rgb(0 0 0 / .35); line-height: 1.55; min-width: 8.5rem;',
-      textStyle: { color: text, fontSize: 12 },
+      textStyle: { color: text, fontSize: 14 },
       axisPointer: peak
         ? { type: 'line', lineStyle: { color: accent, width: 1, type: [3, 3] } }
         : { type: 'shadow', shadowStyle: { color: accent + '14' } },
@@ -212,7 +212,7 @@ function buildOption() {
       axisLabel: {
         color: muted,
         fontFamily,
-        fontSize: 12,
+        fontSize: 14,
         margin: 10,
         interval: showLabels ? 0 : 'auto' as const,
         hideOverlap: !showLabels,
@@ -233,7 +233,7 @@ function buildOption() {
         },
         rich: {
           win: { color: win, lineHeight: 16 }, loss: { color: loss, lineHeight: 16 },
-          bondName: { color: text, fontSize: 12, lineHeight: 14 },
+          bondName: { color: text, fontSize: 14, lineHeight: 18 },
           ...axisIcons,
         },
       },
@@ -246,7 +246,7 @@ function buildOption() {
       axisLabel: {
         color: muted,
         fontFamily,
-        fontSize: 12,
+        fontSize: 14,
         margin: 10,
         formatter: (value: number) => value >= 1000
           ? `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`
@@ -319,7 +319,7 @@ watch([() => props.points, () => props.metric, () => props.title, () => props.da
 .trend-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .45rem .75rem; }
 .trend-metric { display: flex; align-items: center; gap: .45rem; }
 .trend-art { flex: none; object-fit: contain; }
-.trend-average-key { display: inline-flex; align-items: center; gap: .4rem; color: var(--chart-average); font-size: .875rem; }
+.trend-average-key { display: inline-flex; align-items: center; gap: .4rem; color: var(--chart-average); font-size: .9375rem; }
 .trend-average-key::before { content: ''; width: 1.35rem; border-top: 2px dashed currentColor; }
 .trend-panel--peak { grid-column: 1 / -1; }
 .trend-panel--peak .trend-canvas { height: 285px; }
@@ -328,5 +328,5 @@ watch([() => props.points, () => props.metric, () => props.title, () => props.da
 .chart-empty { position: absolute; inset: 0; display: grid; place-items: center; }
 :deep(.trend-tooltip-value) { font-family: var(--numbers); font-size: 1rem; }
 :deep(.trend-tooltip-average) { color: var(--chart-average); }
-:deep(.trend-tooltip-hint) { color: var(--muted); font-size: .75rem; margin-top: .2rem; }
+:deep(.trend-tooltip-hint) { color: var(--muted); font-size: .8125rem; margin-top: .2rem; }
 </style>

@@ -199,8 +199,8 @@ watch(highlighted, (indices, previous) => {
 <style scoped>
 .bond-share { padding: 1.2rem clamp(1rem, 2.5vw, 1.65rem); container-type: inline-size; }
 .bond-share header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .5rem 1rem; }
-.share-note { font-size: .875rem; margin-top: .2rem; }
-.share-toggle { display: inline-flex; align-items: center; gap: .45rem; color: var(--muted); font-size: .875rem; cursor: pointer; white-space: nowrap; padding-top: .2rem; }
+.share-note { font-size: .9375rem; margin-top: .2rem; }
+.share-toggle { display: inline-flex; align-items: center; gap: .45rem; color: var(--muted); font-size: .9375rem; cursor: pointer; white-space: nowrap; padding-top: .2rem; }
 .share-body { display: grid; grid-template-columns: minmax(90px, .85fr) minmax(0, 1.15fr); gap: clamp(.6rem, 2vw, 1.6rem); align-items: center; max-width: 52rem; margin: .75rem auto 0; }
 .share-graphic {
   position: relative; width: 100%; max-width: 224px; aspect-ratio: 1; justify-self: center; isolation: isolate;
@@ -208,20 +208,20 @@ watch(highlighted, (indices, previous) => {
 .share-pie { position: relative; width: 100%; height: 100%; z-index: 1; }
 .share-total { display: grid; justify-items: center; align-content: center; position: absolute; inset: 24%; pointer-events: none; }
 .share-total b { color: var(--text); font: 700 clamp(1.35rem, 2.7vw, 2.4rem)/1 var(--numbers); letter-spacing: -.035em; }
-.share-total span { color: var(--muted); font-size: .875rem; margin-top: .32rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.share-active-percent { color: var(--text); font: 600 .8125rem var(--numbers); margin-top: .2rem; }
+.share-total span { color: var(--muted); font-size: .9375rem; margin-top: .32rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-active-percent { color: var(--text); font: 500 .875rem var(--numbers); margin-top: .2rem; }
 .share-active-percent::before { content: ''; display: inline-block; width: .4rem; height: .4rem; margin-inline-end: .25rem; border-radius: 2px; background: var(--slice-color); vertical-align: .1rem; }
 .share-key { --share-columns: minmax(0, 1fr) 3.8rem 3.4rem; }
 .share-key-head, .share-row { display: grid; grid-template-columns: var(--share-columns); align-items: center; gap: .5rem; padding-inline: .5rem; text-align: right; }
-.share-key-head { color: var(--muted); font-size: .75rem; padding-block: .35rem; border-bottom: 1px solid var(--line); }
+.share-key-head { color: var(--muted); font-size: .8125rem; padding-block: .35rem; border-bottom: 1px solid var(--line); }
 .share-key-head span:first-child { text-align: left; }
 .share-legend { list-style: none; margin: .2rem 0 0; padding: 0; }
 /* 展开后 20 多行，限高滚动，免得把整张卡片撑得很长 */
 .share-legend--expanded { max-height: 20rem; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
-.share-row { width: 100%; min-height: 2.15rem; border: 0; background: transparent; color: var(--text); padding-block: .25rem; font-size: .875rem; cursor: pointer; transition: background-color .16s ease; }
+.share-row { width: 100%; min-height: 2.15rem; border: 0; background: transparent; color: var(--text); padding-block: .25rem; font-size: .9375rem; cursor: pointer; transition: background-color .16s ease; }
 .share-row.active, .share-row:hover { background: color-mix(in srgb, var(--text) 6%, var(--panel)); color: var(--text); }
 .share-row--group { position: sticky; top: 0; z-index: 1; background: var(--panel); border-bottom: 1px solid var(--line); }
-.share-row--sub { min-height: 1.95rem; font-size: .875rem; }
+.share-row--sub { min-height: 1.95rem; font-size: .9375rem; }
 .share-row--sub .share-name { padding-left: .85rem; }
 .share-row--sub .share-name i { width: .4rem; height: .4rem; }
 .share-name { display: grid; grid-template-columns: .5rem 16px minmax(0, 1fr); align-items: center; gap: .3rem; text-align: left; white-space: normal; overflow-wrap: anywhere; }
@@ -234,8 +234,8 @@ watch(highlighted, (indices, previous) => {
 :root[data-theme="light"] .share-name img { filter: brightness(0) opacity(.82); }
 .share-layers, .share-percent { font-family: var(--numbers); font-variant-numeric: tabular-nums; }
 .share-layers { color: var(--muted); }
-.share-percent { color: var(--text); font-weight: 650; }
-.share-row--sub .share-percent { font-weight: 600; color: var(--text-2); }
+.share-percent { color: var(--text); font-weight: 500; }
+.share-row--sub .share-percent { font-weight: 500; color: var(--text-2); }
 .share-empty { margin-top: 1rem; }
 /* 展开时被折叠的盟约逐行淡入下滑（按行错开一点点），收起时直接消失，不拖泥带水。 */
 .share-item-enter-active { transition: opacity .28s ease, transform .28s cubic-bezier(.2, .8, .2, 1); transition-delay: var(--enter-delay, 0ms); }

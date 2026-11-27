@@ -94,7 +94,7 @@ function option(): echarts.ComposeOption<RadarSeriesOption | RadarComponentOptio
         formatter: name => name ? `{score|${scores.get(name)}}\n{name|${name}}` : '',
         rich: {
           score: { color: accent, fontSize: 18, fontWeight: 'bold', lineHeight: 22, align: 'center' },
-          name: { color: muted, fontSize: 12, lineHeight: 18, align: 'center' },
+          name: { color: muted, fontSize: 14, lineHeight: 19, align: 'center' },
         },
       },
       axisLine: { lineStyle: { color: line } },
@@ -164,7 +164,7 @@ watch([description, theme], render, { flush: 'post' })
   position: absolute; z-index: 1; pointer-events: none; transform: translate(-50%, calc(-100% - 8px));
   padding: .32rem .55rem; border: 1px solid var(--control-line); border-radius: var(--radius);
   background: var(--panel); color: var(--text); box-shadow: 0 4px 14px #0003;
-  font-size: .875rem; white-space: nowrap;
+  font-size: .9375rem; white-space: nowrap;
 }
 .radar-tooltip strong { margin-left: .25rem; color: var(--accent); font-family: var(--numbers); }
 .radar-focus {

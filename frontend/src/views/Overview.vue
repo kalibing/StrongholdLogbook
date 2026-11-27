@@ -360,7 +360,7 @@ function openMatch(id: string) {
   background: var(--panel);
   letter-spacing: .08em;
   color: var(--muted);
-  font-weight: 650;
+  font-weight: 500;
   text-align: center;
 }
 .overview-card :deep(.n-icon) { flex: none; }
@@ -391,10 +391,10 @@ function openMatch(id: string) {
 @media (max-width: 900px) { .strategy-usage { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .overview-trophies {
   margin-top: .75rem; padding: .48rem .75rem; border: 1px solid var(--line); border-radius: var(--radius);
-  background: var(--inset); color: var(--text); font-size: .92rem;
+  background: var(--inset); color: var(--text); font-size: 1rem;
 }
 .overview-trophies > div { display: flex; align-items: center; justify-content: space-between; gap: .65rem; }
-.overview-trophies dt { display: flex; align-items: center; gap: .65rem; font-weight: 650; }
+.overview-trophies dt { display: flex; align-items: center; gap: .65rem; font-weight: 500; }
 .trophy-change-value { color: var(--text); font: 700 clamp(1.5rem, 3vw, 2rem)/1 var(--numbers); }
 .trophy-change-value--loss { color: var(--loss); }
 </style>

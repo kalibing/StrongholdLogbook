@@ -28,6 +28,6 @@ watch(() => [props.src, props.fallbackSrc], () => { attempt.value = 0 }, { flush
 .avatar-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .avatar-initial {
   display: grid; width: 100%; height: 100%; place-items: center;
-  color: var(--muted); background: var(--inset); font-weight: 650;
+  color: var(--muted); background: var(--inset); font-weight: 500;
 }
 </style>

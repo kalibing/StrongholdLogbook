@@ -446,10 +446,10 @@ onBeforeUnmount(() => {
 .binding-methods label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .binding-methods:disabled label { opacity: .65; cursor: default; }
 .connect-form { display: grid; gap: .9rem; max-width: 36rem; }
-.hint { color: var(--muted); font-size: .875rem; line-height: 1.6; }
-.steps { margin: 0; padding-left: 1.25rem; display: grid; gap: .35rem; color: var(--muted); font-size: .875rem; line-height: 1.7; }
+.hint { color: var(--muted); font-size: .9375rem; line-height: 1.6; }
+.steps { margin: 0; padding-left: 1.25rem; display: grid; gap: .35rem; color: var(--muted); font-size: .9375rem; line-height: 1.7; }
 .agent-download { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; }
-.agent-source summary { cursor: pointer; color: var(--muted); font-size: .875rem; }
+.agent-source summary { cursor: pointer; color: var(--muted); font-size: .9375rem; }
 .agent-source .agent-command { margin-top: .5rem; }
 /* 后三条是弃用路径，视觉上压暗，别再抢主流程 */
 .binding-methods label:not(:has(input[value="agent"])) { opacity: .62; }
@@ -459,14 +459,14 @@ onBeforeUnmount(() => {
   border-radius: var(--radius); background: var(--inset); overflow-x: auto;
 }
 .agent-command code {
-  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; font-size: .875rem;
+  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; font-size: .9375rem;
   line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text);
 }
 .row-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 /* 分步引导内的标题、行内按钮与「等待中」状态 */
 .wizard-heading { font-size: 1rem; }
 .wizard-inline-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
-.wizard-waiting { display: flex; align-items: center; gap: .6rem; color: var(--text-2); font-size: .875rem; }
+.wizard-waiting { display: flex; align-items: center; gap: .6rem; color: var(--text-2); font-size: .9375rem; }
 .wizard-waiting i { flex: none; width: 8px; height: 8px; background: var(--accent); }
 @media (prefers-reduced-motion: no-preference) {
   .wizard-waiting i { animation: wizard-wait 1.2s ease-in-out infinite; }
@@ -487,18 +487,18 @@ onBeforeUnmount(() => {
 }
 .risk-box h4 {
   display: flex; align-items: center; gap: .45rem; margin: 0;
-  color: var(--warn); font-size: .875rem; font-weight: 700; letter-spacing: .08em;
+  color: var(--warn); font-size: .9375rem; font-weight: 600; letter-spacing: .08em;
 }
 .risk-box h4::before {
   content: "!"; display: grid; place-items: center; width: 1.05rem; height: .95rem; padding-top: .12rem;
   background: var(--warn); color: var(--panel); font-size: .6875rem; font-weight: 800; line-height: 1;
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
-.risk-box ul { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; color: var(--muted); font-size: .875rem; line-height: 1.6; }
+.risk-box ul { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; color: var(--muted); font-size: .9375rem; line-height: 1.6; }
 .risk-box li { position: relative; padding-left: .9rem; }
 .risk-box li::before { content: ""; position: absolute; left: 0; top: .62em; width: 5px; height: 5px; background: color-mix(in srgb, var(--warn) 70%, transparent); transform: rotate(45deg); }
-.risk-box b { color: var(--text); font-weight: 600; }
-.risk-actions { margin: .2rem 0 0; font-size: .875rem; display: flex; flex-wrap: wrap; gap: .45rem; align-items: baseline; }
+.risk-box b { color: var(--text); font-weight: 500; }
+.risk-actions { margin: .2rem 0 0; font-size: .9375rem; display: flex; flex-wrap: wrap; gap: .45rem; align-items: baseline; }
 .risk-actions a { color: var(--accent); text-decoration: underline; }
 .risk-actions code { background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 .25rem; }
 
@@ -529,13 +529,13 @@ onBeforeUnmount(() => {
 .namecard-copy { display: grid; min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
 .namecard-copy h2 { font-size: clamp(1rem, 1.6vw, 1.2rem); }
 .namecard-copy strong { font-size: 1rem; }
-.namecard-copy small { font-size: .8125rem; }
+.namecard-copy small { font-size: .875rem; }
 .namecard--player { max-width: 20rem; }
 .namecard--player:has(.namecard-art:not([hidden])) { padding-bottom: calc(.45rem + 5.5%); }
 .namecard--player .namecard-avatar { width: clamp(2.6rem, 5vw, 3.2rem); }
 .strip-meta { display: flex; flex-wrap: wrap; gap: .55rem clamp(.9rem, 2.4vw, 1.75rem); }
-.strip-meta dt { color: var(--muted); font-size: .8125rem; }
-.strip-meta dd { font-size: .875rem; font-variant-numeric: tabular-nums; }
+.strip-meta dt { color: var(--muted); font-size: .875rem; }
+.strip-meta dd { font-size: .9375rem; font-variant-numeric: tabular-nums; }
 .strip-actions { display: flex; gap: .4rem; }
 
 .block { padding: 1.15rem clamp(.8rem, 2.5vw, 1.5rem); }
@@ -555,7 +555,7 @@ onBeforeUnmount(() => {
 }
 .title-grid li { display: flex; align-items: center; gap: .5rem; padding: .38rem 0; border-bottom: 1px solid var(--line); }
 .title-icon { flex: none; width: 1.25rem; height: 1.25rem; object-fit: contain; }
-.title-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: .875rem; line-height: 1.35; }
+.title-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: .9375rem; line-height: 1.35; }
 .title-value { font-family: var(--numbers); font-size: 1.18rem; color: var(--accent); font-variant-numeric: tabular-nums; }
 
 .social-grid {
@@ -568,7 +568,7 @@ onBeforeUnmount(() => {
   background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius);
 }
 .metric-card { display: flex; align-items: center; gap: .45rem; }
-.metric-card span, .mate-stats dt { display: block; color: var(--muted); font-size: .875rem; }
+.metric-card span, .mate-stats dt { display: block; color: var(--muted); font-size: .9375rem; }
 .metric-card strong, .mate-stats dd {
   font-family: var(--numbers); font-variant-numeric: tabular-nums;
   font-size: clamp(1.35rem, 2.5vw, 1.85rem); font-weight: 700; line-height: 1.12; color: var(--accent);
@@ -586,7 +586,7 @@ onBeforeUnmount(() => {
 .namecard--mate .namecard-avatar { width: 2rem; }
 .mate-stats dt { white-space: nowrap; }
 .mate-stats dd { margin-top: .2rem; }
-.mate-stats small { font-size: .75rem; font-weight: 500; white-space: nowrap; }
+.mate-stats small { font-size: .8125rem; font-weight: 500; white-space: nowrap; }
 @media (min-width: 921px) {
   .mate-card { grid-template-columns: minmax(0, 3fr) minmax(5.8rem, 2fr); }
 }
@@ -601,7 +601,7 @@ onBeforeUnmount(() => {
 }
 .badge-visual { position: relative; width: 100%; max-width: 8rem; aspect-ratio: 1; }
 .badge-art { display: block; width: 100%; height: 100%; object-fit: contain; }
-.badge strong { align-self: center; font-size: .875rem; line-height: 1.3; text-align: center; overflow-wrap: anywhere; }
+.badge strong { align-self: center; font-size: .9375rem; line-height: 1.3; text-align: center; overflow-wrap: anywhere; }
 .badge-mark {
   position: absolute; top: .2rem; right: .2rem; display: grid; place-items: center;
   width: 1.65rem; aspect-ratio: 1; border-radius: var(--radius);
@@ -631,7 +631,7 @@ onBeforeUnmount(() => {
 .band-rank {
   position: absolute; top: .5rem; right: .55rem; z-index: 1;
   padding: .1rem .4rem; border-radius: var(--radius);
-  font-family: var(--numbers); font-size: .75rem; letter-spacing: .06em; color: var(--accent);
+  font-family: var(--numbers); font-size: .8125rem; letter-spacing: .06em; color: var(--accent);
   background: rgba(94, 168, 152, .14); border: 1px solid rgba(94, 168, 152, .22);
 }
 .band-medal { grid-area: medal; position: relative; display: grid; place-items: center; width: 5.1rem; height: 5.1rem; }
@@ -649,12 +649,12 @@ onBeforeUnmount(() => {
 }
 .band-name {
   grid-area: name; justify-self: start; align-self: end; padding-right: 2.2rem;
-  text-align: left; font-size: 1rem; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere;
+  text-align: left; font-size: 1rem; font-weight: 500; line-height: 1.2; overflow-wrap: anywhere;
 }
 .band-stats { grid-area: stats; justify-self: start; align-self: start; display: flex; align-items: flex-start; gap: .8rem; font-family: var(--numbers); }
 .band-stat { display: grid; justify-items: start; gap: .15rem; }
-.band-stat b { font-size: 1rem; font-weight: 600; line-height: 1; color: var(--accent); }
-.band-stat span { font-size: .75rem; letter-spacing: .06em; color: var(--muted); }
+.band-stat b { font-size: 1rem; font-weight: 500; line-height: 1; color: var(--accent); }
+.band-stat span { font-size: .8125rem; letter-spacing: .06em; color: var(--muted); }
 .band-stats > .band-stat + .band-stat { border-left: 1px solid rgba(94, 168, 152, .22); padding-left: .8rem; }
 .band-meter { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(94, 168, 152, .16); }
 .band-meter::after {
