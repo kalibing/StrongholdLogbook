@@ -7,6 +7,7 @@ import type { GlobalThemeOverrides } from 'naive-ui'
 import { api, ApiError, message, post } from './api'
 import { logbookKey, newFilters, type Theme } from './context'
 import type { Facet, User } from './models'
+import HeadingArt from './components/HeadingArt.vue'
 
 const STORAGE_THEME = 'logbook:theme'
 const route = useRoute()
@@ -178,15 +179,7 @@ provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
           <h1>{{ route.meta.title }}</h1>
           <p class="heading-description">{{ route.meta.description }}</p>
         </div>
-        <div v-if="route.name === 'overview'" class="heading-signal" aria-hidden="true">
-          <div class="heading-signal-art">
-            <span class="heading-signal-layer heading-signal-layer--back"></span>
-            <span class="heading-signal-layer heading-signal-layer--middle"></span>
-            <span class="heading-signal-layer heading-signal-layer--front"></span>
-            <span class="heading-signal-mark"></span>
-          </div>
-        </div>
-        <div v-else class="heading-art" aria-hidden="true"><i></i></div>
+        <HeadingArt />
       </div>
       <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
       <RouterView v-else v-slot="{ Component, route: pageRoute }">

@@ -232,7 +232,7 @@ def overview(
     where, params = filters.model_copy(update={"include_exits": True}).sql(user["id"])
     with request.app.state.pool.connection() as database:
         candidates = database.execute(
-            "SELECT id, played_at, result, rounds, kills, coins, trophies, suspected_exit, bonds, operators "
+            "SELECT id, played_at, result, strategy, rounds, kills, coins, trophies, suspected_exit, bonds, operators "
             f"FROM matches WHERE {where} ORDER BY played_at, id", params,
         ).fetchall()
         profile = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user["id"],)).fetchone()

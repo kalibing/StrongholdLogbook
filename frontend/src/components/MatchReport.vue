@@ -5,7 +5,7 @@ import BossLabel from './BossLabel.vue'
 import { strategyIcon, strategyOf } from '../bands'
 import { avatarFor, loadDirectory } from '../directory'
 import { resolveEquipment } from '../equipment'
-import { dateTime, difficultyLabel, number, resultLabel } from '../format'
+import { dateTime, difficultyLabel, number, resultLabel, signed } from '../format'
 import { portrait } from '../icons'
 import type { MatchDetail } from '../models'
 
@@ -111,7 +111,7 @@ onMounted(async () => {
           <div><dt>金币花费</dt><dd>{{ number(detail.coins) }}</dd></div>
           <div><dt>同步次数</dt><dd>{{ number(detail.sync_count) }}</dd></div>
           <div><dt>时长</dt><dd>{{ duration }}</dd></div>
-          <div><dt>奖杯变化</dt><dd>{{ number(detail.trophies) }}</dd></div>
+          <div><dt>奖杯变化</dt><dd :class="{ 'report-gain': (detail.trophies ?? 0) > 0, 'report-loss': (detail.trophies ?? 0) < 0 }">{{ signed(detail.trophies) }}</dd></div>
         </dl>
 
         <div class="report-breakdown">
@@ -216,6 +216,8 @@ onMounted(async () => {
 .report-stats > div { min-width: 0; border: 0; border-radius: 0; padding: .55rem .65rem; background: var(--inset); }
 .report-stats dt, .report-setup dt { color: var(--muted); font-size: .75rem; }
 .report-stats dd { font: 700 1.04rem/1.4 var(--numbers); overflow-wrap: anywhere; }
+#detail .report-stats dd.report-gain { color: var(--win); }
+#detail .report-stats dd.report-loss { color: var(--loss); }
 .report-setup { display: flex; flex-wrap: wrap; gap: .45rem 1.4rem; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--inset); }
 .report-setup > div, .report-setup dd { display: flex; gap: .4rem; align-items: center; }
 .report-setup dt { font-size: .82rem; }

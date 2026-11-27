@@ -2,14 +2,13 @@
 import { computed, ref, useId, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import { PieChart } from 'echarts/charts'
-import { TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BOND_ICONS } from '../assets'
 import { logbook } from '../context'
 import { number, percent } from '../format'
 import type { BondLayers } from '../models'
 
-echarts.use([PieChart, TooltipComponent, CanvasRenderer])
+echarts.use([PieChart, CanvasRenderer])
 
 const props = defineProps<{ bonds: BondLayers[]; description: string }>()
 const titleId = useId()
@@ -38,18 +37,7 @@ function drawChart() {
   const panel = css.getPropertyValue('--panel').trim()
   chart?.setOption({
     animation: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    tooltip: {
-      trigger: 'item', confine: true, renderMode: 'richText',
-      formatter: (params: { dataIndex: number } | { dataIndex: number }[]) => {
-        const item = Array.isArray(params) ? params[0] : params
-        const slice = item && slices.value[item.dataIndex]
-        return slice ? `${slice.name}\n${number(slice.layers)} 层 · ${shareText(slice.share)}` : ''
-      },
-      padding: [7, 10],
-      textStyle: { color: css.getPropertyValue('--text').trim(), fontSize: 12 },
-      backgroundColor: css.getPropertyValue('--inset').trim(),
-      borderColor: css.getPropertyValue('--control-line').trim(),
-    },
+    // 不用浮动 tooltip：悬停时圆环中心已显示该盟约的层数与占比，浮层只会盖住中心和图例。
     series: [{
       type: 'pie', radius: ['68%', '88%'], startAngle: 90, label: { show: false },
       itemStyle: { borderColor: panel, borderWidth: 2, borderRadius: 4 },
@@ -134,7 +122,7 @@ watch(activeIndex, (index, previous) => {
 </template>
 
 <style scoped>
-.bond-share { padding: 1.2rem clamp(1rem, 2.5vw, 1.65rem); }
+.bond-share { padding: 1.2rem clamp(1rem, 2.5vw, 1.65rem); container-type: inline-size; }
 .share-note { font-size: .85rem; margin-top: .2rem; }
 .share-body { display: grid; grid-template-columns: minmax(90px, .85fr) minmax(0, 1.15fr); gap: clamp(.6rem, 2vw, 1.6rem); align-items: center; max-width: 52rem; margin: .75rem auto 0; }
 .share-graphic {
@@ -157,13 +145,17 @@ watch(activeIndex, (index, previous) => {
 .share-name i { width: .48rem; height: .48rem; border-radius: 2px; }
 .share-name img { object-fit: contain; }
 .share-name > span { grid-column: 3; }
-:global(:root[data-theme="light"]) .share-name img { filter: brightness(0) opacity(.82); }
+/* 注意别写成 :global(:root…) .x —— Vue 会丢掉 :global() 之后的部分，把滤镜加到整个 :root 上。 */
+:root[data-theme="light"] .share-name img { filter: brightness(0) opacity(.82); }
 .share-layers, .share-percent { font-family: var(--numbers); font-variant-numeric: tabular-nums; }
 .share-layers { color: var(--muted); }
 .share-percent { color: var(--text); font-weight: 650; }
 .share-empty { margin-top: 1rem; }
-@media (max-width: 440px) {
-  .share-body { grid-template-columns: minmax(0, 1fr); gap: .45rem; }
-  .share-graphic { max-width: 166px; }
+/* 按面板自身宽度（而不是视口）切换：两栏并排时面板可能只有 400px 左右，图例名字会被挤成一字一行。 */
+@container (max-width: 520px) {
+  .share-body { grid-template-columns: minmax(0, 1fr); gap: .6rem; }
+  .share-graphic { max-width: 180px; }
+  .share-name { white-space: nowrap; overflow-wrap: normal; }
+  .share-name > span { overflow: hidden; text-overflow: ellipsis; }
 }
 </style>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { NButton, NSelect } from 'naive-ui'
+import { NButton, NRadioButton, NRadioGroup } from 'naive-ui'
 import { logbook, newFilters } from '../context'
 import { query, useResource } from '../api'
 import TierTag from '../components/TierTag.vue'
@@ -15,7 +15,9 @@ import ListPagination from '../components/ListPagination.vue'
 const { filters, revision } = logbook()
 const pageSize = ref(10)
 const result = ref<Result | ''>('')
-const resultOptions = [{ label: '全部结果', value: '' }, { label: '胜', value: 'win' }, { label: '负', value: 'loss' }]
+const resultOptions: { label: string; value: Result | '' }[] = [
+  { label: '全部', value: '' }, { label: '胜', value: 'win' }, { label: '负', value: 'loss' },
+]
 const page = ref(1)
 const detailUrl = ref<string | null>(null)
 /** 分队（发起干员）名：优先用记录里的发起者，其次从 band 映射推出。 */
@@ -60,20 +62,19 @@ watch(result, () => { page.value = 1 })
 </script>
 
 <template>
-  <FiltersBar @reset="result = ''">
-    <template #extra>
-      <label class="filter-field">战果
-        <NSelect :value="result" :options="resultOptions" size="small" aria-label="筛选胜负"
-          @update:value="value => result = value" />
-      </label>
-    </template>
-  </FiltersBar>
+  <FiltersBar @reset="result = ''" />
 
   <section class="panel table-panel" aria-labelledby="history-title">
-    <div class="split table-heading">
-      <h2 id="history-title">结算列表</h2>
-      <span v-if="pending" class="period" role="status">正在读取对局…</span>
-      <span v-else-if="data" class="period">{{ total }} 局</span>
+    <div class="split table-heading history-heading">
+      <div class="history-title">
+        <h2 id="history-title">结算列表</h2>
+        <span v-if="pending" class="period" role="status">正在读取对局…</span>
+        <span v-else-if="data" class="period">{{ total }} 局</span>
+      </div>
+      <NRadioGroup :value="result" size="small" name="history-result" aria-label="筛选战果"
+        @update:value="(value: Result | '') => result = value">
+        <NRadioButton v-for="option in resultOptions" :key="option.value" :value="option.value" :label="option.label" />
+      </NRadioGroup>
     </div>
     <p v-if="error" class="table-feedback load-message" role="alert">
       {{ error }} <span v-if="data">正在显示上次成功的结果。</span> <button type="button" @click="refresh">重试</button>
@@ -108,8 +109,8 @@ watch(result, () => { page.value = 1 })
             @click="open(row.id)" @keydown.enter.prevent="open(row.id)" @keydown.space.prevent="open(row.id)">
             <td>{{ shortTime(row.played_at) }}</td>
             <td><span class="chip" :class="{ loss: row.result === 'loss' }">{{ row.result === 'win' ? '胜' : '负' }}</span></td>
-            <td data-label="模拟方式"><TierTag :label="row.play" /></td>
-            <td data-label="难度 / 等级">{{ difficultyLabel(row.difficulty) }}</td>
+            <td data-label="模拟方式">{{ row.play }}</td>
+            <td data-label="难度 / 等级"><TierTag :label="difficultyLabel(row.difficulty)" /></td>
             <HoverTip as="td" data-label="策略" :text="rowUnitName(row)">
               <span class="strategy-cell">
                 <img v-if="strategyIcon(row.strategy)" class="strategy-icon" :src="strategyIcon(row.strategy)" alt="">
@@ -136,3 +137,8 @@ watch(result, () => { page.value = 1 })
   <MatchReport v-if="detailUrl" :detail="report.data.value" :pending="report.pending.value"
     :error="report.error.value" @close="close" @retry="report.refresh" />
 </template>
+
+<style scoped>
+.history-heading { flex-wrap: wrap; gap: .5rem 1rem; }
+.history-title { display: flex; align-items: baseline; gap: .75rem; }
+</style>

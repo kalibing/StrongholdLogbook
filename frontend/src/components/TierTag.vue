@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { DIFFICULTY_ICONS } from '../assets'
+import { difficultyIcon } from '../assets'
 
 const props = defineProps<{ label: string; size?: number }>()
-const icon = computed(() => DIFFICULTY_ICONS[props.label])
+const icon = computed(() => difficultyIcon(props.label))
 const px = computed(() => props.size ?? 18)
 </script>
 

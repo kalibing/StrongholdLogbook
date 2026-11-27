@@ -195,6 +195,21 @@ export const DIFFICULTY_ICONS: Record<string, string> = {
   "终极模拟": "/art/tier-abyss.png",
 }
 
+/**
+ * 难度图标。独立模拟的「规程等级 N」复用联合模拟的档位图标，分档按 PRTS「卫戍协议·规程」的交叉开放规则：
+ * 解锁规程等级 9 时开放【险境模拟】，解锁规程等级 15 时开放【绝境模拟】。
+ * 所以 1–8 用标准、9–14 用险境、15–20 用绝境；极速模拟单独一个图标。
+ */
+export function difficultyIcon(label: string): string | undefined {
+  if (DIFFICULTY_ICONS[label]) return DIFFICULTY_ICONS[label]
+  const level = /^规程等级\s*(\d+)$/.exec(label.trim())
+  if (!level) return undefined
+  const value = Number(level[1])
+  if (value >= 15) return DIFFICULTY_ICONS['绝境模拟']
+  if (value >= 9) return DIFFICULTY_ICONS['险境模拟']
+  return DIFFICULTY_ICONS['标准模拟']
+}
+
 // 从 PC 端 AB 包原生拆出的白色 glyph（ui/autochess/[uc]autochesscommon.ab: mode_*_icon），
 // UI 里可用 CSS filter / mask 换色。
 export const MODE_ICONS: Record<string, string> = {

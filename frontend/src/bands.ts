@@ -100,8 +100,16 @@ export function strategyOf(value: string | null | undefined): string {
   return resolveBand(value)?.strategy ?? value?.trim() ?? ''
 }
 
+/**
+ * 只用本地图标：官方资源站拒绝跨站引用，生产环境的 CSP 也只放行同源图片。
+ * 每个 band 都在 public/art/strategy-<band id>.png 有一张（取自资源站 auto_chess/band_icon），
+ * STRATEGY_ICONS 里没登记的按 id 推出路径。
+ */
 export function strategyIcon(value: string | null | undefined): string | undefined {
-  return STRATEGY_ICONS[strategyOf(value)]
+  const known = STRATEGY_ICONS[strategyOf(value)]
+  if (known) return known
+  const id = resolveBand(value)?.id
+  return id ? `/art/strategy-${id}.png` : undefined
 }
 
 export function unitOf(value: string | null | undefined): string {

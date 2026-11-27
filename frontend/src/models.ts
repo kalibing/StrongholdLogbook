@@ -50,6 +50,8 @@ export interface Overview {
   average_coins: number | null
   with_squad: number
   operators: Operator[]
+  /** 旧后端没有这个字段 */
+  strategies?: { name: string; count: number; wins: number; win_rate: number }[]
   bonds: { name: string; count: number; average: number }[]
   bond_layers: BondLayers[]
   points: Point[]

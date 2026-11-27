@@ -6,7 +6,7 @@ import { query, useResource } from '../api'
 import { BOND_ICONS, bossName } from '../assets'
 import { strategyIcon, strategyOf } from '../bands'
 import { logbook, newFilters } from '../context'
-import { clockTime, difficultyLabel, number, percent, pickMajorBond, resultLabel } from '../format'
+import { clockTime, difficultyLabel, number, percent, pickMajorBond, resultLabel, signed } from '../format'
 import type { DailyReview, MatchDetail, MatchPage, Overview } from '../models'
 import MatchReport from '../components/MatchReport.vue'
 import TierTag from '../components/TierTag.vue'
@@ -116,7 +116,7 @@ function changePageSize(size: number) {
           <div>
             <dt><TrophyIcon :badge="overview.trophy_badge" :size="25" />奖杯变化</dt>
             <dd :class="{ loss: (overview.trophy_change ?? 0) < 0 }">
-              {{ (overview.trophy_change ?? 0) > 0 ? '+' : '' }}{{ number(overview.trophy_change ?? null) }}
+              {{ signed(overview.trophy_change ?? null) }}
             </dd>
           </div>
         </dl>
@@ -252,6 +252,9 @@ function changePageSize(size: number) {
 .daily-peak { display: flex; align-items: center; gap: .35rem; }
 .daily-peak img { flex: none; object-fit: contain; }
 .daily-peak b { white-space: nowrap; }
+/* 并列多个盟约时名字会挤成两行，名字降一号，层数保持醒目。 */
+.daily-peak span { font-size: .95rem; line-height: 1.35; }
+.daily-peak b { font-size: 1.3rem; }
 .daily-list-heading { padding: .9rem 1.15rem; flex-wrap: wrap; gap: .3rem .8rem; }
 .daily-list-heading .muted { font-size: .83rem; }
 .daily-list { margin: 0; padding: 0; list-style: none; }
@@ -284,7 +287,7 @@ function changePageSize(size: number) {
 .daily-tag-label { color: var(--muted); font-size: .75rem; margin-inline: .1rem .25rem; }
 .daily-tag { display: inline-flex; align-items: center; gap: .2rem; padding: .12rem .35rem; background: var(--inset); border: 1px solid var(--line); border-radius: 2px; font-size: .78rem; overflow-wrap: anywhere; }
 .daily-tag img { flex: none; object-fit: contain; }
-:global(:root[data-theme="light"]) .daily-bond img { filter: brightness(0) opacity(.82); }
+:root[data-theme="light"] .daily-bond img { filter: brightness(0) opacity(.82); }
 .daily-tag b { color: var(--accent); }
 .daily-match:hover .daily-arrow { color: var(--accent); }
 .daily-status { padding: .5rem 1.15rem .9rem; }

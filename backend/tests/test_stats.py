@@ -134,3 +134,18 @@ def test_filters_render_sql():
     assert "NOT suspected_exit" not in sql
     assert params[0] == "role-1"
     assert params[-1].utcoffset() == timedelta(hours=8)
+
+
+def test_strategy_stats_counts_wins_and_skips_blank():
+    when = datetime(2026, 11, 3, tzinfo=CHINA)
+    rows = [
+        {**row(when, "win"), "strategy": "精英作战"},
+        {**row(when, "loss"), "strategy": "精英作战"},
+        {**row(when, "win"), "strategy": "稳健经营"},
+        {**row(when, "win"), "strategy": None},
+        row(when, "win"),
+    ]
+    assert stats.strategy_stats(rows) == [
+        {"name": "精英作战", "count": 2, "wins": 1, "win_rate": 0.5},
+        {"name": "稳健经营", "count": 1, "wins": 1, "win_rate": 1.0},
+    ]

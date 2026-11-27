@@ -74,8 +74,8 @@ const teammateCards = computed(() => {
   const mostPlayed = rows.find(row => row.plays != null)
   const mostWins = rows.find(row => row.wins != null)
   const cards = []
-  if (mostPlayed?.plays != null) cards.push({ teammate: mostPlayed, label: '最常共同游玩', value: mostPlayed.plays })
-  if (mostWins?.wins != null) cards.push({ teammate: mostWins, label: '最多胜场', value: mostWins.wins })
+  if (mostPlayed?.plays != null) cards.push({ teammate: mostPlayed, label: '最常共同游玩', value: mostPlayed.plays, unit: '场' })
+  if (mostWins?.wins != null) cards.push({ teammate: mostWins, label: '最多胜场', value: mostWins.wins, unit: '胜' })
   return cards
 })
 
@@ -210,6 +210,8 @@ async function disconnect() {
     await api('/achv/session', { method: 'DELETE' })
     clearProfile()
     notify.success('已解除绑定')
+    // 解绑后回到绑定引导，和首次进入一样等待助手推送。
+    void watchAgent()
   } catch (reason) {
     notify.error(message(reason))
   } finally {
@@ -373,7 +375,7 @@ onBeforeUnmount(() => {
               </article>
             </div>
             <div v-if="teammateCards.length" class="social-mates">
-              <article v-for="{ teammate, label, value } in teammateCards" :key="label" class="mate-card">
+              <article v-for="{ teammate, label, value, unit } in teammateCards" :key="label" class="mate-card">
                 <div class="namecard namecard--mate">
                   <img v-if="teammate.name_card" :key="teammate.name_card" class="namecard-art"
                     :src="nameCardLocal(teammate.name_card)" alt="" @error="nameCardFallback($event, teammate.name_card)" />
@@ -384,7 +386,7 @@ onBeforeUnmount(() => {
                     <small v-if="teammate.nick_number">#{{ teammate.nick_number }}</small>
                   </div>
                 </div>
-                <dl class="mate-stats"><dt>{{ label }}</dt><dd>{{ value }} <small>场次</small></dd></dl>
+                <dl class="mate-stats"><dt>{{ label }}</dt><dd>{{ value }} <small>{{ unit }}</small></dd></dl>
               </article>
               <p v-if="legacyTeammate?.wins != null" class="muted">刷新档案后可查看最多胜场的队友。</p>
             </div>
@@ -393,7 +395,7 @@ onBeforeUnmount(() => {
 
         <section class="panel block">
           <div class="split">
-            <h3>已获得特殊策略标识</h3>
+            <h3>特殊策略标识</h3>
             <span class="period">{{ profile.bands.summary.mastered }} / {{ profile.bands.summary.total }}</span>
           </div>
           <ul class="badges">
