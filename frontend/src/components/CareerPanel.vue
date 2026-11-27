@@ -113,11 +113,7 @@ const heatSummary = computed(() => {
         <h2 id="career-activity">活跃度</h2>
         <span class="period">近 {{ WEEKS }} 周 · {{ heat[0]?.day }} — {{ data.activity.end }}</span>
       </div>
-      <dl class="career-heat-summary">
-        <div v-for="item in heatSummary" :key="item.label" :title="item.hint">
-          <dt>{{ item.label }}</dt><dd><b>{{ item.value }}</b>{{ item.unit }}<small v-if="item.hint">{{ item.hint }}</small></dd>
-        </div>
-      </dl>
+      <div class="career-activity">
       <div class="career-heat-wrap">
         <ol class="career-heat-days" aria-hidden="true"><li>一</li><li></li><li>三</li><li></li><li>五</li><li></li><li>日</li></ol>
         <div class="career-heat-body">
@@ -133,6 +129,12 @@ const heatSummary = computed(() => {
             <p class="career-heat-legend">少 <i class="heat-0"></i><i class="heat-1"></i><i class="heat-2"></i><i class="heat-3"></i><i class="heat-4"></i> 多</p>
           </div>
         </div>
+      </div>
+      <dl class="career-heat-summary">
+        <div v-for="item in heatSummary" :key="item.label" :title="item.hint">
+          <dt>{{ item.label }}</dt><dd><b>{{ item.value }}</b>{{ item.unit }}<small v-if="item.hint">{{ item.hint }}</small></dd>
+        </div>
+      </dl>
       </div>
     </section>
   </div>
@@ -165,30 +167,31 @@ const heatSummary = computed(() => {
   --heat-0: var(--inset); --heat-1: #14304a; --heat-2: #19598a; --heat-3: #2489c8; --heat-4: #5cc3f7;
 }
 :root[data-theme='light'] .career { --heat-1: #d5eaf8; --heat-2: #92c9ee; --heat-3: #3a95d3; --heat-4: #0a6aa8; }
-.career-heat-summary {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin: 1rem 0 1.1rem;
-  border: 1px solid var(--line); background: var(--line);
-}
-.career-heat-summary div { padding: .65rem .9rem; background: var(--inset); }
-.career-heat-summary dt { color: var(--muted); font-size: .78rem; }
-.career-heat-summary dd { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 .2rem; margin: .15rem 0 0; color: var(--muted); font-size: .8rem; }
-.career-heat-summary b { color: var(--text); font: 700 1.6rem/1.1 var(--numbers); }
-.career-heat-summary small { margin-left: .4rem; font-size: .75rem; }
-/* 热力图铺满面板宽度：一列一周，格子随宽度拉成横向矩形，像一条时间带。 */
-.career-heat-wrap { display: flex; gap: .5rem; min-width: 0; }
-.career-heat-days, .career-heat { margin: 0; padding: 0; list-style: none; display: grid; grid-template-rows: repeat(7, 16px); gap: 3px; }
-.career-heat-days { flex: none; color: var(--muted); font-size: .7rem; line-height: 16px; }
-.career-heat-body { flex: 1; min-width: 0; }
-.career-heat { grid-auto-flow: column; grid-template-columns: repeat(var(--weeks), minmax(0, 1fr)); }
-.career-heat li { border-radius: 1px; }
-.career-heat-foot { display: flex; align-items: center; gap: 1rem; margin-top: .4rem; }
+/* 左边方格热力图（固定格子大小），右边三项小结竖排、占满剩余宽度。 */
+.career-activity { display: flex; align-items: stretch; gap: clamp(1rem, 3vw, 2rem); margin-top: 1rem; }
+.career-heat-wrap { display: flex; flex: none; gap: .5rem; max-width: 100%; overflow-x: auto; }
+.career-heat-days, .career-heat { margin: 0; padding: 0; list-style: none; display: grid; grid-template-rows: repeat(7, 22px); gap: 4px; }
+.career-heat-days { flex: none; color: var(--muted); font-size: .7rem; line-height: 22px; }
+.career-heat-body { flex: none; }
+.career-heat { grid-auto-flow: column; grid-template-columns: repeat(var(--weeks), 22px); }
+.career-heat li { border-radius: 2px; }
+.career-heat-foot { display: grid; gap: .5rem; margin-top: .45rem; }
 .career-heat-months {
-  flex: 1; display: grid; grid-template-columns: repeat(var(--weeks), minmax(0, 1fr)); gap: 3px;
+  display: grid; grid-template-columns: repeat(var(--weeks), 22px); gap: 4px;
   margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: .72rem;
 }
 .career-heat-months li { white-space: nowrap; }
-.career-heat-legend { display: flex; flex: none; align-items: center; gap: 4px; margin: 0; color: var(--muted); font-size: .74rem; }
-.career-heat-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 1px; }
+.career-heat-legend { display: flex; justify-self: end; align-items: center; gap: 4px; margin: 0; color: var(--muted); font-size: .74rem; }
+.career-heat-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
+.career-heat-summary {
+  display: grid; flex: 1; grid-template-rows: repeat(3, 1fr); gap: 1px; min-width: 12rem; margin: 0;
+  border: 1px solid var(--line); background: var(--line);
+}
+.career-heat-summary div { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: .6rem 1rem; background: var(--inset); }
+.career-heat-summary dt { color: var(--muted); font-size: .8rem; }
+.career-heat-summary dd { display: flex; align-items: baseline; gap: .25rem; margin: 0; color: var(--muted); font-size: .8rem; }
+.career-heat-summary b { color: var(--text); font: 700 1.7rem/1 var(--numbers); }
+.career-heat-summary small { order: -1; margin-right: .5rem; font-size: .75rem; }
 .heat-0 { background: var(--heat-0); outline: 1px solid color-mix(in srgb, var(--line) 80%, transparent); outline-offset: -1px; }
 .heat-1 { background: var(--heat-1); }
 .heat-2 { background: var(--heat-2); }
@@ -206,7 +209,10 @@ const heatSummary = computed(() => {
   .career-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 730px) {
-  .career-heat-legend { display: none; }
+  .career-activity { flex-direction: column; }
+  .career-heat-summary { grid-template-rows: none; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; }
+  .career-heat-summary div { display: grid; justify-content: start; gap: .15rem; padding: .55rem .7rem; }
+  .career-heat-summary small { display: none; }
   .career-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .career-boxes--three { grid-template-columns: 1fr; }
 }
