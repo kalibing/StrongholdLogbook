@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NConfigProvider, NDialogProvider, NDropdown, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, zhCN } from 'naive-ui'
+import { NButton, NConfigProvider, NDialogProvider, NDropdown, NIcon, NInput, NMessageProvider, NModal, darkTheme, dateZhCN, zhCN } from 'naive-ui'
 import {
   CalendarOutline, CloseOutline, CloudDownloadOutline, GridOutline, ListOutline, LogOutOutline, MenuOutline,
   MoonOutline, PeopleOutline, PersonOutline, RibbonOutline, SunnyOutline,
@@ -25,6 +25,15 @@ const error = ref('')
 const username = ref('')
 const password = ref('')
 const loggingIn = ref(false)
+/** 登录页的两种表单；注册入口只在服务端开放注册时出现。 */
+const authMode = ref<'login' | 'register'>('login')
+const registration = ref<{ enabled: boolean; invite: boolean }>({ enabled: false, invite: false })
+const qq = ref('')
+const inviteCode = ref('')
+const registering = ref(false)
+/** 注册成功后弹出的通知：随机密码只在这里出现一次。 */
+const issued = ref<{ username: string; password: string } | null>(null)
+const passwordCopied = ref(false)
 const theme = ref<Theme>('dark')
 /** 窄屏时侧边栏收成抽屉，这里记录是否展开。 */
 const navOpen = ref(false)
@@ -130,6 +139,55 @@ async function login() {
   }
 }
 
+async function loadRegistration() {
+  try {
+    registration.value = await api<{ enabled: boolean; invite: boolean }>('/registration')
+  } catch {
+    registration.value = { enabled: false, invite: false }
+  }
+}
+
+function switchAuth(mode: 'login' | 'register') {
+  authMode.value = mode
+  error.value = ''
+}
+
+async function register() {
+  error.value = ''
+  const value = qq.value.trim()
+  if (!/^[1-9][0-9]{4,10}$/.test(value)) {
+    error.value = '请输入正确的 QQ 号（5–11 位数字）'
+    return
+  }
+  registering.value = true
+  try {
+    const body: Record<string, string> = { qq: value }
+    if (registration.value.invite) body.invite_code = inviteCode.value.trim()
+    const created = await api<User & { password: string }>('/register', post(body))
+    const { password: generated, ...account } = created
+    issued.value = { username: account.username, password: generated }
+    passwordCopied.value = false
+    user.value = account
+    qq.value = ''
+    inviteCode.value = ''
+    authMode.value = 'login'
+  } catch (reason) {
+    error.value = message(reason)
+  } finally {
+    registering.value = false
+  }
+}
+
+async function copyIssuedPassword() {
+  if (!issued.value) return
+  try {
+    await navigator.clipboard.writeText(issued.value.password)
+    passwordCopied.value = true
+  } catch {
+    passwordCopied.value = false
+  }
+}
+
 // 退出失败只提示一行，不能借用 error：它会把整页内容换成「重试会话」。
 const logoutError = ref('')
 async function logout() {
@@ -168,6 +226,7 @@ onMounted(() => {
   window.addEventListener('logbook-logout', resetSession)
   window.addEventListener('keydown', onKey)
   void restoreSession()
+  void loadRegistration()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('logbook-logout', resetSession)
@@ -287,10 +346,29 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
           <section class="panel login-panel" aria-labelledby="login-title">
             <header class="login-head">
               <p class="eyebrow">卫戍协议 <span>/</span> 作战档案</p>
-              <h1 id="login-title">登录</h1>
-              <p class="muted">登录后查看对局记录、盟约趋势和干员出场统计。</p>
+              <h1 id="login-title">{{ authMode === 'login' ? '登录' : 'QQ 注册' }}</h1>
+              <p class="muted">
+                {{ authMode === 'login'
+                  ? '登录后查看对局记录、盟约趋势和干员出场统计。'
+                  : '填写 QQ 号即可创建账号，用户名就是 QQ 号，密码由系统随机生成。' }}
+              </p>
             </header>
-            <form class="login-form" @submit.prevent="login">
+            <form v-if="authMode === 'register'" class="login-form" @submit.prevent="register">
+              <label class="filter-field">QQ 号
+                <NInput v-model:value="qq" size="large" placeholder="5–11 位数字"
+                  :input-props="{ inputmode: 'numeric', autocomplete: 'username', maxlength: 11 }" />
+              </label>
+              <label v-if="registration.invite" class="filter-field">邀请码
+                <NInput v-model:value="inviteCode" size="large" placeholder="向站长索取"
+                  :input-props="{ autocomplete: 'off', maxlength: 256 }" />
+              </label>
+              <p v-if="error" class="load-message" role="alert">{{ error }}</p>
+              <NButton type="primary" size="large" block attr-type="submit" :loading="registering">
+                {{ registering ? '创建中…' : '创建账号' }}
+              </NButton>
+              <p class="auth-switch">已有账号？<button type="button" @click="switchAuth('login')">返回登录</button></p>
+            </form>
+            <form v-else class="login-form" @submit.prevent="login">
               <label class="filter-field">用户名
                 <NInput v-model:value="username" size="large" placeholder="用户名" :input-props="{ autocomplete: 'username', maxlength: 64 }" />
               </label>
@@ -302,12 +380,29 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
               <NButton type="primary" size="large" block attr-type="submit" :loading="loggingIn">
                 {{ loggingIn ? '登录中…' : '登录' }}
               </NButton>
+              <p v-if="registration.enabled" class="auth-switch">
+                还没有账号？<button type="button" @click="switchAuth('register')">用 QQ 号注册</button>
+              </p>
             </form>
           </section>
         </div>
       </main>
     </div>
   </div>
+  <NModal :show="issued !== null" preset="card" title="账号已创建" class="issued-modal" :bordered="false"
+    :closable="false" :mask-closable="false" :close-on-esc="false">
+    <template v-if="issued">
+      <p class="issued-note">请立即保存下面的登录信息。<b>密码只显示这一次</b>，关闭后无法再次查看。</p>
+      <dl class="issued-credentials">
+        <dt>用户名</dt><dd><code>{{ issued.username }}</code></dd>
+        <dt>密码</dt><dd><code>{{ issued.password }}</code></dd>
+      </dl>
+      <div class="issued-actions">
+        <NButton @click="copyIssuedPassword">{{ passwordCopied ? '已复制' : '复制密码' }}</NButton>
+        <NButton type="primary" @click="issued = null">我已保存</NButton>
+      </div>
+    </template>
+  </NModal>
   </NDialogProvider>
   </NMessageProvider>
   </NConfigProvider>

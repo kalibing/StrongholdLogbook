@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from logbook import skland, storage
+from logbook import api, skland, storage
 from logbook.api import app
 from logbook.records import CHINA
 from logbook.security import hasher
@@ -45,6 +45,8 @@ def drain():
 
 
 def test_skland_token_can_be_reused_after_login(client, fixtures, monkeypatch):
+    # 这条用例连续同步多次，放宽每日额度（额度本身在 test_registration.py 里单独测）
+    monkeypatch.setattr(api.user_quotas["skland"][0], "limit", 100)
     snapshot = json.loads((fixtures / "sample-snapshot.json").read_bytes())
     accepted_tokens = {"initial-test-token", "replacement-test-token"}
     exchanged = []

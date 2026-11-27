@@ -7,9 +7,13 @@
 
 from io import BytesIO
 import re
+import secrets
 import unicodedata
+from uuid import uuid4
 
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from .security import hasher
 
 NAME_LIMIT = 16
 AVATAR_BYTES = 2 * 1024 * 1024
@@ -73,3 +77,26 @@ def load(database, user) -> dict:
         "display_name": display_name,
         "avatar_url": avatar_url(row["avatar_version"] if row else None),
     }
+
+
+# 去掉易混字符（0/O、1/l/I）的字母数字，16 位约 94 bit 熵。
+PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+PASSWORD_LENGTH = 16
+
+
+def random_password() -> str:
+    return "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(PASSWORD_LENGTH))
+
+
+def create_with_random_password(database, username: str) -> tuple[dict, str]:
+    """建号并生成随机密码，返回 (账号, 明文密码)。明文只交给调用方展示一次，库里只存 Argon2 哈希。
+
+    网页 QQ 号注册和之后的 QQ 机器人建号共用这一个入口；用户名重复时由存储层抛 UniqueConflict。
+    """
+    password = random_password()
+    user = {"id": uuid4(), "username": username}
+    database.execute(
+        "INSERT INTO users (id, username, password_hash) VALUES (%s, %s, %s)",
+        (user["id"], username, hasher.hash(password)),
+    )
+    return user, password

@@ -308,6 +308,8 @@ curl.exe -X POST "http://localhost:8000/api/imports" `
 | --- | --- | --- |
 | GET | `/api/health` | 存活与数据库连通性 |
 | GET / POST / DELETE | `/api/session` | 读取当前登录（含昵称、头像地址）、登录、退出 |
+| GET | `/api/registration` | 是否开放注册、是否需要邀请码 |
+| POST | `/api/register` | 按 QQ 号注册（`{"qq": "…", "invite_code": "…"}`），返回账号与一次性显示的随机密码，并直接登录 |
 | GET / PATCH | `/api/profile` | 个人主页资料 / 修改昵称（`{"display_name": "…"}`，空串清除） |
 | GET / PUT / DELETE | `/api/profile/avatar` | 读取 / 上传（请求体为图片字节）/ 移除头像 |
 | GET | `/api/career` | 生涯档案：最高通关、连胜、生涯纪录、近一年活跃度 |
@@ -353,6 +355,9 @@ cd frontend; npm run build                    # 生产构建
 ## 安全要点
 
 - 密码用 Argon2 哈希，会话令牌只存 SHA-256 摘要；Cookie 为 `HttpOnly` + `SameSite=Strict`，HTTPS 下自动加 `__Host-` 前缀与 `Secure`。
+- 注册默认关闭（`LOGBOOK_REGISTRATION=off`），可设为 `open` 或 `invite`（配合 `LOGBOOK_INVITE_CODE`，至少 8 位）。注册只填 QQ 号（5–11 位数字），用户名即 QQ 号；密码是 16 位随机字符，只在注册响应里出现一次，库里只存 Argon2 哈希。注意网页无法验证 QQ 号归属，公开站点建议用邀请码。
+- 注册按来源 IP 限制：同一 IP（IPv6 按 /64 网段归并）24 小时内最多注册 2 个账号；失败尝试（QQ 号已注册、邀请码错误）每小时最多 10 次；全站每小时最多 20 个新账号。
+- 按账号限额（24 小时滑动窗口，只有成功的调用计数）：AI 复盘、战报图片、森空岛同步各每天 2 次；成就绑定每小时 20 次。限速计数在 API 进程内存中，重启后清零。
 - 同一账号连续 8 次密码错误锁定 15 分钟；同一来源 IP 1 小时内失败 5 次后拒绝继续尝试，直到最早那次失败满 1 小时（防止换账号名撞库）；登录失败分支仍会执行一次哈希校验以避免时序泄露。
 - 所有写请求校验 `Origin`，所有响应带 `Cache-Control: no-store`。Caddy 追加严格 CSP（脚本只允许同源文件，不允许内联脚本）、HSTS、`X-Frame-Options`、`Permissions-Policy`、COOP / CORP 等头。
 - 任何请求体在后端统一限制为 9 MB（Caddy 再兜底 10 MB），上传体积、局数和待处理任务数另有各自的上限。导入由独立进程写库。

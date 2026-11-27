@@ -5,6 +5,7 @@
 """
 
 from collections import deque
+from ipaddress import ip_address, ip_network
 from threading import Lock
 import time
 
@@ -101,6 +102,41 @@ class FailureThrottle:
                     self._failures.pop(next(iter(self._failures)))
             self._failures.setdefault(key, deque()).append(now)
 
+    # 用作一般的频率计数（注册次数、接口调用次数）时的别名。
+    hit = failed
+
+    def take(self, key: str) -> bool:
+        """原子地「检查 + 记一次」：未超限时计数并返回 True，超限返回 False 且不计数。"""
+        with self._lock:
+            failures = self._prune(key, time.monotonic())
+            if failures is not None and len(failures) >= self.limit:
+                return False
+        self.failed(key)
+        return True
+
+    def refund(self, key: str) -> None:
+        """撤销最近一次计数（调用没有成功时不占用额度）。"""
+        with self._lock:
+            failures = self._failures.get(key)
+            if failures:
+                failures.pop()
+                if not failures:
+                    del self._failures[key]
+
     def clear(self, key: str) -> None:
         with self._lock:
             self._failures.pop(key, None)
+
+
+def client_key(request) -> str:
+    """限速用的来源标识。IPv6 按 /64 网段归并：一台主机通常能随意换用整个 /64 里的地址。"""
+    host = request.client.host if request.client else ""
+    try:
+        address = ip_address(host)
+    except ValueError:
+        return host or "unknown"
+    if address.version == 6:
+        if address.ipv4_mapped:
+            return str(address.ipv4_mapped)
+        return str(ip_network(f"{address}/64", strict=False))
+    return str(address)

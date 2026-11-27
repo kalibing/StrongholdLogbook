@@ -68,6 +68,8 @@ services:
       LOGBOOK_AI_ENDPOINT: ${LOGBOOK_AI_ENDPOINT:-}
       LOGBOOK_AI_MODEL: ${LOGBOOK_AI_MODEL:-}
       LOGBOOK_AI_API_KEY: ${LOGBOOK_AI_API_KEY:-}
+      LOGBOOK_REGISTRATION: ${LOGBOOK_REGISTRATION:-off}
+      LOGBOOK_INVITE_CODE: ${LOGBOOK_INVITE_CODE:-}
     networks: [data, edge]
     depends_on:
       migrate:

@@ -1,6 +1,9 @@
 from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
+import functools
+import hmac
+import inspect
 import json
 import re
 from typing import Annotated, Literal
@@ -19,7 +22,7 @@ from .config import settings
 from .credentials import ACHIEVEMENTS, SKLAND, CredentialStorageError, initialize_vault
 from .db import connection_pool
 from .errors import UniqueConflict
-from .limits import FailureThrottle, RequestSizeLimit
+from .limits import FailureThrottle, RequestSizeLimit, client_key
 from .records import CHINA, Filters, read_snapshot
 from .security import COOKIE, SESSION_TTL, USERNAME_PATTERN, dummy_hash, hasher, new_session, session_hash, verify_password
 from .storage import json_param
@@ -34,6 +37,7 @@ READ_COLUMNS = (
 
 @asynccontextmanager
 async def lifespan(application):
+    settings.registration  # 配置写错时启动即失败，而不是等到有人注册
     pool = connection_pool()
     pool.open()
     application.state.pool = pool
@@ -49,6 +53,55 @@ app = FastAPI(title="卫戍协议战绩档案", docs_url=None, redoc_url=None, o
 app.add_middleware(RequestSizeLimit)
 # 按来源 IP 限制登录失败次数，防止换着账号名撞库；账号级锁定见 login()。
 login_throttle = FailureThrottle()
+# 注册：每个来源 IP（IPv6 按 /64）24 小时内最多注册 2 个账号；
+# 失败的尝试（用户名已占用、邀请码错误）每小时最多 10 次，防止枚举用户名和猜邀请码；
+# 全站每小时最多 20 个新账号，兜住大量换 IP 的批量注册。
+register_ip_quota = FailureThrottle(limit=2, window=24 * 60 * 60)
+register_failures = FailureThrottle(limit=10, window=60 * 60)
+register_global_quota = FailureThrottle(limit=20, window=60 * 60)
+# 消耗外部资源或 CPU 的接口按账号限额（24 小时滑动窗口）。只有成功的调用占用额度：
+# 参数错误、上游失败等异常会退还这一次。
+DAY = 24 * 60 * 60
+user_quotas = {
+    "ai": (FailureThrottle(limit=2, window=DAY), "AI 复盘每天最多 2 次"),
+    "card": (FailureThrottle(limit=2, window=DAY), "战报图片每天最多生成 2 次"),
+    "skland": (FailureThrottle(limit=2, window=DAY), "森空岛同步每天最多 2 次"),
+    "achv": (FailureThrottle(limit=20, window=60 * 60), "成就绑定尝试太频繁，请稍后再试"),
+}
+
+
+def quota(name: str):
+    """端点装饰器：调用前扣一次该账号的额度，端点抛异常时退还。依赖参数名 user。"""
+    counter, detail = user_quotas[name]
+
+    def spend(user) -> str:
+        key = str(user["id"])
+        if not counter.take(key):
+            raise HTTPException(429, detail)
+        return key
+
+    def decorate(endpoint):
+        if inspect.iscoroutinefunction(endpoint):
+            @functools.wraps(endpoint)
+            async def guarded(*args, **kwargs):
+                key = spend(kwargs["user"])
+                try:
+                    return await endpoint(*args, **kwargs)
+                except BaseException:
+                    counter.refund(key)
+                    raise
+        else:
+            @functools.wraps(endpoint)
+            def guarded(*args, **kwargs):
+                key = spend(kwargs["user"])
+                try:
+                    return endpoint(*args, **kwargs)
+                except BaseException:
+                    counter.refund(key)
+                    raise
+        return guarded
+
+    return decorate
 
 
 @app.middleware("http")
@@ -72,6 +125,8 @@ async def database_unavailable(_request, _error):
 
 @app.exception_handler(RequestValidationError)
 async def invalid_request(request: Request, error: RequestValidationError):
+    if request.method == "POST" and request.url.path == "/api/register":
+        return JSONResponse({"detail": "请输入正确的 QQ 号（5–11 位数字）"}, status_code=422)
     if request.method == "POST" and request.url.path in {"/api/session", "/api/achv/session"}:
         # Pydantic's default validation response includes the submitted input.
         return JSONResponse({"detail": "凭据格式或长度无效"}, status_code=422)
@@ -111,7 +166,7 @@ def session(request: Request, user=Depends(current_user)):
 
 @app.post("/api/session")
 def login(details: Login, request: Request, response: Response):
-    client = request.client.host if request.client else "unknown"
+    client = client_key(request)
     if login_throttle.blocked(client):
         raise HTTPException(429, "登录失败次数过多，请 1 小时后再试")
     with request.app.state.pool.connection() as database:
@@ -122,12 +177,7 @@ def login(details: Login, request: Request, response: Response):
         password_hash = user["password_hash"] if user else dummy_hash
         authenticated = verify_password(password_hash, details.password) and user is not None
         if authenticated:
-            token = new_session()
-            database.execute("DELETE FROM sessions WHERE expires_at <= now()")
-            database.execute(
-                "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (%s, %s, %s)",
-                (session_hash(token), user["id"], now + SESSION_TTL),
-            )
+            token = start_session(database, user["id"], now)
             database.execute("""
                 UPDATE users SET failed_logins = 0, locked_until = NULL, password_hash = %s
                 WHERE id = %s
@@ -141,11 +191,74 @@ def login(details: Login, request: Request, response: Response):
         raise HTTPException(401, "用户名或密码错误")
     with request.app.state.pool.connection() as database:
         account = accounts.load(database, user)
+    set_session_cookie(response, token)
+    return account
+
+
+def start_session(database, user_id, now) -> str:
+    token = new_session()
+    database.execute("DELETE FROM sessions WHERE expires_at <= now()")
+    database.execute(
+        "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (%s, %s, %s)",
+        (session_hash(token), user_id, now + SESSION_TTL),
+    )
+    return token
+
+
+def set_session_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         COOKIE, token, max_age=int(SESSION_TTL.total_seconds()), httponly=True,
         secure=settings.cookie_secure, samesite="strict", path="/",
     )
-    return account
+
+
+QQ_PATTERN = r"^[1-9][0-9]{4,10}$"
+
+
+class Registration(BaseModel):
+    """按 QQ 号建号：用户名就是 QQ 号，密码由服务端随机生成，只在本次响应里返回一次。"""
+    qq: str = Field(pattern=QQ_PATTERN)
+    invite_code: str | None = Field(default=None, max_length=256)
+
+
+@app.get("/api/registration")
+def registration_status():
+    mode = settings.registration
+    return {"enabled": mode != "off", "invite": mode == "invite"}
+
+
+@app.post("/api/register", status_code=status.HTTP_201_CREATED)
+def register(details: Registration, request: Request, response: Response):
+    mode = settings.registration
+    if mode == "off":
+        raise HTTPException(403, "本站未开放注册")
+    client = client_key(request)
+    if register_failures.blocked(client):
+        raise HTTPException(429, "注册尝试过多，请 1 小时后再试")
+    if register_ip_quota.blocked(client):
+        raise HTTPException(429, "该网络 24 小时内注册的账号已达上限")
+    if mode == "invite" and not hmac.compare_digest(
+        (details.invite_code or "").strip().encode(), settings.invite_code.encode(),
+    ):
+        register_failures.hit(client)
+        raise HTTPException(403, "邀请码不正确")
+    if not register_global_quota.take("all"):
+        raise HTTPException(429, "当前注册人数过多，请稍后再试")
+    now = datetime.now(timezone.utc)
+    try:
+        with request.app.state.pool.connection() as database:
+            user, password = accounts.create_with_random_password(database, details.qq)
+            token = start_session(database, user["id"], now)
+    except UniqueConflict:
+        register_failures.hit(client)
+        register_global_quota.refund("all")
+        raise HTTPException(409, "该 QQ 号已注册，请直接登录") from None
+    register_ip_quota.hit(client)
+    with request.app.state.pool.connection() as database:
+        account = accounts.load(database, user)
+    set_session_cookie(response, token)
+    # 明文密码只出现在这一次响应里（全局 Cache-Control: no-store），服务端只存 Argon2 哈希。
+    return {**account, "password": password}
 
 
 @app.delete("/api/session", status_code=status.HTTP_204_NO_CONTENT)
@@ -391,6 +504,7 @@ def daily_review_summary(day: date, request: Request, user=Depends(current_user)
 
 
 @app.get("/api/daily-review/image", response_class=Response, responses={200: {"content": {"image/png": {}}}})
+@quota("card")
 def daily_review_image(request: Request, day: date | None = None, user=Depends(current_user)):
     """昨日战报图片（PNG）。不传 day 时取北京时间的昨天；口径与网页昨日战报一致。"""
     day = day or (datetime.now(CHINA).date() - timedelta(days=1))
@@ -413,6 +527,7 @@ def daily_review_image(request: Request, day: date | None = None, user=Depends(c
 
 
 @app.post("/api/daily-review")
+@quota("ai")
 def daily_review_analysis(day: date, request: Request, user=Depends(current_user)):
     config = daily_review.model_config()
     if config is None:
@@ -563,6 +678,7 @@ def clear_skland_token(request: Request, user=Depends(current_user)):
 
 
 @app.post("/api/imports/skland", status_code=status.HTTP_202_ACCEPTED)
+@quota("skland")
 async def import_from_skland(request: Request, user=Depends(current_user)):
     """从森空岛拉最新战绩（固定 100 条）并入库。
 
@@ -707,6 +823,7 @@ def achv_status(request: Request, user=Depends(current_user)):
 
 
 @app.post("/api/achv/session")
+@quota("achv")
 def achv_connect(details: AchvConnect, request: Request, user=Depends(current_user)):
     warnings: list[str] = []
     uid: str | None = None
