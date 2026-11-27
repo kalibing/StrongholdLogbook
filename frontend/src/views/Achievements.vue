@@ -5,6 +5,7 @@ import { api, ApiError, message } from '../api'
 import AchievementRadar from '../components/AchievementRadar.vue'
 import AvatarImage from '../components/AvatarImage.vue'
 import TrophyIcon from '../components/TrophyIcon.vue'
+import StepWizard from '../components/StepWizard.vue'
 import type { AchvBadge, AchvBandTop, AchvEnvelope, AchvProfile, AchvState, AchvTitle } from '../models'
 
 const notify = useMessage()
@@ -20,6 +21,8 @@ const agentExe = '/download/ArknightsAchvAgent.exe'
 const agentCommand = computed(() => `.\\ArknightsAchvAgent.exe --api ${agentOrigin} --origin ${agentOrigin}`)
 const agentSourceCommand = computed(() => `python agent\\achv_agent.py --api ${agentOrigin} --origin ${agentOrigin}`)
 const commandCopied = ref(false)
+/** 绑定引导当前在第几步（0 起）。 */
+const bindStep = ref(0)
 let commandTimer: number | undefined
 let agentTimer: number | undefined
 const shanghaiDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', dateStyle: 'short' })
@@ -260,41 +263,31 @@ onBeforeUnmount(() => {
           <p class="muted">成就数据由<b>本机助手</b>读取本机登录态后推送到本站，三步搞定，不用把令牌贴进网页。</p>
         </header>
 
-        <ol class="import-steps" aria-label="绑定步骤">
-          <li class="import-step">
-            <span class="import-step-no" aria-hidden="true">1</span>
-            <div class="import-step-main">
-              <h3 class="import-step-title">确认这台机器登录过明日方舟 PC 端</h3>
-              <p class="muted">助手读的是本机客户端登录态（<code>%LocalAppData%\Low\Hypergryph</code>），不抓包、不启动游戏。</p>
-            </div>
-          </li>
-
-          <li class="import-step" data-state="next">
-            <span class="import-step-no" aria-hidden="true">2</span>
-            <div class="import-step-main">
-              <h3 class="import-step-title">下载并运行本机助手</h3>
-              <p class="muted">单文件 exe，双击或在命令行按下面这条跑，按提示输入本站账号密码。</p>
-              <pre class="agent-command"><code>{{ agentCommand }}</code></pre>
-              <p class="import-step-note">仓库不放二进制：克隆后先跑 <code>scripts\build-agent.ps1</code> 生成；源码 <code>agent/achv_agent.py</code>，spec <code>agent/ArknightsAchvAgent.spec</code>。</p>
-            </div>
-            <div class="import-step-action">
+        <StepWizard v-model="bindStep" :steps="['确认登录 PC 端', '运行本机助手', '等待数据推送']"
+          :next-labels="['已登录，下一步', '已运行，下一步']">
+          <template #step-0>
+            <h3 class="wizard-heading">确认这台机器登录过明日方舟 PC 端</h3>
+            <p class="muted">助手读的是本机客户端登录态（<code>%LocalAppData%\Low\Hypergryph</code>），不抓包、不启动游戏。没登录过的话，先打开 PC 端登录一次再回来。</p>
+          </template>
+          <template #step-1>
+            <h3 class="wizard-heading">下载并运行本机助手</h3>
+            <p class="muted">单文件 exe，双击或在命令行按下面这条跑，按提示输入本站账号密码。</p>
+            <pre class="agent-command"><code>{{ agentCommand }}</code></pre>
+            <div class="wizard-inline-actions">
               <NButton tag="a" type="primary" size="small" :href="agentExe" download="ArknightsAchvAgent.exe">下载助手</NButton>
               <NButton size="small" secondary @click="copyAgentCommand">{{ commandCopied ? '已复制' : '复制命令' }}</NButton>
             </div>
-          </li>
-
-          <li class="import-step">
-            <span class="import-step-no" aria-hidden="true">3</span>
-            <div class="import-step-main">
-              <h3 class="import-step-title">等助手把数据推上来</h3>
-              <p class="muted">助手跑完会直接写入本站；本页每 3 秒检测一次，绑定成功会自动刷新成成就档案。</p>
-              <p class="import-step-note">助手在你自己的机器上运行：读本机登录态 → 换 u8 令牌 → 发到 {{ agentOrigin }}。</p>
-            </div>
-            <div class="import-step-action">
-              <NButton size="small" secondary :loading="busy" @click="load">跑完了，刷新</NButton>
-            </div>
-          </li>
-        </ol>
+            <p class="import-step-note">仓库不放二进制：克隆后先跑 <code>scripts\build-agent.ps1</code> 生成；源码 <code>agent/achv_agent.py</code>，spec <code>agent/ArknightsAchvAgent.spec</code>。</p>
+          </template>
+          <template #step-2>
+            <h3 class="wizard-heading">等助手把数据推上来</h3>
+            <p class="wizard-waiting" role="status"><i aria-hidden="true"></i>正在等待本机助手推送，每 3 秒检测一次；绑定成功会自动刷新成成就档案。</p>
+            <p class="import-step-note">助手在你自己的机器上运行：读本机登录态 → 换 u8 令牌 → 发到 {{ agentOrigin }}。</p>
+          </template>
+          <template #actions="{ step }">
+            <NButton v-if="step === 2" secondary :loading="busy" @click="load">跑完了，刷新</NButton>
+          </template>
+        </StepWizard>
 
         <aside class="risk-box" role="note">
           <h4>使用前必读</h4>
@@ -470,6 +463,15 @@ onBeforeUnmount(() => {
   line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text);
 }
 .row-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+/* 分步引导内的标题、行内按钮与「等待中」状态 */
+.wizard-heading { font-size: 1rem; }
+.wizard-inline-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.wizard-waiting { display: flex; align-items: center; gap: .6rem; color: var(--text-2); font-size: .875rem; }
+.wizard-waiting i { flex: none; width: 8px; height: 8px; background: var(--accent); }
+@media (prefers-reduced-motion: no-preference) {
+  .wizard-waiting i { animation: wizard-wait 1.2s ease-in-out infinite; }
+}
+@keyframes wizard-wait { 50% { opacity: .25; transform: rotate(45deg); } }
 /* 警示框：左侧一条警戒斜纹 + 三角警示标，配色只用这一处的琥珀色。 */
 .risk-box {
   --warn: #e8a13c;

@@ -5,6 +5,7 @@ import { api, ApiError, message, post } from '../api'
 import { logbook } from '../context'
 import { dateTime } from '../format'
 import type { ImportJob } from '../models'
+import StepWizard from '../components/StepWizard.vue'
 
 interface ImportReceipt {
   id: string
@@ -40,6 +41,9 @@ const submission = shallowRef<ImportReceipt | null>(null)
 const currentJob = shallowRef<ImportJob | null>(null)
 const currentTitle = ref<HTMLHeadingElement | null>(null)
 const firstInput = ref<InstanceType<typeof NInput> | null>(null)
+/** 导入引导当前在第几步（0 起）；到「回填并导入」时自动聚焦输入框。 */
+const importStep = ref(0)
+watch(importStep, step => { if (step === 3) void nextTick(() => firstInput.value?.focus()) })
 const commandCopied = ref(false)
 
 const passportUrl = 'https://user.hypergryph.com/'
@@ -240,14 +244,14 @@ function openForm() {
   autoPulled = ''
   replacingToken.value = false
   showForm.value = true
-  if (showTokenForm.value) void nextTick(() => firstInput.value?.focus())
+  importStep.value = 0
 }
 
 function replaceToken() {
   pullError.value = ''
   mode.value = 'token'
   replacingToken.value = true
-  void nextTick(() => firstInput.value?.focus())
+  importStep.value = 1
 }
 
 function cancelReplacement() {
@@ -440,101 +444,87 @@ onBeforeUnmount(() => {
 
       <form v-else-if="showTokenForm" class="import-form" @submit.prevent="importFromSkland()">
         <p v-if="tokenStatusError" class="load-message" role="status">{{ tokenStatusError }}</p>
-        <div class="import-methods-row">
-          <span class="import-methods-label" aria-hidden="true">凭据类型</span>
-          <fieldset class="import-methods" aria-label="凭据类型" :disabled="pulling" @change="changeMethod">
-            <label><input v-model="mode" type="radio" name="import-method" value="token">鹰角 access token</label>
-            <label><input v-model="mode" type="radio" name="import-method" value="cred">森空岛凭据</label>
-          </fieldset>
-        </div>
+        <StepWizard v-model="importStep" :steps="['选择凭据', '登录账号', mode === 'token' ? '复制 token' : '取凭据', '回填并导入']"
+          :next-labels="[undefined, '已登录，下一步', mode === 'token' ? '已复制，下一步' : '已复制，下一步']">
+          <template #step-0>
+            <h3 class="wizard-heading">选择用哪种凭据导入</h3>
+            <fieldset class="import-methods" aria-label="凭据类型" :disabled="pulling" @change="changeMethod">
+              <label><input v-model="mode" type="radio" name="import-method" value="token">鹰角 access token</label>
+              <label><input v-model="mode" type="radio" name="import-method" value="cred">森空岛凭据</label>
+            </fieldset>
+            <p class="muted">{{ mode === 'token'
+              ? '推荐：登录鹰角通行证后复制一段 token，成功后会保存在本站，之后一键同步。'
+              : '备用：在森空岛网页的控制台里跑一条命令取 cred 与 sign_token，只在本次请求里使用。' }}</p>
+          </template>
 
-        <ol class="import-steps" aria-label="导入引导">
-          <li class="import-step">
-            <span class="import-step-no" aria-hidden="true">1</span>
-            <div class="import-step-main">
-              <h3 class="import-step-title">登录{{ mode === 'token' ? '鹰角通行证' : '森空岛网页版' }}</h3>
-              <p class="muted">用要导入战绩的账号登录；已经登录过就直接看下一步。</p>
-            </div>
-            <div class="import-step-action">
-              <NButton tag="a" secondary size="small" :href="mode === 'token' ? passportUrl : sklandUrl"
+          <template #step-1>
+            <h3 class="wizard-heading">登录{{ mode === 'token' ? '鹰角通行证' : '森空岛网页版' }}</h3>
+            <p class="muted">用要导入战绩的账号登录；已经登录过就直接下一步。</p>
+            <div class="wizard-inline-actions">
+              <NButton tag="a" type="primary" size="small" :href="mode === 'token' ? passportUrl : sklandUrl"
                 target="_blank" rel="noopener noreferrer">{{ mode === 'token' ? '登录通行证' : '打开森空岛' }}</NButton>
             </div>
-          </li>
+          </template>
 
-          <li class="import-step">
-            <span class="import-step-no" aria-hidden="true">2</span>
-            <div v-if="mode === 'token'" class="import-step-main">
-              <h3 class="import-step-title">打开 token 页面并复制内容</h3>
-              <p class="muted">页面会给出整段 JSON，全选复制即可；如果提示未登录，回到第 1 步登录后再打开。</p>
-            </div>
-            <div v-else class="import-step-main">
-              <h3 class="import-step-title">用一条命令取凭据</h3>
+          <template #step-2>
+            <template v-if="mode === 'token'">
+              <h3 class="wizard-heading">打开 token 页面并复制内容</h3>
+              <p class="muted">页面会给出整段 JSON，全选复制即可；如果提示未登录，回到上一步登录后再打开。</p>
+              <div class="wizard-inline-actions">
+                <NButton tag="a" type="primary" size="small" :href="tokenUrl" target="_blank" rel="noopener noreferrer">打开 token 页面</NButton>
+              </div>
+            </template>
+            <template v-else>
+              <h3 class="wizard-heading">用一条命令取凭据</h3>
               <p class="muted">在森空岛页面按 F12 打开 Console，粘贴这条命令：它读出 cred 与 sign_token，拼成一个字典并复制到剪贴板。</p>
               <figure class="import-cmd">
                 <figcaption>DevTools Console</figcaption>
                 <pre><code>{{ credCommand }}</code></pre>
               </figure>
+              <div class="wizard-inline-actions">
+                <NButton type="primary" size="small" @click="copyCredCommand">{{ commandCopied ? '已复制命令' : '复制命令' }}</NButton>
+              </div>
               <p class="import-step-note">命令取到空值时，退回 Network 面板任选一条 zonai.skland.com 请求，把请求头里的两项写成 <code>{ "cred": "…", "sign_token": "…" }</code> 也能识别。</p>
-            </div>
-            <div class="import-step-action">
-              <NButton v-if="mode === 'token'" tag="a" secondary size="small" :href="tokenUrl" target="_blank"
-                rel="noopener noreferrer">打开 token 页面</NButton>
-              <NButton v-else secondary size="small" @click="copyCredCommand">{{ commandCopied ? '已复制命令' : '复制命令' }}</NButton>
-            </div>
-          </li>
+            </template>
+          </template>
 
-          <li class="import-step" :data-state="canSubmit ? 'done' : 'next'">
-            <span class="import-step-no" aria-hidden="true">3</span>
-            <div class="import-step-main">
-              <h3 class="import-step-title">回填并导入
-                <span v-if="canSubmit" class="import-step-state">{{ mode === 'token' ? '已回填' : '已识别' }}</span>
-              </h3>
-              <template v-if="mode === 'token'">
-                <p id="import-token-help" class="muted">把复制到的内容粘贴到下面，识别到 token 会自动拉取。</p>
-                <div class="token-entry">
-                  <NInput ref="firstInput" :value="token" type="password" show-password-on="click" placeholder="粘贴页面内容或 token"
-                    :disabled="pulling" :input-props="{ id: 'import-token', autocomplete: 'off', 'aria-describedby': 'import-token-help import-token-safety' }"
-                    @update:value="updateToken" />
-                </div>
-                <p v-if="pasteHint || (token.trim() && !accessToken)" class="import-step-status" data-state="warn" role="status">
-                  {{ pasteHint || '未识别到 token，请复制 token 页面的完整内容。' }}
-                </p>
-                <p id="import-token-safety" class="import-step-note">战绩成功拉取并进入写入队列后，鹰角 token 会保存在本站账号中。</p>
-              </template>
-              <template v-else>
-                <p id="import-cred-help" class="muted">把第 2 步复制的字典整段粘贴到下面，识别成功会自动拉取；中文引号、全角逗号、换行会自动纠正。</p>
-                <NInput ref="firstInput" :value="credText" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }"
-                  placeholder='{"cred":"…","sign_token":"…"}' :disabled="pulling"
-                  :input-props="{ id: 'import-cred', autocomplete: 'off', spellcheck: 'false', style: 'font-family: ui-monospace, Consolas, monospace; font-size: .8rem', 'aria-describedby': 'import-cred-help' }"
-                  @update:value="updateCredentials" />
-                <p v-if="credHint" class="import-step-status" :data-state="credReady ? 'ready' : 'warn'" role="status">{{ credHint }}</p>
-                <p class="import-step-note">凭据只在本次请求里使用；提交时会发送给本站后端，请仅在自己控制的实例中回填。</p>
-              </template>
-            </div>
-            <div class="import-step-action">
-              <NButton v-if="mode === 'token'" secondary size="small" :loading="pasting" :disabled="pulling || pasting"
-                @click="pasteToken">粘贴 token</NButton>
-            </div>
-          </li>
-        </ol>
+          <template #step-3>
+            <h3 class="wizard-heading">回填并导入
+              <span v-if="canSubmit" class="import-step-state">{{ mode === 'token' ? '已回填' : '已识别' }}</span>
+            </h3>
+            <template v-if="mode === 'token'">
+              <p id="import-token-help" class="muted">把复制到的内容粘贴到下面，识别到 token 会自动拉取。</p>
+              <div class="token-entry">
+                <NInput ref="firstInput" :value="token" type="password" show-password-on="click" placeholder="粘贴页面内容或 token"
+                  :disabled="pulling" :input-props="{ id: 'import-token', autocomplete: 'off', 'aria-describedby': 'import-token-help import-token-safety' }"
+                  @update:value="updateToken" />
+                <NButton secondary :loading="pasting" :disabled="pulling || pasting" @click="pasteToken">粘贴</NButton>
+              </div>
+              <p v-if="pasteHint || (token.trim() && !accessToken)" class="import-step-status" data-state="warn" role="status">
+                {{ pasteHint || '未识别到 token，请复制 token 页面的完整内容。' }}
+              </p>
+              <p id="import-token-safety" class="import-step-note">战绩成功拉取并进入写入队列后，鹰角 token 会保存在本站账号中。</p>
+            </template>
+            <template v-else>
+              <p id="import-cred-help" class="muted">把上一步复制的字典整段粘贴到下面，识别成功会自动拉取；中文引号、全角逗号、换行会自动纠正。</p>
+              <NInput ref="firstInput" :value="credText" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }"
+                placeholder='{"cred":"…","sign_token":"…"}' :disabled="pulling"
+                :input-props="{ id: 'import-cred', autocomplete: 'off', spellcheck: 'false', style: 'font-family: ui-monospace, Consolas, monospace; font-size: .8rem', 'aria-describedby': 'import-cred-help' }"
+                @update:value="updateCredentials" />
+              <p v-if="credHint" class="import-step-status" :data-state="credReady ? 'ready' : 'warn'" role="status">{{ credHint }}</p>
+              <p class="import-step-note">凭据只在本次请求里使用；提交时会发送给本站后端，请仅在自己控制的实例中回填。</p>
+            </template>
+            <p v-if="pullError" class="load-message" role="alert">{{ pullError }}</p>
+            <p v-else-if="pulling" class="muted" role="status">正在自动拉取…拉取成功后会进入写入队列。</p>
+          </template>
 
-        <div class="import-submit">
-          <p v-if="pullError" class="load-message" role="alert">{{ pullError }}</p>
-          <p v-else class="muted">
-            {{ pulling
-              ? '正在自动拉取…'
-              : canSubmit
-                ? '已填好，可点击重试。'
-                : '粘贴有效内容后会自动拉取，也可以填好后点按钮。' }}
-          </p>
-          <div class="import-submit-action">
-            <span v-if="pulling" class="muted" role="status">拉取成功后会进入写入队列。</span>
-            <NButton v-if="hasSavedToken" secondary :disabled="pulling" @click="cancelReplacement">取消更换</NButton>
-            <NButton type="primary" attr-type="submit" :loading="pulling" :disabled="!canSubmit || pulling">
+          <template #actions="{ step }">
+            <NButton v-if="hasSavedToken" quaternary :disabled="pulling" @click="cancelReplacement">取消更换</NButton>
+            <NButton v-if="step === 3" type="primary" attr-type="submit" :loading="pulling" :disabled="!canSubmit || pulling">
               {{ pulling ? '正在拉取…' : pullError ? '重新拉取' : '拉取并导入' }}
             </NButton>
-          </div>
-        </div>
+          </template>
+        </StepWizard>
       </form>
 
       <section v-if="submission" class="current-import" aria-labelledby="current-import-title">
@@ -598,8 +588,8 @@ onBeforeUnmount(() => {
   color: var(--accent); font-size: .7rem; font-weight: 700; letter-spacing: .06em;
 }
 .import-form, .current-import { display: grid; gap: .9rem; }
-.import-methods-row { display: grid; gap: .3rem; }
-.import-methods-label { color: var(--muted); font-size: .72rem; letter-spacing: .1em; }
+.wizard-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; font-size: 1rem; }
+.wizard-inline-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 /* 分段切换：和总览分段卡同一套——整条连在一起，1px 分隔，选中项实色填充 + 深色字。 */
 .import-methods {
   display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 1px; width: fit-content; max-width: 100%; min-width: 0;
@@ -629,7 +619,7 @@ onBeforeUnmount(() => {
   color: var(--text); font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
   font-size: .75rem; line-height: 1.65; white-space: pre-wrap; word-break: break-all;
 }
-.token-entry { display: grid; grid-template-columns: minmax(0, 1fr); gap: .45rem; }
+.token-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .45rem; }
 .import-submit {
   display: flex; align-items: center; justify-content: space-between; gap: .6rem 1rem; flex-wrap: wrap;
   margin-top: .1rem; padding: .7rem .8rem; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
