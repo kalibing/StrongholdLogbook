@@ -251,7 +251,7 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
 .table-heading { padding: 1rem 1.1rem; }
 
 /* 小号数据标签 + 大号数字：全站统一的「数据块」 */
-.win-rate strong, .stats dd, .match-totals dd, .usage-stats strong, .report-stats b { font-family: var(--numbers); font-variant-numeric: tabular-nums; font-weight: 700; }
+.win-rate strong, .match-totals dd, .usage-stats strong, .report-stats b { font-family: var(--numbers); font-variant-numeric: tabular-nums; font-weight: 700; }
 
 /* =====================================================================
  * 筛选条
@@ -288,7 +288,7 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
 .performance-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .9rem; margin-block: .75rem; }
 .win-rate { display: grid; align-content: center; }
 .win-rate span { color: var(--muted); font-size: .8125rem; white-space: nowrap; }
-.win-rate strong { color: var(--accent); font-size: clamp(2.1rem, 3.8vw, 3rem); line-height: 1.05; letter-spacing: -.005em; }
+.win-rate strong { color: var(--text); font-size: clamp(2.1rem, 3.8vw, 3rem); line-height: 1.05; letter-spacing: -.005em; }
 .match-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); background: var(--line); }
 .match-totals > div { display: grid; align-content: center; gap: .2rem; padding: .55rem .7rem; background: var(--inset); line-height: 1.15; }
 .match-totals dt { color: var(--muted); font-size: .75rem; }
@@ -307,13 +307,23 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
   font-size: .78rem; font-weight: 650;
 }
 .chip.loss { background: color-mix(in srgb, var(--loss) 16%, transparent); color: var(--loss); }
-.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, 1fr); gap: 1px; margin-top: .8rem; border: 1px solid var(--line); background: var(--line); }
-.stats div { display: grid; align-content: center; justify-items: start; gap: .2rem; min-width: 0; padding: .7rem .9rem; background: var(--inset); }
-.stats dt { color: var(--muted); font-size: .78rem; }
-.stats dd { display: flex; align-items: center; gap: .35rem; min-height: 1.9rem; font-size: clamp(1.3rem, 2.2vw, 1.8rem); line-height: 1.1; overflow-wrap: anywhere; }
-dd.peak-value { font-size: clamp(1.2rem, 2vw, 1.6rem); }
-dd.peak-value img, dd.peak-value .bond-glyph { flex: none; width: 28px; height: 28px; object-fit: contain; }
-dd.peak-value b { display: block; line-height: 1; white-space: nowrap; }
+/* 盟约与资金：两组，每组一个大号主数字 + 一行次要读数。 */
+.stat-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin-top: .8rem; border: 1px solid var(--line); background: var(--line); }
+.stat-group { display: grid; align-content: start; min-width: 0; padding: .9rem 1.1rem 1rem; background: var(--inset); }
+.stat-group-label { display: flex; align-items: center; gap: .45rem; margin-bottom: .6rem; color: var(--muted); font-size: .75rem; letter-spacing: .2em; }
+.stat-group-label::before { content: ""; width: 6px; height: 6px; background: var(--accent); }
+.stat-hero { display: flex; align-items: baseline; gap: .3rem; color: var(--text); }
+.stat-hero b { font: 700 clamp(2.1rem, 3.6vw, 2.9rem)/1 var(--numbers); font-variant-numeric: tabular-nums; }
+.stat-hero span { color: var(--muted); font-size: .95rem; }
+.stat-hero img { align-self: center; flex: none; object-fit: contain; }
+.stat-hero-label { margin-top: .3rem; color: var(--muted); font-size: .8rem; }
+.stat-sub { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-top: .9rem; padding-top: .7rem; border-top: 1px solid var(--line); font-size: .8125rem; }
+.stat-sub dt { color: var(--muted); white-space: nowrap; }
+.stat-sub dd { display: flex; align-items: center; gap: .35rem; min-width: 0; color: var(--muted); white-space: nowrap; }
+.stat-sub dd b { color: var(--text); font: 700 1.25rem/1 var(--numbers); }
+.stat-sub img, .stat-sub .bond-glyph { flex: none; width: 22px; height: 22px; object-fit: contain; }
+.stat-sub .bond-glyph { width: 16px; height: 16px; }
+.peak-name { overflow: hidden; color: var(--text-2); text-overflow: ellipsis; }
 .funds-value { gap: .32rem; }
 .funds-value img { display: block; flex: none; object-fit: contain; }
 :root[data-theme="light"] :is(.peak-value img, .usage-heading img, .bond-label img, .daily-peak img, .trend-art--bond) { filter: brightness(0) saturate(100%) opacity(.82); }
