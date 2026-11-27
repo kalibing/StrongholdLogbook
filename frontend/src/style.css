@@ -959,16 +959,20 @@ dd.peak-value b { display: block; line-height: 1; white-space: nowrap; }
     padding-block-end: calc(var(--history-row-height) * var(--history-empty-rows, 0));
   }
   .history-table { table-layout: fixed; }
-  .history-time-col { width: 14%; }
+  .history-time-col { width: 13%; }
   .history-result-col { width: 7%; }
   .history-mode-col { width: 11%; }
-  .history-tier-col { width: 12%; }
-  .history-strategy-col { width: 18%; }
+  .history-tier-col { width: 15%; }
+  .history-strategy-col { width: 19%; }
   .history-small-col { width: 7%; }
-  .history-value-col { width: 12%; }
+  .history-value-col { width: 10.5%; }
   .match-row { height: var(--history-row-height); }
   .history-table :is(th, td), .history-table .strategy-name { overflow: hidden; text-overflow: ellipsis; }
   .history-table .strategy-cell { max-width: 100%; }
+  /* 难度列：图标 + 文字是一个 inline-flex，整格省略时「…」会被挤到外面只剩一个点；改成只截断文字本身。 */
+  .history-table td:has(> .tier-tag) { text-overflow: clip; }
+  .history-table .tier-tag { max-width: 100%; vertical-align: middle; }
+  .history-table .tier-tag > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 span.hover-tip { display: inline-flex; align-items: center; }
 .hover-tip-bubble {

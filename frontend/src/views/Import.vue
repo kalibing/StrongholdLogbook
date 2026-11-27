@@ -600,22 +600,23 @@ onBeforeUnmount(() => {
 .import-form, .current-import { display: grid; gap: .9rem; }
 .import-methods-row { display: grid; gap: .3rem; }
 .import-methods-label { color: var(--muted); font-size: .72rem; letter-spacing: .1em; }
+/* 分段切换：一条整体的轨道，选中项是滑入的实色块，两项等宽。 */
 .import-methods {
-  display: flex; flex-wrap: wrap; gap: .4rem; min-width: 0;
-  margin: 0; padding: 0; border: 0;
+  display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: fit-content; max-width: 100%; min-width: 0;
+  margin: 0; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: var(--inset);
 }
 .import-methods label {
-  position: relative; padding: .35rem .8rem;
-  border: 1px solid color-mix(in srgb, var(--control-line) 70%, transparent);
-  border-radius: 999px; background: var(--inset); color: var(--muted); cursor: pointer; font-size: .8125rem;
-  transition: color .15s, border-color .15s, background .15s;
+  position: relative; display: grid; place-items: center; min-height: 32px; padding: 0 1rem;
+  border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .8125rem; white-space: nowrap;
+  transition: color .15s, background-color .15s, box-shadow .15s;
 }
-.import-methods label:hover { border-color: var(--accent); color: var(--accent); }
+.import-methods label:hover { color: var(--text); }
 .import-methods input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
 .import-methods label:has(input:checked) {
-  border-color: var(--accent); background: var(--accent); color: var(--panel); font-weight: 650;
+  background: var(--raised, var(--panel)); color: var(--accent); font-weight: 650;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 2px 6px -2px #0000004d;
 }
-.import-methods label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.import-methods label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
 .import-methods:disabled label { cursor: default; }
 .import-cmd {
   display: grid; margin: .1rem 0 0; border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));

@@ -470,12 +470,31 @@ onBeforeUnmount(() => {
   line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text);
 }
 .row-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+/* 警示框：左侧一条警戒斜纹 + 三角警示标，配色只用这一处的琥珀色。 */
 .risk-box {
-  border: 1px solid rgba(232, 161, 60, .45); border-radius: 6px;
-  background: rgba(232, 161, 60, .08); padding: .8rem .9rem; display: grid; gap: .45rem;
+  --warn: #e8a13c;
+  position: relative; display: grid; gap: .5rem;
+  padding: .85rem 1rem .9rem 1.5rem; border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line)); border-radius: 6px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 9%, transparent), color-mix(in srgb, var(--warn) 3%, transparent));
+  overflow: hidden;
 }
-.risk-box h4 { color: #e8a13c; font-size: .8125rem; letter-spacing: .04em; }
-.risk-box ul { margin: 0; padding-left: 1.1rem; display: grid; gap: .3rem; color: var(--muted); font-size: .78rem; line-height: 1.6; }
+:root[data-theme='light'] .risk-box { --warn: #b0670f; }
+.risk-box::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 6px;
+  background: repeating-linear-gradient(-45deg, var(--warn) 0 5px, color-mix(in srgb, var(--warn) 15%, transparent) 5px 10px);
+}
+.risk-box h4 {
+  display: flex; align-items: center; gap: .45rem; margin: 0;
+  color: var(--warn); font-size: .875rem; font-weight: 700; letter-spacing: .08em;
+}
+.risk-box h4::before {
+  content: "!"; display: grid; place-items: center; width: 1.05rem; height: .95rem; padding-top: .12rem;
+  background: var(--warn); color: var(--panel); font-size: .65rem; font-weight: 800; line-height: 1;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.risk-box ul { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; color: var(--muted); font-size: .8125rem; line-height: 1.6; }
+.risk-box li { position: relative; padding-left: .9rem; }
+.risk-box li::before { content: ""; position: absolute; left: 0; top: .62em; width: 5px; height: 5px; background: color-mix(in srgb, var(--warn) 70%, transparent); transform: rotate(45deg); }
 .risk-box b { color: var(--text); font-weight: 600; }
 .risk-actions { margin: .2rem 0 0; font-size: .8125rem; display: flex; flex-wrap: wrap; gap: .45rem; align-items: baseline; }
 .risk-actions a { color: var(--accent); text-decoration: underline; }
