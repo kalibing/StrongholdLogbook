@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from logbook import skland, storage
+from logbook import daily_card, skland, storage
 from logbook.api import app
 from logbook.records import CHINA
 from logbook.security import hasher
@@ -56,7 +56,10 @@ def test_skland_token_can_be_reused_after_login(client, fixtures, monkeypatch):
         return "test-cred", "test-signature"
 
     monkeypatch.setattr(skland, "cred_from_token", exchange)
-    monkeypatch.setattr(skland, "arknights_role", lambda *_: "test-role")
+    monkeypatch.setattr(skland, "api_get", lambda *_: {"data": {"list": [{
+        "appCode": "arknights",
+        "bindingList": [{"uid": "test-id", "nickName": "测试博士"}],
+    }]}})
     monkeypatch.setattr(skland, "history", lambda *_: ["test-record"])
     monkeypatch.setattr(skland, "to_snapshot", lambda _: snapshot)
 
@@ -74,6 +77,15 @@ def test_skland_token_can_be_reused_after_login(client, fixtures, monkeypatch):
         assert stored.startswith("logbook:aesgcm:v1:")
         assert "initial-test-token" not in stored
     drain()
+    names = []
+
+    def render(card):
+        names.append(card.username)
+        return b"png"
+
+    monkeypatch.setattr(daily_card, "render", render)
+    assert client.get("/api/daily-review/image?day=2026-11-22").status_code == 200
+    assert names == ["测试博士"]
 
     assert client.delete("/api/session", headers=HEADERS).status_code == 204
     assert client.get(token_path).status_code == 401
@@ -204,7 +216,7 @@ def test_sparse_skland_sync_preserves_existing_match_fields(client, monkeypatch)
         "id": "sync-match", "gameStartTs": started, "completeState": 1, "killCnt": 65,
         "chessSquad": [{"chessInfo": {"charId": "char_002_amiya"}}],
     }
-    monkeypatch.setattr(skland, "arknights_role", lambda *_: "test-role")
+    monkeypatch.setattr(skland, "arknights_role", lambda *_: ("test-role", "测试博士"))
     monkeypatch.setattr(skland, "history", lambda *_: [record])
     def sync():
         response = client.post("/api/imports/skland", json={"cred": "test-cred", "sign_token": "test-signature"},

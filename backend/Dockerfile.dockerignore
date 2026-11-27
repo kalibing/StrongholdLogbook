@@ -1,0 +1,16 @@
+**
+!backend/
+!backend/requirements.txt
+!backend/alembic.ini
+!backend/migrations/
+!backend/migrations/**/*.py
+!backend/logbook/
+!backend/logbook/**/*.py
+!frontend/
+!frontend/public/
+!frontend/public/art/
+!frontend/public/art/bond-*.png
+!frontend/public/art/strategy-band_*.png
+!frontend/public/art/metric-funds.png
+!frontend/public/art/metric-bond.png
+!frontend/public/art/trophy_level*_icon.png

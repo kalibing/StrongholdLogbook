@@ -224,6 +224,21 @@ def distribution(request: Request, filters: Annotated[Filters, Depends()], user=
     return result
 
 
+def account_trophies(database, user_id):
+    profile = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user_id,)).fetchone()
+    payload = (profile["payload"] if profile else None) or {}
+    trophy = payload.get("trophy")
+    badge = {"icon": trophy.get("icon"), "level": trophy.get("level")} if trophy else None
+    if trophy and trophy.get("total") is not None:
+        return badge, {"total": trophy["total"], "source": "profile"}
+    recorded = database.execute(
+        "SELECT SUM(trophies) AS total, COUNT(trophies) AS counted FROM matches WHERE user_id = %s", (user_id,),
+    ).fetchone()
+    if recorded and recorded["counted"]:
+        return badge, {"total": max(0, int(recorded["total"] or 0)), "source": "matches"}
+    return badge, None
+
+
 @app.get("/api/overview")
 def overview(
     request: Request, filters: Annotated[Filters, Depends()],
@@ -235,21 +250,8 @@ def overview(
             "SELECT id, played_at, result, strategy, rounds, kills, coins, trophies, suspected_exit, bonds, operators "
             f"FROM matches WHERE {where} ORDER BY played_at, id", params,
         ).fetchall()
-        profile = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user["id"],)).fetchone()
-        # 奖杯是账号累计值，不随筛选变化：没绑定成就档案时用全部对局的奖杯记录累加兜底。
-        recorded = database.execute(
-            "SELECT SUM(trophies) AS total, COUNT(trophies) AS counted FROM matches WHERE user_id = %s", (user["id"],),
-        ).fetchone()
+        badge, trophy_total = account_trophies(database, user["id"])
     records = candidates if filters.include_exits else [row for row in candidates if not row["suspected_exit"]]
-    payload = (profile["payload"] if profile else None) or {}
-    trophy = payload.get("trophy")
-    badge = {"icon": trophy.get("icon"), "level": trophy.get("level")} if trophy else None
-    if trophy and trophy.get("total") is not None:
-        trophy_total = {"total": trophy["total"], "source": "profile"}
-    elif recorded and recorded["counted"]:
-        trophy_total = {"total": max(0, int(recorded["total"] or 0)), "source": "matches"}
-    else:
-        trophy_total = None
     return {**stats.overview(records, len(candidates) - len(records), scope), "trophy_badge": badge, "trophy_total": trophy_total}
 
 
@@ -279,9 +281,16 @@ def daily_review_image(request: Request, day: date | None = None, user=Depends(c
             f"duration_seconds, suspected_exit, bonds, bosses FROM matches WHERE {where} ORDER BY played_at DESC, id DESC",
             params,
         ).fetchall()
+        profile = database.execute(
+            "SELECT nickname FROM skland_profiles WHERE user_id = %s", (user["id"],),
+        ).fetchone()
+        badge, trophy_total = account_trophies(database, user["id"])
+    display_name = profile["nickname"] if profile and profile["nickname"] else user["username"]
     kept = [row for row in rows if not row["suspected_exit"]]
     try:
-        png = daily_card.render(daily_card.build(kept, len(rows) - len(kept), day, user["username"]))
+        card = daily_card.build(kept, len(rows) - len(kept), day, display_name,
+                                badge=badge, trophy_total=trophy_total["total"] if trophy_total else None)
+        png = daily_card.render(card)
     except daily_card.CardFontError as error:
         raise HTTPException(503, str(error)) from error
     return Response(png, media_type="image/png", headers={
@@ -397,7 +406,7 @@ def imports(request: Request, user=Depends(current_user)):
         """, (user["id"],)).fetchall()
 
 
-def queue_import(pool, user_id, content, *, sealed_token=None):
+def queue_import(pool, user_id, content, *, sealed_token=None, skland_profile=None):
     try:
         records = read_snapshot(json.loads(content))
     except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as error:
@@ -422,6 +431,11 @@ def queue_import(pool, user_id, content, *, sealed_token=None):
                 INSERT INTO skland_import_tokens (user_id, access_token) VALUES (%s, %s)
                 ON CONFLICT (user_id) DO UPDATE SET access_token = EXCLUDED.access_token
             """, (user_id, sealed_token))
+        if skland_profile is not None:
+            database.execute("""
+                INSERT INTO skland_profiles (user_id, nickname) VALUES (%s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET nickname = EXCLUDED.nickname
+            """, (user_id, skland_profile["nickname"]))
     return {"id": job_id, "status": "pending", "total": len(records)}
 
 
@@ -478,7 +492,7 @@ async def import_from_skland(request: Request, user=Depends(current_user)):
     user_id = user["id"]
     vault = request.app.state.credentials
 
-    def pull() -> dict:
+    def pull() -> tuple[dict, dict]:
         pull_cred, pull_sign = cred, sign_token
         token = access_token
         if use_saved:
@@ -495,9 +509,9 @@ async def import_from_skland(request: Request, user=Depends(current_user)):
         try:
             if not pull_cred or not pull_sign:
                 pull_cred, pull_sign = skland.cred_from_token(token)
-            role = skland.arknights_role(pull_cred, pull_sign)
+            role, nickname = skland.arknights_role(pull_cred, pull_sign)
             records = skland.history(pull_cred, pull_sign, role, season)
-            return skland.to_snapshot(records)
+            return skland.to_snapshot(records), {"nickname": nickname}
         except skland.AccessTokenRejected as error:
             if use_saved:
                 raise HTTPException(424, "已保存的 token 无法通过鹰角验证，请更换后重试。") from error
@@ -505,12 +519,13 @@ async def import_from_skland(request: Request, user=Depends(current_user)):
         except skland.SklandError as error:
             raise HTTPException(424, str(error)) from error
 
-    snapshot = await run_in_threadpool(pull)
+    snapshot, profile = await run_in_threadpool(pull)
     if not snapshot["matches"]:
         raise HTTPException(404, "森空岛没有返回可导入的战绩")
     sealed_token = vault.seal(SKLAND, user_id, token_to_save) if token_to_save else None
     job = await run_in_threadpool(queue_import, pool, user_id,
-                                  json.dumps(snapshot, ensure_ascii=False).encode(), sealed_token=sealed_token)
+                                  json.dumps(snapshot, ensure_ascii=False).encode(),
+                                  sealed_token=sealed_token, skland_profile=profile)
     return {**job, "source": "skland", "records": len(snapshot["matches"]),
             "operators": len(snapshot["operators"]), "token_saved": token_to_save is not None}
 

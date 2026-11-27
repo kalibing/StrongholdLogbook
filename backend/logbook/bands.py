@@ -70,15 +70,16 @@ BANDS = {
 
 _BY_NAME = {}
 for _band, (_unit, _strategy) in BANDS.items():
-    _BY_NAME.setdefault(_strategy, (_unit, _strategy))
-    _BY_NAME.setdefault(_unit, (_unit, _strategy))
+    _BY_NAME.setdefault(_strategy, _band)
+    _BY_NAME.setdefault(_unit, _band)
+
+
+def band_id(value):
+    text = (value or "").strip()
+    return text if text in BANDS else _BY_NAME.get(text)
 
 
 def resolve(value):
     """记录里的 band id / 分队干员名 / 策略名 → (分队干员, 策略名)；对不上时原样返回。"""
     text = (value or "").strip()
-    if not text:
-        return "", ""
-    if text in BANDS:
-        return BANDS[text]
-    return _BY_NAME.get(text, ("", text))
+    return BANDS.get(band_id(text), ("", text))

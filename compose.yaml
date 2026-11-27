@@ -15,7 +15,9 @@ services:
     restart: unless-stopped
 
   migrate:
-    build: ./backend
+    build: &backend_build
+      context: .
+      dockerfile: backend/Dockerfile
     command: ["alembic", "upgrade", "head"]
     environment: &database
       POSTGRES_HOST: db
@@ -28,7 +30,7 @@ services:
         condition: service_healthy
 
   api:
-    build: ./backend
+    build: *backend_build
     environment:
       <<: *database
       LOGBOOK_CREDENTIAL_KEY: ${LOGBOOK_CREDENTIAL_KEY:?Set LOGBOOK_CREDENTIAL_KEY in .env}
@@ -46,7 +48,7 @@ services:
     restart: unless-stopped
 
   worker:
-    build: ./backend
+    build: *backend_build
     command: ["python", "-m", "logbook.worker"]
     environment: *database
     depends_on:

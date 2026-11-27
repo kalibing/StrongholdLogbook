@@ -132,7 +132,7 @@ def api_get(cred: str, sign_token: str, path: str, query: str = "", role: str = 
     return payload
 
 
-def arknights_role(cred: str, sign_token: str) -> str:
+def arknights_role(cred: str, sign_token: str) -> tuple[str, str | None]:
     payload = api_get(cred, sign_token, "/api/v1/game/player/binding")
     for app in ((payload.get("data") or {}).get("list") or []):
         if app.get("appCode") != "arknights":
@@ -140,7 +140,10 @@ def arknights_role(cred: str, sign_token: str) -> str:
         for item in app.get("bindingList") or []:
             if item.get("isDelete"):
                 continue
-            return f"{item.get('gameId', 1)}_{item.get('uid')}_{item.get('channelMasterId', '1')}"
+            role = f"{item.get('gameId', 1)}_{item.get('uid')}_{item.get('channelMasterId', '1')}"
+            nickname = item.get("nickName", item.get("nickname"))
+            nickname = " ".join(nickname.split())[:128] if isinstance(nickname, str) else None
+            return role, nickname or None
     raise SklandError("森空岛账号下没有绑定明日方舟角色")
 
 

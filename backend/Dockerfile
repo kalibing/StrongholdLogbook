@@ -3,10 +3,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 # 昨日战报图片（/api/daily-review/image）需要中文字体
 RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt ./
+COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && useradd --uid 10001 --no-create-home logbook
-COPY alembic.ini ./
-COPY migrations/ migrations/
-COPY logbook/ logbook/
+COPY backend/alembic.ini ./
+COPY backend/migrations/ migrations/
+COPY backend/logbook/ logbook/
+COPY frontend/public/art/bond-*.png frontend/public/art/strategy-band_*.png frontend/public/art/metric-funds.png frontend/public/art/metric-bond.png frontend/public/art/trophy_level*_icon.png art/
 USER 10001
 CMD ["uvicorn", "logbook.api:app", "--host", "0.0.0.0", "--port", "8000"]

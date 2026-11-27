@@ -73,6 +73,12 @@ SCHEMA = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS skland_profiles (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        nickname TEXT
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS achv_links (
         user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         source TEXT NOT NULL CHECK (source IN ('hypergryph', 'token')),
