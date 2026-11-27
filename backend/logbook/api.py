@@ -113,7 +113,7 @@ def session(request: Request, user=Depends(current_user)):
 def login(details: Login, request: Request, response: Response):
     client = request.client.host if request.client else "unknown"
     if login_throttle.blocked(client):
-        raise HTTPException(429, "登录尝试过多，请稍后重试")
+        raise HTTPException(429, "登录失败次数过多，请 1 小时后再试")
     with request.app.state.pool.connection() as database:
         user = database.execute("SELECT * FROM users WHERE username = %s FOR UPDATE", (details.username,)).fetchone()
         now = datetime.now(timezone.utc)

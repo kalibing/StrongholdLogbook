@@ -67,7 +67,7 @@ class RequestSizeLimit:
 class FailureThrottle:
     """滑动窗口：同一来源在 window 秒内失败超过 limit 次即拒绝，直到最早的失败滑出窗口。"""
 
-    def __init__(self, limit: int = 20, window: float = 15 * 60, max_keys: int = 10_000):
+    def __init__(self, limit: int = 5, window: float = 60 * 60, max_keys: int = 10_000):
         self.limit = limit
         self.window = window
         self.max_keys = max_keys
