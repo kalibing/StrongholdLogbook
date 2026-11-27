@@ -83,10 +83,10 @@ def test_cannot_mark_other_users_notice(site):
 def test_registration_sends_welcome_notice(site):
     client, _ = site
     client.cookies.clear()
-    assert client.post("/api/register", json={"qq": "123456789"}, headers=HEADERS).status_code == 201
+    assert client.post("/api/register", json={"username": "newcomer", "password": "my-own-password"}, headers=HEADERS).status_code == 201
     items = client.get("/api/notifications").json()["items"]
     assert [item["title"] for item in items] == [api.WELCOME_TITLE]
-    assert "密码" in items[0]["body"]
+    assert "索要密码" in items[0]["body"]
 
 
 def test_content_is_cleaned_and_bounded():

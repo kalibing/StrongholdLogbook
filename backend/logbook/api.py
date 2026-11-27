@@ -2,7 +2,6 @@ from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 import functools
-import hmac
 import inspect
 import json
 import re
@@ -125,8 +124,19 @@ async def database_unavailable(_request, _error):
 
 @app.exception_handler(RequestValidationError)
 async def invalid_request(request: Request, error: RequestValidationError):
-    if request.method == "POST" and request.url.path == "/api/register":
-        return JSONResponse({"detail": "请输入正确的 QQ 号（5–11 位数字）"}, status_code=422)
+    if (request.method, request.url.path) in {
+        ("POST", "/api/register"), ("PATCH", "/api/account/username"), ("PUT", "/api/account/password"),
+        ("POST", "/api/session/qq-link"),
+    }:
+        # 不回显提交内容（可能含密码），只说明哪一项不合规。
+        fields = {str(item["loc"][-1]) for item in error.errors() if item.get("loc")}
+        if "token" in fields:
+            detail = "登录链接无效或已过期，请在 QQ 里重新获取"
+        elif "password" in fields and "username" not in fields:
+            detail = f"密码长度须为 {accounts.PASSWORD_MIN}–256 个字符"
+        else:
+            detail = "账号须为 3–64 位小写字母、数字、点、下划线或连字符，且以字母或数字开头"
+        return JSONResponse({"detail": detail}, status_code=422)
     if request.method == "POST" and request.url.path in {"/api/session", "/api/achv/session"}:
         # Pydantic's default validation response includes the submitted input.
         return JSONResponse({"detail": "凭据格式或长度无效"}, status_code=422)
@@ -212,61 +222,120 @@ def set_session_cookie(response: Response, token: str) -> None:
     )
 
 
-QQ_PATTERN = r"^[1-9][0-9]{4,10}$"
 WELCOME_TITLE = "欢迎来到作战档案"
 WELCOME_BODY = (
-    "账号已创建，登录用户名就是你的 QQ 号。\n"
-    "密码只在注册时显示过一次，本站不会再次展示，也不会通过任何渠道向你索要。"
-    "如果忘记密码，请联系站长重置。\n"
+    "账号已创建。本站不会通过任何渠道向你索要密码，忘记密码请联系站长重置。\n"
     "下一步：到「数据导入」同步森空岛战绩。"
 )
 
 
 class Registration(BaseModel):
-    """按 QQ 号建号：用户名就是 QQ 号，密码由服务端随机生成，只在本次响应里返回一次。"""
-    qq: str = Field(pattern=QQ_PATTERN)
-    invite_code: str | None = Field(default=None, max_length=256)
+    """网页注册：账号和密码都由用户自己填写。
+
+    QQ 机器人渠道的账号按 openid 建立、密码由系统生成（见 accounts.create_for_qq_openid），
+    用户名带保留前缀 qq-，网页注册不能占用这个前缀。
+    """
+    username: str = Field(pattern=USERNAME_PATTERN)
+    password: str = Field(min_length=accounts.PASSWORD_MIN, max_length=256)
 
 
 @app.get("/api/registration")
 def registration_status():
-    mode = settings.registration
-    return {"enabled": mode != "off", "invite": mode == "invite"}
+    return {"enabled": settings.registration == "open"}
 
 
 @app.post("/api/register", status_code=status.HTTP_201_CREATED)
 def register(details: Registration, request: Request, response: Response):
-    mode = settings.registration
-    if mode == "off":
+    if settings.registration != "open":
         raise HTTPException(403, "本站未开放注册")
     client = client_key(request)
     if register_failures.blocked(client):
         raise HTTPException(429, "注册尝试过多，请 1 小时后再试")
     if register_ip_quota.blocked(client):
         raise HTTPException(429, "该网络 24 小时内注册的账号已达上限")
-    if mode == "invite" and not hmac.compare_digest(
-        (details.invite_code or "").strip().encode(), settings.invite_code.encode(),
-    ):
-        register_failures.hit(client)
-        raise HTTPException(403, "邀请码不正确")
+    if details.username.startswith(accounts.QQ_USERNAME_PREFIX):
+        raise HTTPException(422, f"以 {accounts.QQ_USERNAME_PREFIX} 开头的账号保留给 QQ 机器人注册")
+    if details.password.casefold() == details.username.casefold():
+        raise HTTPException(422, "密码不能与账号相同")
     if not register_global_quota.take("all"):
         raise HTTPException(429, "当前注册人数过多，请稍后再试")
     now = datetime.now(timezone.utc)
     try:
         with request.app.state.pool.connection() as database:
-            user, password = accounts.create_with_random_password(database, details.qq)
+            user = accounts.create_with_password(database, details.username, details.password)
             notifications.create(database, WELCOME_TITLE, WELCOME_BODY, user["id"])
             token = start_session(database, user["id"], now)
     except UniqueConflict:
         register_failures.hit(client)
         register_global_quota.refund("all")
-        raise HTTPException(409, "该 QQ 号已注册，请直接登录") from None
+        raise HTTPException(409, "该账号已被占用，换一个试试") from None
     register_ip_quota.hit(client)
     with request.app.state.pool.connection() as database:
         account = accounts.load(database, user)
     set_session_cookie(response, token)
-    # 明文密码只出现在这一次响应里（全局 Cache-Control: no-store），服务端只存 Argon2 哈希。
-    return {**account, "password": password}
+    return account
+
+
+class LoginLink(BaseModel):
+    token: str = Field(min_length=1, max_length=128)
+
+
+@app.post("/api/session/qq-link")
+def login_with_qq_link(details: LoginLink, request: Request, response: Response):
+    """QQ 机器人私聊发来的一次性链接免密登录。失败次数与密码登录共用按 IP 的限速。"""
+    client = client_key(request)
+    if login_throttle.blocked(client):
+        raise HTTPException(429, "登录失败次数过多，请 1 小时后再试")
+    now = datetime.now(timezone.utc)
+    with request.app.state.pool.connection() as database:
+        with database.transaction():
+            user = accounts.redeem_login_link(database, details.token)
+            token = start_session(database, user["id"], now) if user else None
+    if user is None:
+        login_throttle.failed(client)
+        raise HTTPException(401, "登录链接无效或已过期，请在 QQ 里重新获取")
+    with request.app.state.pool.connection() as database:
+        account = accounts.load(database, user)
+    set_session_cookie(response, token)
+    return account
+
+
+class InitialPassword(BaseModel):
+    password: str = Field(min_length=accounts.PASSWORD_MIN, max_length=256)
+
+
+@app.put("/api/account/password")
+def set_initial_password(details: InitialPassword, request: Request, user=Depends(current_user)):
+    """QQ 渠道账号免密登录后首次设置密码；只能设一次，之后忘记密码请找站长重置。"""
+    if details.password.casefold() == user["username"].casefold():
+        raise HTTPException(422, "密码不能与账号相同")
+    try:
+        with request.app.state.pool.connection() as database:
+            with database.transaction():
+                accounts.set_initial_password(database, user["id"], details.password)
+    except accounts.AccountError as error:
+        raise HTTPException(409, str(error)) from error
+    with request.app.state.pool.connection() as database:
+        return accounts.load(database, user)
+
+
+class Rename(BaseModel):
+    username: str = Field(pattern=USERNAME_PATTERN)
+
+
+@app.patch("/api/account/username")
+def rename_account(details: Rename, request: Request, user=Depends(current_user)):
+    """QQ 机器人注册的账号可以把随机账号名改一次；改名后现有登录会话继续有效。"""
+    try:
+        with request.app.state.pool.connection() as database:
+            with database.transaction():
+                accounts.rename_once(database, user["id"], details.username)
+    except accounts.AccountError as error:
+        raise HTTPException(409, str(error)) from error
+    except UniqueConflict:
+        raise HTTPException(409, "该账号已被占用，换一个试试") from None
+    with request.app.state.pool.connection() as database:
+        return accounts.load(database, {"id": user["id"], "username": details.username})
 
 
 @app.get("/api/notifications")

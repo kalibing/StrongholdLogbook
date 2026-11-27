@@ -282,11 +282,11 @@ def test_career_follows_filters_and_profile_has_no_secrets(client):
     assert solo["career"]["matches"] == 1 and solo["best"] == {"union": None, "solo": None}
 
     identity = client.get("/api/profile").json()
-    assert identity == {"username": "tester", "display_name": None, "avatar_url": None, "account": None}
+    assert identity == {"username": "tester", "display_name": None, "avatar_url": None, "username_editable": False, "needs_password": False, "account": None}
 
 
 def test_display_name_is_separate_from_username(client):
-    assert client.get("/api/session").json() == {"username": "tester", "display_name": None, "avatar_url": None}
+    assert client.get("/api/session").json() == {"username": "tester", "display_name": None, "avatar_url": None, "username_editable": False, "needs_password": False}
     updated = client.patch("/api/profile", json={"display_name": "  夜  莺 "}, headers=HEADERS)
     assert updated.status_code == 200 and updated.json()["display_name"] == "夜 莺"
     assert client.get("/api/session").json()["username"] == "tester"

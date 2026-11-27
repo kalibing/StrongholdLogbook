@@ -10,6 +10,7 @@ from logbook.limits import client_key
 
 ORIGIN = "http://localhost:8080"
 HEADERS = {"Origin": ORIGIN}
+PASSWORD = "my-own-password"
 
 
 @pytest.fixture()
@@ -18,9 +19,8 @@ def make_client(tmp_path, monkeypatch):
     monkeypatch.setenv("LOGBOOK_SQLITE", str(tmp_path / "logbook.sqlite3"))
     clients = []
 
-    def factory(mode="open", invite=""):
+    def factory(mode="open"):
         monkeypatch.setenv("LOGBOOK_REGISTRATION", mode)
-        monkeypatch.setenv("LOGBOOK_INVITE_CODE", invite)
         client = TestClient(api.app)
         client.__enter__()
         clients.append(client)
@@ -31,45 +31,57 @@ def make_client(tmp_path, monkeypatch):
         client.__exit__(None, None, None)
 
 
-def register(client, qq, **extra):
-    return client.post("/api/register", json={"qq": qq, **extra}, headers=HEADERS)
+def register(client, username, password=PASSWORD):
+    return client.post("/api/register", json={"username": username, "password": password}, headers=HEADERS)
 
 
 def test_registration_is_off_by_default(make_client, monkeypatch):
     client = make_client(mode="")
-    assert client.get("/api/registration").json() == {"enabled": False, "invite": False}
+    assert client.get("/api/registration").json() == {"enabled": False}
     assert register(client, "10001").status_code == 403
 
 
-def test_qq_registration_generates_password_and_logs_in(make_client):
+def test_registration_uses_own_password_and_logs_in(make_client):
     client = make_client()
-    assert client.get("/api/registration").json() == {"enabled": True, "invite": False}
-    response = register(client, "123456789")
+    assert client.get("/api/registration").json() == {"enabled": True}
+    response = register(client, "doctor.kal")
     assert response.status_code == 201
-    assert response.headers["cache-control"] == "no-store"
     body = response.json()
-    assert body["username"] == "123456789"
-    password = body["password"]
-    assert len(password) == 16 and password.isalnum()
-    assert client.get("/api/session").json() == {key: value for key, value in body.items() if key != "password"}
+    assert body["username"] == "doctor.kal" and "password" not in body
+    assert client.get("/api/session").json() == body
     client.cookies.clear()
-    login = client.post("/api/session", json={"username": "123456789", "password": password}, headers=HEADERS)
+    login = client.post("/api/session", json={"username": "doctor.kal", "password": PASSWORD}, headers=HEADERS)
     assert login.status_code == 200
 
 
-def test_passwords_are_random(make_client):
-    client = make_client()
-    first = register(client, "10001").json()["password"]
-    client.cookies.clear()
-    second = register(client, "10002").json()["password"]
-    assert first != second
-
-
-@pytest.mark.parametrize("qq", ["1234", "012345", "123456789012", "12345a", " 12345", "newcomer"])
-def test_registration_rejects_invalid_qq(make_client, qq):
-    response = register(make_client(), qq)
+@pytest.mark.parametrize("password", ["short", "x" * 257])
+def test_registration_rejects_bad_password_length(make_client, password):
+    response = register(make_client(), "doctor.kal", password)
     assert response.status_code == 422
-    assert qq not in response.text
+    assert "密码" in response.json()["detail"]
+    assert password not in response.text
+
+
+def test_password_must_differ_from_username(make_client):
+    assert register(make_client(), "doctor.kal.1", "Doctor.Kal.1").status_code == 422
+
+
+@pytest.mark.parametrize("username", ["ab", "Bad Name", "_lead", "x" * 65, "中文账号"])
+def test_registration_rejects_invalid_username(make_client, username):
+    response = register(make_client(), username)
+    assert response.status_code == 422
+    assert username not in response.text
+
+
+def test_qq_prefix_is_reserved_for_bot(make_client):
+    assert register(make_client(), "qq-squatter").status_code == 422
+
+
+def test_web_accounts_cannot_rename(make_client):
+    client = make_client()
+    assert register(client, "doctor.kal").json()["username_editable"] is False
+    response = client.patch("/api/account/username", json={"username": "another"}, headers=HEADERS)
+    assert response.status_code == 409
 
 
 def test_registration_requires_cross_site_protection(make_client):
@@ -94,29 +106,6 @@ def test_ip_quota_limits_accounts_per_network(make_client):
     assert response.status_code == 429
     assert "上限" in response.json()["detail"]
 
-
-def test_failed_attempts_are_throttled(make_client):
-    client = make_client(mode="invite", invite="secret-invite")
-    for _ in range(10):
-        assert register(client, "10001", invite_code="wrong-guess").status_code == 403
-    assert register(client, "10001", invite_code="secret-invite").status_code == 429
-
-
-def test_invite_code_is_required(make_client):
-    client = make_client(mode="invite", invite="secret-invite")
-    assert client.get("/api/registration").json() == {"enabled": True, "invite": True}
-    assert register(client, "10001").status_code == 403
-    assert register(client, "10001", invite_code="secret-invite").status_code == 201
-
-
-def test_invite_mode_without_code_fails_at_startup(tmp_path, monkeypatch):
-    monkeypatch.setenv("LOGBOOK_DB", "sqlite")
-    monkeypatch.setenv("LOGBOOK_SQLITE", str(tmp_path / "logbook.sqlite3"))
-    monkeypatch.setenv("LOGBOOK_REGISTRATION", "invite")
-    monkeypatch.delenv("LOGBOOK_INVITE_CODE", raising=False)
-    with pytest.raises(ValueError):
-        with TestClient(api.app):
-            pass
 
 
 @pytest.mark.parametrize(("host", "key"), [
@@ -146,3 +135,12 @@ def test_ai_review_is_limited_to_two_successes_per_day(make_client, monkeypatch)
     statuses = [client.post("/api/daily-review?day=2026-11-20", headers=HEADERS).status_code for _ in range(4)]
     # 上游失败（502）不占额度，所以还能成功两次，第四次才被拒绝
     assert statuses == [502, 200, 200, 429]
+
+
+def test_failed_attempts_are_throttled(make_client):
+    client = make_client()
+    assert register(client, "taken").status_code == 201
+    client.cookies.clear()
+    for _ in range(10):
+        assert register(client, "taken").status_code == 409
+    assert register(client, "fresh-name").status_code == 429

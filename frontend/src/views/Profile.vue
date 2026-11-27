@@ -7,7 +7,7 @@ import { api, message, send, useResource } from '../api'
 import { number } from '../format'
 import type { ProfileInfo, User } from '../models'
 
-// 个人主页只负责账号资料：昵称与头像可改，登录名不可改；战绩数据都在战绩总览。
+// 个人主页只负责账号资料：昵称与头像可改；登录名一般不可改，QQ 机器人注册的账号可以改一次。
 const { revision, user, setUser } = logbook()
 const { data, error, refresh } = useResource<ProfileInfo>(ref('/profile'), revision, true)
 
@@ -42,6 +42,42 @@ async function saveName() {
     nameError.value = message(reason)
   } finally {
     saving.value = false
+  }
+}
+
+const USERNAME_RULE = /^[a-z0-9][a-z0-9_.-]{2,63}$/
+const canRename = computed(() => user.value?.username_editable === true)
+const renaming = ref(false)
+const renameDraft = ref('')
+const renameBusy = ref(false)
+const renameError = ref('')
+
+function startRename() {
+  renameDraft.value = ''
+  renameError.value = ''
+  renaming.value = true
+}
+
+async function saveRename() {
+  const value = renameDraft.value.trim().toLowerCase()
+  renameError.value = ''
+  if (!USERNAME_RULE.test(value)) {
+    renameError.value = '账号须为 3–64 位小写字母、数字、点、下划线或连字符，且以字母或数字开头'
+    return
+  }
+  if (value.startsWith('qq-')) {
+    renameError.value = '新账号不能以 qq- 开头'
+    return
+  }
+  if (!window.confirm(`把登录账号改为「${value}」？只能修改这一次，之后用新账号和原密码登录。`)) return
+  renameBusy.value = true
+  try {
+    setUser(await api<User>('/account/username', send('PATCH', { username: value })))
+    renaming.value = false
+  } catch (reason) {
+    renameError.value = message(reason)
+  } finally {
+    renameBusy.value = false
   }
 }
 
@@ -117,7 +153,27 @@ async function removeAvatar() {
       <p v-if="nameError || avatarError" class="profile-error" role="alert">{{ nameError || avatarError }}</p>
 
       <dl class="profile-facts">
-        <div><dt>登录账号</dt><dd>{{ username }}<small class="muted">用于登录，不可修改</small></dd></div>
+        <div>
+          <dt>登录账号</dt>
+          <dd v-if="!renaming">
+            {{ username }}
+            <small v-if="canRename" class="muted">
+              QQ 机器人生成的账号，可以改一次
+              <button type="button" class="profile-link" @click="startRename">修改账号</button>
+            </small>
+            <small v-else class="muted">用于登录，不可修改</small>
+          </dd>
+          <dd v-else>
+            <form class="profile-name-form" @submit.prevent="saveRename" @keydown.esc="renaming = false">
+              <NInput v-model:value="renameDraft" size="small" :maxlength="64" placeholder="新的登录账号" aria-label="新的登录账号"
+                :input-props="{ autocapitalize: 'off', spellcheck: false, autocomplete: 'username' }" />
+              <NButton size="small" type="primary" attr-type="submit" :loading="renameBusy">保存</NButton>
+              <NButton size="small" secondary :disabled="renameBusy" @click="renaming = false">取消</NButton>
+            </form>
+            <small class="muted">只能修改一次，密码不变。</small>
+            <small v-if="renameError" class="profile-error" role="alert">{{ renameError }}</small>
+          </dd>
+        </div>
         <div v-if="account?.nickname">
           <dt>游戏昵称</dt>
           <dd>

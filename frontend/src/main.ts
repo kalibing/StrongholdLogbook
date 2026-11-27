@@ -17,7 +17,7 @@ const router = createRouter({
     { path: '/operators', name: 'operators', component: () => import('./views/Operators.vue'), meta: { title: '干员统计', description: '比较各干员与开局策略的出场率与出场胜率。' } },
     { path: '/achievements', name: 'achievements', component: () => import('./views/Achievements.vue'), meta: { title: '成就档案', description: '六维成就、称号、获赞与分队特殊标识，数据直连鹰角成就接口。' } },
     { path: '/import', name: 'data-import', component: () => import('./views/Import.vue'), meta: { title: '数据导入', description: '从森空岛拉取卫戍协议战绩，查看导入进度。' } },
-    { path: '/profile', name: 'profile', component: () => import('./views/Profile.vue'), meta: { title: '个人主页', description: '修改昵称与头像；登录账号不可修改。' } },
+    { path: '/profile', name: 'profile', component: () => import('./views/Profile.vue'), meta: { title: '个人主页', description: '修改昵称与头像；QQ 机器人注册的账号可改一次登录账号。' } },
     { path: '/icons', name: 'mode-icons', component: () => import('./views/ModeIcons.vue'), meta: { title: '难度图标', description: '从 PC 端资源包拆出的模拟难度图标试装页。', public: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],

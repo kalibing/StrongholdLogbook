@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NConfigProvider, NDialogProvider, NDropdown, NIcon, NInput, NMessageProvider, NModal, darkTheme, dateZhCN, zhCN } from 'naive-ui'
+import { NButton, NConfigProvider, NDialogProvider, NDropdown, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, zhCN } from 'naive-ui'
 import {
   CalendarOutline, CloseOutline, CloudDownloadOutline, GridOutline, ListOutline, LogOutOutline, MenuOutline,
   MoonOutline, PeopleOutline, PersonOutline, RibbonOutline, SunnyOutline,
@@ -13,8 +13,11 @@ import type { Facet, User } from './models'
 import HeadingArt from './components/HeadingArt.vue'
 import LogoMark from './components/LogoMark.vue'
 import NotificationBell from './components/NotificationBell.vue'
+import SetPasswordDialog from './components/SetPasswordDialog.vue'
 
 const STORAGE_THEME = 'logbook:theme'
+const USERNAME_RULE = /^[a-z0-9][a-z0-9_.-]{2,63}$/
+const USERNAME_HINT = '账号须为 3–64 位小写字母、数字、点、下划线或连字符，且以字母或数字开头'
 const route = useRoute()
 const router = useRouter()
 const user = ref<User | null>(null)
@@ -28,13 +31,12 @@ const password = ref('')
 const loggingIn = ref(false)
 /** 登录页的两种表单；注册入口只在服务端开放注册时出现。 */
 const authMode = ref<'login' | 'register'>('login')
-const registration = ref<{ enabled: boolean; invite: boolean }>({ enabled: false, invite: false })
-const qq = ref('')
-const inviteCode = ref('')
+const registration = ref<{ enabled: boolean }>({ enabled: false })
+const newUsername = ref('')
+const newPassword = ref('')
+const newPasswordAgain = ref('')
+const PASSWORD_MIN = 10
 const registering = ref(false)
-/** 注册成功后弹出的通知：随机密码只在这里出现一次。 */
-const issued = ref<{ username: string; password: string } | null>(null)
-const passwordCopied = ref(false)
 const theme = ref<Theme>('dark')
 /** 窄屏时侧边栏收成抽屉，这里记录是否展开。 */
 const navOpen = ref(false)
@@ -115,9 +117,42 @@ function resetSession() {
   facets.value = []
 }
 
+const QQ_LINK_PREFIX = '#qq-login='
+
+/** 从地址栏取出 QQ 一次性登录令牌，并立刻抹掉，避免留在历史记录或被分享出去。 */
+function takeQqLinkToken(): string | null {
+  if (!window.location.hash.startsWith(QQ_LINK_PREFIX)) return null
+  const token = decodeURIComponent(window.location.hash.slice(QQ_LINK_PREFIX.length))
+  window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+  return token || null
+}
+
+/** 已打开页面时再点同一站点的登录链接，只会改 # 片段、不会刷新页面。 */
+function onHashChange() {
+  if (window.location.hash.startsWith(QQ_LINK_PREFIX)) void restoreSession()
+}
+
 async function restoreSession() {
   pending.value = true
   error.value = ''
+  const linkToken = takeQqLinkToken()
+  if (linkToken) {
+    try {
+      user.value = await api<User>('/session/qq-link', post({ token: linkToken }))
+      pending.value = false
+      return
+    } catch (reason) {
+      // 链接失效时退回普通流程：已登录就继续用原会话，否则在登录页显示原因。
+      const linkError = message(reason)
+      try {
+        user.value = await api<User>('/session')
+      } catch {
+        error.value = linkError
+      }
+      pending.value = false
+      return
+    }
+  }
   try {
     user.value = await api<User>('/session')
   } catch (reason) {
@@ -142,9 +177,9 @@ async function login() {
 
 async function loadRegistration() {
   try {
-    registration.value = await api<{ enabled: boolean; invite: boolean }>('/registration')
+    registration.value = await api<{ enabled: boolean }>('/registration')
   } catch {
-    registration.value = { enabled: false, invite: false }
+    registration.value = { enabled: false }
   }
 }
 
@@ -155,37 +190,38 @@ function switchAuth(mode: 'login' | 'register') {
 
 async function register() {
   error.value = ''
-  const value = qq.value.trim()
-  if (!/^[1-9][0-9]{4,10}$/.test(value)) {
-    error.value = '请输入正确的 QQ 号（5–11 位数字）'
+  const value = newUsername.value.trim().toLowerCase()
+  if (!USERNAME_RULE.test(value)) {
+    error.value = USERNAME_HINT
+    return
+  }
+  if (value.startsWith('qq-')) {
+    error.value = '以 qq- 开头的账号保留给 QQ 机器人注册'
+    return
+  }
+  if (newPassword.value.length < PASSWORD_MIN || newPassword.value.length > 256) {
+    error.value = `密码长度须为 ${PASSWORD_MIN}–256 个字符`
+    return
+  }
+  if (newPassword.value !== newPasswordAgain.value) {
+    error.value = '两次输入的密码不一致'
+    return
+  }
+  if (newPassword.value.toLowerCase() === value) {
+    error.value = '密码不能与账号相同'
     return
   }
   registering.value = true
   try {
-    const body: Record<string, string> = { qq: value }
-    if (registration.value.invite) body.invite_code = inviteCode.value.trim()
-    const created = await api<User & { password: string }>('/register', post(body))
-    const { password: generated, ...account } = created
-    issued.value = { username: account.username, password: generated }
-    passwordCopied.value = false
-    user.value = account
-    qq.value = ''
-    inviteCode.value = ''
+    user.value = await api<User>('/register', post({ username: value, password: newPassword.value }))
+    newUsername.value = ''
+    newPassword.value = ''
+    newPasswordAgain.value = ''
     authMode.value = 'login'
   } catch (reason) {
     error.value = message(reason)
   } finally {
     registering.value = false
-  }
-}
-
-async function copyIssuedPassword() {
-  if (!issued.value) return
-  try {
-    await navigator.clipboard.writeText(issued.value.password)
-    passwordCopied.value = true
-  } catch {
-    passwordCopied.value = false
   }
 }
 
@@ -226,12 +262,14 @@ onMounted(() => {
   applyTheme(stored === 'light' ? 'light' : 'dark')
   window.addEventListener('logbook-logout', resetSession)
   window.addEventListener('keydown', onKey)
+  window.addEventListener('hashchange', onHashChange)
   void restoreSession()
   void loadRegistration()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('logbook-logout', resetSession)
   window.removeEventListener('keydown', onKey)
+  window.removeEventListener('hashchange', onHashChange)
 })
 
 function setUser(value: User) {
@@ -294,6 +332,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
             </button>
           </NDropdown>
           <NotificationBell :key="user.username" />
+          <SetPasswordDialog :user="user" @updated="setUser" />
           <NButton quaternary class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
             :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
             <template #icon>
@@ -348,21 +387,25 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
           <section class="panel login-panel" aria-labelledby="login-title">
             <header class="login-head">
               <p class="eyebrow">卫戍协议 <span>/</span> 作战档案</p>
-              <h1 id="login-title">{{ authMode === 'login' ? '登录' : 'QQ 注册' }}</h1>
+              <h1 id="login-title">{{ authMode === 'login' ? '登录' : '注册' }}</h1>
               <p class="muted">
                 {{ authMode === 'login'
                   ? '登录后查看对局记录、盟约趋势和干员出场统计。'
-                  : '填写 QQ 号即可创建账号，用户名就是 QQ 号，密码由系统随机生成。' }}
+                  : '自己设置登录账号和密码，注册后直接登录。' }}
               </p>
             </header>
             <form v-if="authMode === 'register'" class="login-form" @submit.prevent="register">
-              <label class="filter-field">QQ 号
-                <NInput v-model:value="qq" size="large" placeholder="5–11 位数字"
-                  :input-props="{ inputmode: 'numeric', autocomplete: 'username', maxlength: 11 }" />
+              <label class="filter-field">账号
+                <NInput v-model:value="newUsername" size="large" placeholder="小写字母、数字、. _ -，3–64 位"
+                  :input-props="{ autocomplete: 'username', autocapitalize: 'off', spellcheck: false, maxlength: 64 }" />
               </label>
-              <label v-if="registration.invite" class="filter-field">邀请码
-                <NInput v-model:value="inviteCode" size="large" placeholder="向站长索取"
-                  :input-props="{ autocomplete: 'off', maxlength: 256 }" />
+              <label class="filter-field">密码
+                <NInput v-model:value="newPassword" type="password" size="large" show-password-on="click"
+                  :placeholder="`至少 ${PASSWORD_MIN} 个字符`" :input-props="{ autocomplete: 'new-password', maxlength: 256 }" />
+              </label>
+              <label class="filter-field">确认密码
+                <NInput v-model:value="newPasswordAgain" type="password" size="large" show-password-on="click"
+                  placeholder="再输入一次" :input-props="{ autocomplete: 'new-password', maxlength: 256 }" />
               </label>
               <p v-if="error" class="load-message" role="alert">{{ error }}</p>
               <NButton type="primary" size="large" block attr-type="submit" :loading="registering">
@@ -383,7 +426,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
                 {{ loggingIn ? '登录中…' : '登录' }}
               </NButton>
               <p v-if="registration.enabled" class="auth-switch">
-                还没有账号？<button type="button" @click="switchAuth('register')">用 QQ 号注册</button>
+                还没有账号？<button type="button" @click="switchAuth('register')">注册账号</button>
               </p>
             </form>
           </section>
@@ -391,20 +434,6 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
       </main>
     </div>
   </div>
-  <NModal :show="issued !== null" preset="card" title="账号已创建" class="issued-modal" :bordered="false"
-    :closable="false" :mask-closable="false" :close-on-esc="false">
-    <template v-if="issued">
-      <p class="issued-note">请立即保存下面的登录信息。<b>密码只显示这一次</b>，关闭后无法再次查看。</p>
-      <dl class="issued-credentials">
-        <dt>用户名</dt><dd><code>{{ issued.username }}</code></dd>
-        <dt>密码</dt><dd><code>{{ issued.password }}</code></dd>
-      </dl>
-      <div class="issued-actions">
-        <NButton @click="copyIssuedPassword">{{ passwordCopied ? '已复制' : '复制密码' }}</NButton>
-        <NButton type="primary" @click="issued = null">我已保存</NButton>
-      </div>
-    </template>
-  </NModal>
   </NDialogProvider>
   </NMessageProvider>
   </NConfigProvider>

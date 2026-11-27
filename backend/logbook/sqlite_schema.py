@@ -110,4 +110,23 @@ SCHEMA = (
         PRIMARY KEY (user_id, notification_id)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS qq_identities (
+        bot_app_id TEXT NOT NULL,
+        openid TEXT NOT NULL,
+        user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+        renamed_at INTEGER,
+        password_set_at INTEGER,
+        PRIMARY KEY (bot_app_id, openid)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS qq_login_links (
+        token_hash BLOB PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at INTEGER NOT NULL,
+        used_at INTEGER
+    )
+    """,
 )

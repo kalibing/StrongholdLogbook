@@ -192,6 +192,10 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
   pointer-events: none;
 }
 .notice-modal { width: min(34rem, calc(100vw - 32px)); }
+.set-password-modal { width: min(28rem, calc(100vw - 32px)); }
+.set-password-note { margin: 0; line-height: 1.6; }
+.set-password-note code { color: var(--text); word-break: break-all; }
+.set-password-actions { display: flex; justify-content: flex-end; gap: .6rem; }
 .notice-modal .n-card__content { max-height: min(70vh, 40rem); overflow-y: auto; }
 .notice-empty { margin: 1.5rem 0; text-align: center; }
 .notice-list { display: grid; gap: .75rem; margin: 0; padding: 0; list-style: none; }
@@ -610,13 +614,6 @@ dialog::backdrop { background: color-mix(in srgb, var(--bg) 70%, transparent); b
 .login-form { display: grid; gap: 1rem; }
 .auth-switch { margin: 0; color: var(--muted); font-size: .9rem; text-align: center; }
 .auth-switch button { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
-.issued-modal { width: min(28rem, calc(100vw - 32px)); }
-.issued-note { margin: 0 0 1rem; line-height: 1.6; }
-.issued-credentials { display: grid; grid-template-columns: auto 1fr; gap: .5rem 1rem; margin: 0 0 1.2rem; }
-.issued-credentials dt { color: var(--muted); }
-.issued-credentials dd { margin: 0; }
-.issued-credentials code { font-size: 1.05rem; letter-spacing: .04em; user-select: all; word-break: break-all; }
-.issued-actions { display: flex; justify-content: flex-end; gap: .6rem; }
 
 /* =====================================================================
  * Naive UI 对齐

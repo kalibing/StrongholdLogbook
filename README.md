@@ -251,7 +251,7 @@ python -m logbook.admin list-notices                                            
 python -m logbook.admin remove-notice <通知 ID>
 ```
 
-Compose 部署在前面加 `docker compose exec api`。新用户注册时会自动收到一条欢迎通知（说明用户名即 QQ 号、密码不会再次显示）。标题最多 60 字，正文最多 2000 字。
+Compose 部署在前面加 `docker compose exec api`。网页注册的新用户会收到一条欢迎通知；QQ 机器人建的账号会收到一条写明系统生成账号名、免密登录方式和设置密码提示的通知。标题最多 60 字，正文最多 2000 字。
 
 ## 昨日战报图片
 
@@ -323,8 +323,11 @@ curl.exe -X POST "http://localhost:8000/api/imports" `
 | GET / POST / DELETE | `/api/session` | 读取当前登录（含昵称、头像地址）、登录、退出 |
 | GET | `/api/notifications` | 站内通知（全站公告 + 发给本人的通知，最近 50 条）与未读数 |
 | POST | `/api/notifications/read` | 标记已读：`{"ids": [...]}`，省略 `ids` 表示全部 |
-| GET | `/api/registration` | 是否开放注册、是否需要邀请码 |
-| POST | `/api/register` | 按 QQ 号注册（`{"qq": "…", "invite_code": "…"}`），返回账号与一次性显示的随机密码，并直接登录 |
+| GET | `/api/registration` | 网页是否开放注册 |
+| POST | `/api/register` | 网页注册（`{"username": "…", "password": "…"}`，密码 10–256 位），注册后直接登录 |
+| POST | `/api/session/qq-link` | QQ 机器人一次性链接免密登录（`{"token": "…"}`） |
+| PUT | `/api/account/password` | QQ 渠道账号首次设置密码（无需旧密码，只能设一次） |
+| PATCH | `/api/account/username` | QQ 机器人注册的账号修改一次登录账号（`{"username": "…"}`） |
 | GET / PATCH | `/api/profile` | 个人主页资料 / 修改昵称（`{"display_name": "…"}`，空串清除） |
 | GET / PUT / DELETE | `/api/profile/avatar` | 读取 / 上传（请求体为图片字节）/ 移除头像 |
 | GET | `/api/career` | 生涯档案：最高通关、连胜、生涯纪录、近一年活跃度 |
@@ -370,8 +373,10 @@ cd frontend; npm run build                    # 生产构建
 ## 安全要点
 
 - 密码用 Argon2 哈希，会话令牌只存 SHA-256 摘要；Cookie 为 `HttpOnly` + `SameSite=Strict`，HTTPS 下自动加 `__Host-` 前缀与 `Secure`。
-- 注册默认关闭（`LOGBOOK_REGISTRATION=off`），可设为 `open` 或 `invite`（配合 `LOGBOOK_INVITE_CODE`，至少 8 位）。注册只填 QQ 号（5–11 位数字），用户名即 QQ 号；密码是 16 位随机字符，只在注册响应里出现一次，库里只存 Argon2 哈希。注意网页无法验证 QQ 号归属，公开站点建议用邀请码。
-- 注册按来源 IP 限制：同一 IP（IPv6 按 /64 网段归并）24 小时内最多注册 2 个账号；失败尝试（QQ 号已注册、邀请码错误）每小时最多 10 次；全站每小时最多 20 个新账号。
+- 账号有两种来源，库里都只存 Argon2 哈希：
+  - **网页注册**：`LOGBOOK_REGISTRATION=open` 时开放（默认 `off`）。账号和密码（10–256 位，不能与账号相同）都由用户自己填写，账号不能以保留前缀 `qq-` 开头，之后不可修改。
+  - **QQ 机器人渠道**：官方机器人拿不到 QQ 号，账号按 `(机器人 AppID, openid)` 唯一（`qq_identities` 表，迁移 `0006`），用户名为 `qq-` 加随机串，建号时没有可用密码；重复调用不会重复建号。机器人用 `accounts.issue_login_link` 签发一次性登录令牌（10 分钟、单次使用、库里只存 SHA-256），把 `{PUBLIC_ORIGIN}/#qq-login=<令牌>` 私聊发给本人；令牌在 `#` 片段里，不进服务器日志，页面读取后立即从地址栏抹掉。进站后弹窗提示设置密码（只能设一次），并可把账号名改一次；改名后会话和 openid 关联都保留。链接登录失败与密码登录共用按 IP 的限速。建号入口 `accounts.create_for_qq_openid` 只能传入验签通过的回调事件里的 AppID 与 openid。
+- 注册按来源 IP 限制：同一 IP（IPv6 按 /64 网段归并）24 小时内最多注册 2 个账号；失败尝试（账号已被占用）每小时最多 10 次；全站每小时最多 20 个新账号。
 - 按账号限额（24 小时滑动窗口，只有成功的调用计数）：AI 复盘、战报图片、森空岛同步各每天 2 次；成就绑定每小时 20 次。限速计数在 API 进程内存中，重启后清零。
 - 同一账号连续 8 次密码错误锁定 15 分钟；同一来源 IP 1 小时内失败 5 次后拒绝继续尝试，直到最早那次失败满 1 小时（防止换账号名撞库）；登录失败分支仍会执行一次哈希校验以避免时序泄露。
 - 所有写请求校验 `Origin`，所有响应带 `Cache-Control: no-store`。Caddy 追加严格 CSP（脚本只允许同源文件，不允许内联脚本）、HSTS、`X-Frame-Options`、`Permissions-Policy`、COOP / CORP 等头。
