@@ -272,6 +272,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
               <p class="heading-description">{{ route.meta.description }}</p>
             </div>
             <HeadingArt />
+            <i class="heading-scan" aria-hidden="true"></i>
           </div>
           <p v-if="logoutError" class="load-message" role="alert">{{ logoutError }} <button type="button" @click="logout">重试</button></p>
           <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>

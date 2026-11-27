@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 页头右侧的动态背景，参照卫戍协议游戏内的视觉：
 // - 结算页「模拟完成」：近黑的青色底、地形等高线、橙色雷达靶环 + 十字准星；
-// - 战斗 HUD：薄荷青的圆形节点链、角标框；
+// - 战斗 HUD：角标框；
 // - 隐藏首领警报：红色横向撕裂条一闪而过，靶环同时抖一下。
 // 节奏：首次进入时靶环描边、准星伸出、角标锁定；之后雷达扫过的位置点亮回波；
 // 切换页面时角标重新锁定一次。只动 transform / opacity / stroke-dashoffset；
@@ -30,7 +30,6 @@ const contours = [
   ...[26, 52, 80].map((radius, index) => contour(250, 30, radius, 4.1 + index * .6, .55)),
 ]
 const ticks = Array.from({ length: 24 }, (_, index) => index * 15)
-const nodes = [0, 1, 2, 3, 4]
 // SVG 角度：从 +x 轴顺时针（y 轴向下），与 rotate() 的正方向一致。
 const blips = [[34, 58], [118, 40], [196, 70], [252, 34], [318, 66]].map(([angle, radius]) => ({
   x: TARGET.x + radius * Math.cos(angle * Math.PI / 180),
@@ -99,12 +98,6 @@ watch(() => route.path, () => { lock.value += 1 })
         <g :key="lock" class="hero-lock">
           <path class="hero-bracket" :d="`M${TARGET.x - 120},${TARGET.y - 58} v-14 h18 M${TARGET.x + 120},${TARGET.y - 58} v-14 h-18 M${TARGET.x - 120},${TARGET.y + 58} v14 h18 M${TARGET.x + 120},${TARGET.y + 58} v14 h-18`" />
         </g>
-        <line class="hero-chain-line" x1="330" y1="168" x2="450" y2="168" />
-        <g v-for="index in nodes" :key="index">
-          <circle class="hero-node" :cx="330 + index * 30" cy="168" r="5.5" />
-          <circle class="hero-node-fill" :cx="330 + index * 30" cy="168" r="3.4" :style="{ animationDelay: `${index * .3}s` }" />
-        </g>
-        <path class="hero-pointer" :d="`M462,152 L${TARGET.x - 34},${TARGET.y + 18}`" />
       </g>
     </svg>
 
@@ -122,8 +115,8 @@ watch(() => route.path, () => { lock.value += 1 })
   --target: var(--accent);
   --alert: #e2433f;
   /* 警报周期：撕裂条与靶环抖动共用，保证同一帧发生。 */
-  --alarm: 12s;
-  --alarm-delay: 3.2s;
+  --alarm: 20s;
+  --alarm-delay: 6s;
   position: absolute; inset: 0 0 0 37%; overflow: hidden; pointer-events: none;
   mask-image: linear-gradient(90deg, transparent, #000 30%);
 }
@@ -149,10 +142,6 @@ watch(() => route.path, () => { lock.value += 1 })
 .hero-crosshair line { stroke: color-mix(in srgb, var(--target) 50%, transparent); stroke-width: 1; }
 
 .hero-bracket { stroke: var(--hud); stroke-width: 1.4; opacity: .8; }
-.hero-chain-line { stroke: color-mix(in srgb, var(--hud) 40%, transparent); stroke-width: 1; }
-.hero-svg .hero-node { stroke: var(--hud); stroke-width: 1.2; fill: color-mix(in srgb, var(--hud) 10%, transparent); }
-.hero-svg .hero-node-fill { fill: var(--hud); stroke: none; opacity: .15; }
-.hero-pointer { stroke: color-mix(in srgb, var(--hud) 55%, transparent); stroke-width: 1.2; stroke-dasharray: 4 5; }
 
 /* 围绕靶心旋转 / 缩放：SVG 元素以 viewBox 坐标作变换原点。 */
 .hero-sweep, .hero-ring--dashed, .hero-ring-ticks, .hero-ping, .hero-lock, .hero-target, .hero-jolt {
@@ -183,8 +172,7 @@ watch(() => route.path, () => { lock.value += 1 })
   .hero-ring--dashed { animation: hero-fade .4s ease-out .45s both, hero-spin 22s linear infinite reverse; }
   .hero-ring-ticks { animation: hero-fade .4s ease-out .6s both, hero-spin 48s linear infinite; }
   .hero-lock { animation: hero-lock .55s cubic-bezier(.2, .8, .2, 1) .75s both; }
-  .hero-chain-line { stroke-dasharray: 120; animation: hero-chain .6s ease-out .3s both; }
-
+  
   /* —— 常驻循环 —— */
   .hero-contours { animation: hero-contours 24s ease-in-out infinite alternate; }
   .hero-sweep { animation: hero-spin var(--sweep) linear infinite; }
@@ -193,8 +181,6 @@ watch(() => route.path, () => { lock.value += 1 })
   .hero-ping--late { animation-delay: 3s; }
   .hero-core { animation: hero-blink 2s ease-in-out infinite; }
   .hero-bracket { animation: hero-bracket 4s ease-in-out 1.3s infinite; }
-  .hero-node-fill { animation: hero-node 3s ease-in-out infinite; }
-  .hero-pointer { animation: hero-dash 1.6s linear infinite; }
 
   /* —— 警报：撕裂条与靶环抖动同步 —— */
   .hero-glitch { animation: hero-glitch var(--alarm) steps(1, end) var(--alarm-delay) infinite; }
@@ -205,7 +191,6 @@ watch(() => route.path, () => { lock.value += 1 })
 
 @keyframes hero-fade { from { opacity: 0; } }
 @keyframes hero-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-@keyframes hero-chain { from { stroke-dashoffset: 120; } to { stroke-dashoffset: 0; } }
 /* 角标从外圈收拢，过冲一点再停住，像准星咬住目标。 */
 @keyframes hero-lock {
   0% { opacity: 0; transform: scale(1.45); }
@@ -224,9 +209,6 @@ watch(() => route.path, () => { lock.value += 1 })
 @keyframes hero-ping { 0% { opacity: .7; transform: scale(1); } 100% { opacity: 0; transform: scale(3.2); } }
 @keyframes hero-blink { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 @keyframes hero-bracket { 0%, 100% { opacity: .85; } 50% { opacity: .4; } }
-/* 节点依次点亮，形成从左到右流过的信号。 */
-@keyframes hero-node { 0%, 100% { opacity: .15; } 18% { opacity: .9; } 40% { opacity: .15; } }
-@keyframes hero-dash { to { stroke-dashoffset: -18; } }
 /* 一个周期里只在开头约 0.6 秒闪几下：位移 + 透明度，像信号被撕开。 */
 @keyframes hero-glitch {
   0% { opacity: .9; transform: translateX(0); }

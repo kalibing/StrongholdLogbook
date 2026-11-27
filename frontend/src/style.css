@@ -223,6 +223,19 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
   background: linear-gradient(135deg, transparent 50%, var(--line) 50%, var(--line) calc(50% + 1px), var(--bg) calc(50% + 1px));
 }
 .heading-copy { position: relative; z-index: 1; }
+/* 偶尔扫过整个页头的一道主色扫描线，像终端刷新；9 秒里只在前 1.5 秒移动。 */
+.heading-scan {
+  position: absolute; top: 0; bottom: 0; left: -160px; width: 160px; pointer-events: none; opacity: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 8%, transparent) 75%, color-mix(in srgb, var(--accent) 45%, transparent) 99%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .heading-scan { animation: heading-scan 9s cubic-bezier(.5, 0, .3, 1) 1.4s infinite; }
+}
+@keyframes heading-scan {
+  0% { left: -160px; opacity: 1; }
+  16% { left: 100%; opacity: 1; }
+  17%, 100% { left: 100%; opacity: 0; }
+}
 .heading-description { margin-top: .5rem; color: var(--muted); }
 
 /* =====================================================================
@@ -270,7 +283,7 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--line);
 }
 .date-presets button {
-  min-height: 0; height: 26px; padding: 0 .6rem; border: 0; border-radius: 0;
+  min-height: 0; height: auto; padding: 0 .7rem; border: 0; border-radius: 0;
   background: var(--panel); color: var(--muted); font-size: .78rem;
 }
 .date-presets button:hover:not(:disabled) { background: var(--raised); color: var(--text); }
