@@ -5,7 +5,7 @@ import { FlameOutline, LayersOutline, NuclearOutline, PeopleOutline, RibbonOutli
 import { logbook } from '../context'
 import { query, useResource } from '../api'
 import { BOND_ICONS, BOSS_MARKS, difficultyIcon, FUNDS_ICON } from '../assets'
-import { number, percent, pickMajorBond, playRank, resultLabel } from '../format'
+import { number, percent, firstBond, playRank, resultLabel } from '../format'
 import { portrait } from '../icons'
 import { strategyIcon, strategyOf, unitOf } from '../bands'
 import type { DistributionGroup, MatchDetail, Overview } from '../models'
@@ -56,7 +56,7 @@ const charts = computed<{ metric: Metric; title: string }[]>(() => daily.value ?
   { metric: 'rounds', title: '通过回合' },
 ])
 const period = computed(() => data.value?.start ? `${data.value.start} — ${data.value.end}` : '当前筛选无对局')
-const majorBond = computed(() => (data.value?.peak ? pickMajorBond(data.value.peak.names) : ''))
+const majorBond = computed(() => (data.value?.peak ? firstBond(data.value.peak.names) : ''))
 const distributionUrl = computed(() => '/distribution' + query(filters))
 const distribution = useResource<DistributionGroup[]>(distributionUrl, revision, true)
 /** 与筛选栏同序：独立模拟在前，联合模拟在后。 */

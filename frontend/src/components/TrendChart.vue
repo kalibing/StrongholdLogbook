@@ -7,7 +7,7 @@ import { LabelLayout } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BOND_ICONS, BOND_METRIC_ICON, FUNDS_ICON, KILLS_ICON, ROUND_ICON } from '../assets'
 import { logbook } from '../context'
-import { number, pickMajorBond, shortTime } from '../format'
+import { number, firstBond, shortTime } from '../format'
 import type { Point } from '../models'
 
 echarts.use([BarChart, LineChart, GridComponent, MarkLineComponent, TooltipComponent, AriaComponent, LabelLayout, CanvasRenderer])
@@ -91,7 +91,7 @@ function buildOption() {
 
   const showLabels = items.length <= 10
   const peakBonds = peak
-    ? items.map(point => pickMajorBond(point.peak?.names ?? []))
+    ? items.map(point => firstBond(point.peak?.names ?? []))
     : []
   const hasBondLabels = peakBonds.some(Boolean)
   const iconBonds = [...new Set(peakBonds.filter(name => Boolean(BOND_ICONS[name])))]
