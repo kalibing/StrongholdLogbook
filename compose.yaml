@@ -112,6 +112,26 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # 方舟游戏公告 / B 站官号动态轮询，用 QQ 主动消息推给订阅的群和单聊（随 qqbot profile 启动）。
+  feeds:
+    <<: *hardening
+    build: *backend_build
+    profiles: [qqbot]
+    command: ["python", "-m", "logbook.feeds"]
+    environment:
+      <<: *database
+      QQBOT_APP_ID: ${QQBOT_APP_ID:-}
+      QQBOT_APP_SECRET: ${QQBOT_APP_SECRET:-}
+      BILIBILI_COOKIE: ${BILIBILI_COOKIE:-}
+      FEED_BILI_UID: ${FEED_BILI_UID:-161775300}
+      FEED_BUSY_HOURS: ${FEED_BUSY_HOURS:-10-18}
+      FEED_LINKS: ${FEED_LINKS:-0}
+    networks: [data, edge]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   web:
     build:
       context: .

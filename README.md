@@ -43,7 +43,8 @@ backend/
     hypergryph.py     鹰角通行证 → u8 token → playerSummary 取数
     achievements.py   成就档案归一化（六维 / 称号 / 社交 / 特殊标识）
     worker.py         导入队列消费进程（幂等 upsert）
-    qqbot.py          QQ 官方机器人回调（独立进程，单聊发「登录」取一次性免密链接）
+    qqbot.py          QQ 官方机器人回调（独立进程，单聊发「登录」取一次性免密链接；订阅指令）
+    feeds.py          方舟公告 / B 站动态轮询并用 QQ 主动消息推送（独立进程）
     storage.py        存储适配层：PostgreSQL / SQLite 双后端
     sqlite_schema.py  SQLite 建表语句（与 Alembic 迁移逐列一致）
     errors.py         跨驱动的存储异常
@@ -266,6 +267,22 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 - 官方机器人拿不到 QQ 号，账号按 `(AppID, openid)` 唯一。
 
 **未经实测、接入时需要确认的点**：文档没给 op 12 回包示例（当前回 `{"op": 12, "d": 0}`）；纯文本消息里的链接是否会被平台拦截文档没写，若被拦截需改用 Markdown 消息（需在平台申请）。OpenAPI 地址按文档用 `https://api.bot.qq.com`，可用 `QQBOT_API_BASE` / `QQBOT_TOKEN_URL` 覆盖。裸机部署用 `deploy/systemd/logbook-qqbot.service`（监听 127.0.0.1:8001）。
+
+### 公告与动态推送
+
+群里 @机器人 或私聊机器人发指令订阅，有新内容时机器人用**主动消息**推送：
+
+| 指令 | 作用 |
+| --- | --- |
+| `订阅公告` | 明日方舟游戏内公告（`ak-webview.hypergryph.com` 公告接口，无需登录） |
+| `订阅动态` | 明日方舟 B 站官号（UID 161775300）动态，需要配置 `BILIBILI_COOKIE` |
+| `订阅全部` / `取消订阅公告` / `取消订阅动态` / `取消订阅` / `订阅状态` | — |
+
+- 开放平台的事件订阅需要再勾选群 @ 消息事件 `GROUP_AT_MESSAGE_CREATE`。
+- 推送由独立进程 `python -m logbook.feeds` 完成（Compose 里的 `feeds` 服务随 `--profile qqbot` 启动；裸机用 `deploy/systemd/logbook-feeds.service`）。订阅记在 `feed_subscriptions`，已推送条目记在 `feed_seen`（迁移 `0009`）。某个来源第一次运行只记录现有条目、不推送。超过 3 天的旧条目（如 B 站置顶）也不推送。
+- 轮询按北京时间调度：`FEED_BUSY_HOURS`（默认 `10-18`）是密集时段，时段内整点前后 `:58–:05` 再加密。游戏公告默认 30 / 120 / 600 秒（整点前后 / 时段内其他时间 / 时段外），B 站默认 60 / 180 / 900 秒。B 站被风控（如 `-352`）时按 2 的幂退避，最长 30 分钟。各间隔可用 `FEED_AK_PEAK` / `FEED_AK_INTERVAL` / `FEED_AK_IDLE`、`FEED_BILI_PEAK` / `FEED_BILI_INTERVAL` / `FEED_BILI_IDLE` 调整。
+- B 站会拦截未登录的请求，`BILIBILI_COOKIE` 填一个 B 站账号（建议用小号）的 Cookie，至少包含 `SESSDATA` 和 `buvid3`。Cookie 过期后日志会持续出现 `Bilibili poll failed`，这时需要更新。不填时只推游戏公告。
+- 主动消息受 QQ 平台限制：每群 / 每个用户每天上限 1000 条，用户或群可以在客户端关闭「允许主动发送」，关闭后推送会失败，日志里只记录失败的状态码。推送默认不附链接，因为消息里的链接域名需要先在开放平台配置。配好后设 `FEED_LINKS=1`。
 
 ## 站内通知
 

@@ -1,4 +1,5 @@
-"""QQ 官方机器人 Webhook 接入：单聊里发「登录」，机器人回一个一次性免密登录链接。
+"""QQ 官方机器人 Webhook 接入：单聊里发「登录」，机器人回一个一次性免密登录链接；
+群里 @机器人 或单聊发「订阅公告」「订阅动态」等指令管理推送订阅（推送由 logbook.feeds 进程发送）。
 
 独立进程运行（uvicorn logbook.qqbot:app），与网页 API 分开：
 - 网页 API 的写请求要校验 Origin，回调请求没有 Origin；分开后两边的防护各自保持严格。
@@ -9,6 +10,8 @@
 - 业务事件 op=0：用请求头 X-Signature-Ed25519 / X-Signature-Timestamp 验签，内容为 timestamp + 原始请求体。
   私钥种子 = Bot Secret 重复拼接后取前 32 字节。验签通过后回 op=12 确认。
 - 单聊事件 C2C_MESSAGE_CREATE：用户为 d.author.user_openid，被动回复用 d.id 作 msg_id（60 分钟内有效）。
+- 群 @ 事件 GROUP_AT_MESSAGE_CREATE：群为 d.group_openid，回复 POST /v2/groups/{group_openid}/messages。
+- 不带 msg_id 的同一接口即主动消息，受每日条数限制，用户 / 群可在客户端关闭接收。
 - 发消息 POST https://api.bot.qq.com/v2/users/{openid}/messages，Authorization: QQBot {access_token}；
   access_token 由 POST https://api.bot.qq.com/app/getAppAccessToken 用 appId + clientSecret 换取，约 7200 秒有效。
 - 文档没给 op=12 回包示例，这里回 {"op": 12, "d": 0}；接入真实机器人时以平台实际行为为准。
@@ -32,7 +35,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from . import accounts
+from . import accounts, feeds
 from .config import settings
 from .errors import StorageUnavailable
 from .limits import FailureThrottle, RequestSizeLimit
@@ -50,8 +53,10 @@ MAX_CLOCK_SKEW = 10 * 60
 LOGIN_COMMANDS = {"登录", "登陆", "注册", "login", "/登录", "/login"}
 HELP_TEXT = (
     "发送「登录」获取作战档案的一次性登录链接（10 分钟内有效，只能用一次）。\n"
-    "第一次使用会自动为你创建账号，登录后可以设置密码、修改一次账号名。"
+    "第一次使用会自动为你创建账号，登录后可以设置密码、修改一次账号名。\n\n"
+    + feeds.USAGE
 )
+GROUP_HELP_TEXT = "@我 并发送以下指令：\n" + feeds.USAGE
 
 
 @dataclass(frozen=True)
@@ -114,7 +119,7 @@ class SeenEvents:
 
 
 class QQClient:
-    """取 access_token（缓存到过期前 60 秒）并发送单聊被动回复。"""
+    """取 access_token（缓存到过期前 60 秒），发送单聊 / 群的被动回复与主动消息。"""
 
     def __init__(self, config: BotConfig):
         self.config = config
@@ -137,14 +142,29 @@ class QQClient:
             self._expires = time.monotonic() + max(60, int(data.get("expires_in", 7200)) - 60)
             return token
 
-    def reply_c2c(self, openid: str, msg_id: str, content: str, seq: int = 1) -> None:
-        body = json.dumps({"msg_type": 0, "content": content, "msg_id": msg_id, "msg_seq": seq}).encode()
+    def _post(self, path: str, payload: dict) -> None:
         request = UrlRequest(
-            f"{API_BASE}/v2/users/{quote(openid, safe='')}/messages", data=body, method="POST",
+            f"{API_BASE}{path}", data=json.dumps(payload).encode(), method="POST",
             headers={"Content-Type": "application/json", "Authorization": f"QQBot {self.access_token()}"},
         )
         with urlopen(request, timeout=10) as response:
             response.read()
+
+    def reply_c2c(self, openid: str, msg_id: str, content: str, seq: int = 1) -> None:
+        self._post(f"/v2/users/{quote(openid, safe='')}/messages",
+                   {"msg_type": 0, "content": content, "msg_id": msg_id, "msg_seq": seq})
+
+    def reply_group(self, group_openid: str, msg_id: str, content: str, seq: int = 1) -> None:
+        self._post(f"/v2/groups/{quote(group_openid, safe='')}/messages",
+                   {"msg_type": 0, "content": content, "msg_id": msg_id, "msg_seq": seq})
+
+    def send_c2c(self, openid: str, content: str) -> None:
+        """主动消息：不带 msg_id。"""
+        self._post(f"/v2/users/{quote(openid, safe='')}/messages", {"msg_type": 0, "content": content})
+
+    def send_group(self, group_openid: str, content: str) -> None:
+        """主动消息：不带 msg_id。"""
+        self._post(f"/v2/groups/{quote(group_openid, safe='')}/messages", {"msg_type": 0, "content": content})
 
 
 def login_reply(link: str, username: str) -> str:
@@ -167,6 +187,9 @@ def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
         LOGGER.warning("C2C event without user_openid or id; ignored")
         return
     try:
+        if feeds.is_command(content):
+            client.reply_c2c(openid, msg_id, subscription_reply(config, "c2c", openid, content))
+            return
         if content.lower() not in LOGIN_COMMANDS:
             client.reply_c2c(openid, msg_id, HELP_TEXT)
             return
@@ -187,6 +210,33 @@ def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
     except (HTTPError, URLError, RuntimeError, ValueError) as error:
         # 只记录类型和状态码，不记录消息内容和令牌。
         LOGGER.warning("QQ reply failed: %s %s", type(error).__name__, getattr(error, "code", ""))
+
+
+def subscription_reply(config: BotConfig, target_type: str, openid: str, content: str) -> str:
+    if not accounts.OPENID_PATTERN.fullmatch(openid):
+        return "暂时无法处理订阅，请稍后再试。"
+    try:
+        with connect() as database:
+            return feeds.handle_command(database, config.app_id, target_type, openid, content) or ""
+    except StorageUnavailable:
+        LOGGER.exception("Could not update feed subscription")
+        return "暂时无法处理订阅，请稍后再试。"
+
+
+def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
+    group_openid = data.get("group_openid")
+    msg_id = data.get("id")
+    content = (data.get("content") or "").strip()
+    if not isinstance(group_openid, str) or not isinstance(msg_id, str):
+        LOGGER.warning("Group event without group_openid or id; ignored")
+        return
+    try:
+        if feeds.is_command(content):
+            client.reply_group(group_openid, msg_id, subscription_reply(config, "group", group_openid, content))
+        else:
+            client.reply_group(group_openid, msg_id, GROUP_HELP_TEXT)
+    except (HTTPError, URLError, RuntimeError, ValueError) as error:
+        LOGGER.warning("QQ group reply failed: %s %s", type(error).__name__, getattr(error, "code", ""))
 
 
 def create_app(config: BotConfig | None = None, client: QQClient | None = None) -> FastAPI:
@@ -229,10 +279,11 @@ def create_app(config: BotConfig | None = None, client: QQClient | None = None) 
         if abs(time.time() - int(timestamp)) > MAX_CLOCK_SKEW:
             raise HTTPException(401, "stale request")
 
-        if op == 0 and payload.get("t") == "C2C_MESSAGE_CREATE":
+        handlers = {"C2C_MESSAGE_CREATE": handle_c2c, "GROUP_AT_MESSAGE_CREATE": handle_group_at}
+        if op == 0 and payload.get("t") in handlers:
             event_id = str(payload.get("id") or data.get("id") or "")
             if event_id and seen.first_time(event_id):
-                background.add_task(handle_c2c, client, config, data)
+                background.add_task(handlers[payload["t"]], client, config, data)
         return JSONResponse({"op": 12, "d": 0})
 
     return application

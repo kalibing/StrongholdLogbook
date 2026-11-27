@@ -141,4 +141,23 @@ SCHEMA = (
         used_at INTEGER
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS feed_subscriptions (
+        bot_app_id TEXT NOT NULL,
+        target_type TEXT NOT NULL CHECK (target_type IN ('group', 'c2c')),
+        target_openid TEXT NOT NULL,
+        source TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+        PRIMARY KEY (bot_app_id, target_type, target_openid, source)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS feed_subscriptions_source ON feed_subscriptions (bot_app_id, source)",
+    """
+    CREATE TABLE IF NOT EXISTS feed_seen (
+        source TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+        PRIMARY KEY (source, item_id)
+    )
+    """,
 )
