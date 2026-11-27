@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { logbook } from '../context'
 import { query, useResource } from '../api'
 import { number, resultLabel } from '../format'
@@ -8,6 +9,7 @@ import TierTag from './TierTag.vue'
 
 // 战绩总览「生涯档案」：跟随筛选条件的最高通关、连胜、生涯纪录与近一年活跃度。
 const { filters, revision } = logbook()
+const router = useRouter()
 const url = computed(() => '/career' + query(filters))
 const { data, pending, error, refresh } = useResource<Career>(url, revision, true)
 
@@ -54,6 +56,25 @@ const heat = computed(() => {
     ...entry, level: entry.count === 0 ? 0 : entry.count <= 2 ? 1 : entry.count <= 4 ? 2 : entry.count <= 7 ? 3 : 4,
   }))
 })
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+/** 悬停 / 聚焦某一天时的浮层：整张热力图共用一个，按格子在视口里的位置摆在它正上方。 */
+const tip = ref<{ day: string; count: number; weekday: string; x: number; y: number } | null>(null)
+function showTip(entry: { day: string; count: number }, event: Event) {
+  const cell = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const weekday = WEEKDAYS[new Date(`${entry.day}T00:00:00`).getDay()]
+  tip.value = { ...entry, weekday, x: cell.left + cell.width / 2, y: cell.top }
+}
+function hideTip() { tip.value = null }
+// 浮层是 fixed 定位，页面一滚动就和格子错位，直接收起。
+window.addEventListener('scroll', hideTip, { passive: true, capture: true })
+onBeforeUnmount(() => window.removeEventListener('scroll', hideTip, { capture: true }))
+/** 点某一天：把共享筛选的日期设成当天，跳到对局记录看那天的每一局。 */
+function openDay(day: string) {
+  hideTip()
+  filters.start = day
+  filters.end = day
+  void router.push({ name: 'matches' })
+}
 const heatWeeks = computed(() => Math.ceil(heat.value.length / 7))
 /** 月份刻度：某周里出现了 1 号，就在那一列下面标「N 月」。 */
 const heatMonths = computed(() => {
@@ -118,8 +139,11 @@ const heatSummary = computed(() => {
         <ol class="career-heat-days" aria-hidden="true"><li>一</li><li></li><li>三</li><li></li><li>五</li><li></li><li>日</li></ol>
         <div class="career-heat-body">
           <ol class="career-heat" :style="{ '--weeks': heatWeeks }">
-            <li v-for="entry in heat" :key="entry.day" :class="`heat-${entry.level}`" :title="`${entry.day} · ${entry.count} 局`">
-              <span class="sr-only">{{ entry.day }} {{ entry.count }} 局</span>
+            <li v-for="entry in heat" :key="entry.day" :class="`heat-${entry.level}`"
+              @pointerenter="showTip(entry, $event)" @pointerleave="hideTip">
+              <button v-if="entry.count" type="button" class="career-heat-cell" :aria-label="`${entry.day}，${entry.count} 局，查看当天对局`"
+                @focus="showTip(entry, $event)" @blur="hideTip" @click="openDay(entry.day)"></button>
+              <span v-else class="sr-only">{{ entry.day }} 0 局</span>
             </li>
           </ol>
           <div class="career-heat-foot" aria-hidden="true">
@@ -130,6 +154,13 @@ const heatSummary = computed(() => {
           </div>
         </div>
       </div>
+      <Teleport to="body">
+        <div v-if="tip" class="career-heat-tip" role="tooltip" :style="{ left: `${tip.x}px`, top: `${tip.y}px` }">
+          <span class="career-heat-tip-day">{{ tip.day }} {{ tip.weekday }}</span>
+          <strong>{{ tip.count ? `${number(tip.count)} 局` : '没有对局' }}</strong>
+          <small v-if="tip.count">点击查看当天对局</small>
+        </div>
+      </Teleport>
       <dl class="career-heat-summary">
         <div v-for="item in heatSummary" :key="item.label" :title="item.hint">
           <dt>{{ item.label }}</dt><dd><b>{{ item.value }}</b>{{ item.unit }}<small v-if="item.hint">{{ item.hint }}</small></dd>
@@ -178,6 +209,18 @@ const heatSummary = computed(() => {
 .career-heat-body { flex: none; }
 .career-heat { grid-auto-flow: column; grid-template-columns: repeat(var(--weeks), 22px); }
 .career-heat li { border-radius: 2px; }
+.career-heat-cell { display: block; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.career-heat li:hover, .career-heat-cell:focus-visible { outline: 1.5px solid var(--text); outline-offset: 1px; }
+.career-heat-cell:focus-visible { outline-offset: 2px; }
+.career-heat-tip {
+  position: fixed; z-index: 3000; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none;
+  display: grid; gap: .1rem; padding: .45rem .7rem; white-space: nowrap;
+  border: 1px solid var(--line-strong); border-radius: 2px; background: var(--raised); color: var(--text);
+  box-shadow: 0 8px 24px rgb(0 0 0 / .35); font-size: .75rem; line-height: 1.4;
+}
+.career-heat-tip-day { color: var(--muted); font-family: var(--numbers); }
+.career-heat-tip strong { font: 700 1rem/1.2 var(--numbers); }
+.career-heat-tip small { color: var(--muted); font-size: .7rem; }
 .career-heat-foot { display: grid; gap: .5rem; margin-top: .45rem; }
 .career-heat-months {
   display: grid; grid-template-columns: repeat(var(--weeks), 22px); gap: 4px;

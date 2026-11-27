@@ -60,3 +60,8 @@ const MAJOR_BONDS = [
 export function pickMajorBond(names: string[]): string {
   return MAJOR_BONDS.find(name => names.includes(name)) ?? names[0] ?? ''
 }
+
+/** 并列时按字典序（汉字按拼音）取最靠前的一个，用于只展示一个名字的地方。 */
+export function firstBond(names: string[]): string {
+  return [...names].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))[0] ?? ''
+}

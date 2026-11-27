@@ -77,6 +77,8 @@ function buildOption() {
   const panel = css('panel')
   const neutral = css('chart-line')
   const accent = css('accent')
+  const raised = css('raised')
+  const lineStrong = css('line-strong')
   // 数字用站点的窄体数字字体，中文字符在 canvas 里按字体列表逐字回落到正文字体。
   const fontFamily = `${css('numbers')}, ${getComputedStyle(document.documentElement).fontFamily}`
   const fade = (color: string, from: number, to: number) => new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -117,12 +119,13 @@ function buildOption() {
   const series: BarSeriesOption | LineSeriesOption = peak ? {
     type: 'line',
     connectNulls: false,
+    // 数据点：比折线明显大一号的实心菱形，外圈一道面板色描边把它从线上「抠」出来；悬停时放大并带同色辉光。
     symbol: 'diamond',
-    symbolSize: showLabels ? 11 : 7,
+    symbolSize: showLabels ? 17 : 11,
     lineStyle: { color: accent, width: 2 },
     areaStyle: { color: fade(accent, .22, 0) },
-    emphasis: { scale: 1.4 },
-    label: { ...label, distance: 8 },
+    emphasis: { scale: 1.3, itemStyle: { shadowBlur: 10, shadowColor: accent } },
+    label: { ...label, distance: 6 },
     labelLayout: { hideOverlap: true },
     markLine: peakAverage.value === null ? undefined : {
       silent: true,
@@ -133,7 +136,7 @@ function buildOption() {
     },
     data: items.map(point => ({
       value: valueOf(point),
-      itemStyle: { color: colorOf(point), borderColor: panel, borderWidth: 2 },
+      itemStyle: { color: colorOf(point), borderColor: panel, borderWidth: 3 },
     })),
   } : {
     type: 'bar',
@@ -155,7 +158,8 @@ function buildOption() {
     animationEasing: 'cubicOut' as const,
     backgroundColor: 'transparent',
     textStyle: { fontFamily },
-    grid: { left: 38, right: 12, top: 24, bottom: (showLabels && !props.daily ? 43 : 28) + (hasBondLabels ? 59 : 0) },
+    // 顶部留出数值标签的位置：最高点正好压在 y 轴最大值上时，标签会画到网格外面被裁掉。
+    grid: { left: 38, right: 12, top: showLabels ? 38 : 24, bottom: (showLabels && !props.daily ? 43 : 28) + (hasBondLabels ? 59 : 0) },
     aria: {
       enabled: true,
       label: {
@@ -170,9 +174,13 @@ function buildOption() {
       confine: true,
       renderMode: 'html',
       className: 'trend-tooltip',
-      backgroundColor: 'transparent',
-      borderWidth: 0,
-      padding: 0,
+      // 必须在配置里给底色：ECharts 把这些写成行内样式，CSS 类覆盖不了；之前是透明底，浮在图上看不清。
+      backgroundColor: raised,
+      borderColor: lineStrong,
+      borderWidth: 1,
+      borderRadius: 2,
+      padding: [8, 11],
+      extraCssText: 'box-shadow: 0 8px 24px rgb(0 0 0 / .35); line-height: 1.55; min-width: 8.5rem;',
       textStyle: { color: text, fontSize: 12 },
       axisPointer: peak
         ? { type: 'line', lineStyle: { color: accent, width: 1, type: [3, 3] } }

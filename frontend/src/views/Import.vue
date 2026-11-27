@@ -578,7 +578,7 @@ onBeforeUnmount(() => {
   display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
   align-items: start; gap: 1rem;
 }
-.import-panel { display: grid; gap: .9rem; padding: clamp(.9rem, 2.5vw, 1.4rem); }
+.import-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: .9rem; padding: clamp(.9rem, 2.5vw, 1.4rem); }
 .import-panel .load-message, .import-panel .job-list { margin: 0; }
 .import-heading { display: grid; gap: .3rem; }
 .import-heading-top { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }

@@ -23,22 +23,14 @@ const duration = computed(() => {
   const minutes = Math.floor(seconds / 60) % 60
   return `${hours ? `${number(hours)} 小时 ` : ''}${minutes} 分`
 })
-// 关键对局：击杀、盟约层数、金币花费三项之最（不列败局）。同一局拿下多项时合并成一行。
+// 关键对局：击杀、盟约层数、金币花费三项之最（不列败局）。每项各占一行，同一局拿下多项也分开列。
 const keyMatches = computed(() => {
   const { most_kills, most_layers, most_coins } = props.review
-  const picks = [
-    most_kills && { match: most_kills, label: '最高击杀', value: `${number(most_kills.kills)} 次击杀` },
-    most_layers && { match: most_layers, label: '盟约最高', value: `${number(most_layers.layers)} 层盟约` },
-    most_coins && { match: most_coins, label: '金币最多', value: `${number(most_coins.coins)} 金币` },
+  return [
+    most_kills && { key: 'kills', id: most_kills.id, played_at: most_kills.played_at, difficulty: most_kills.difficulty, label: '最高击杀', value: `${number(most_kills.kills)} 次击杀` },
+    most_layers && { key: 'layers', id: most_layers.id, played_at: most_layers.played_at, difficulty: most_layers.difficulty, label: '盟约最高', value: `${number(most_layers.layers)} 层盟约` },
+    most_coins && { key: 'coins', id: most_coins.id, played_at: most_coins.played_at, difficulty: most_coins.difficulty, label: '金币最多', value: `${number(most_coins.coins)} 金币` },
   ].filter(pick => !!pick)
-  const rows = new Map<string, { id: string; played_at: string; difficulty: string; labels: string[]; values: string[] }>()
-  for (const { match, label, value } of picks) {
-    const row = rows.get(match.id) ?? { id: match.id, played_at: match.played_at, difficulty: match.difficulty, labels: [], values: [] }
-    row.labels.push(label)
-    row.values.push(value)
-    rows.set(match.id, row)
-  }
-  return [...rows.values()].map(row => ({ ...row, label: row.labels.join(' · '), value: row.values.join(' · ') }))
 })
 
 onBeforeUnmount(() => request.abort())
@@ -76,7 +68,7 @@ async function generate() {
     </dl>
     <div v-if="keyMatches.length" class="review-matches">
       <h3>关键对局</h3>
-      <button v-for="match in keyMatches" :key="match.id" type="button" class="review-match" @click="emit('open', match.id)">
+      <button v-for="match in keyMatches" :key="match.key" type="button" class="review-match" @click="emit('open', match.id)">
         <span class="review-match-copy">
           <strong>{{ match.label }}</strong>
           <span>{{ clockTime(match.played_at) }} · {{ difficultyLabel(match.difficulty) }}</span>

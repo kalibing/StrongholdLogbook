@@ -104,7 +104,9 @@ button, .button-link {
   background: var(--raised); color: var(--text); font-size: .875rem;
   transition: color .15s ease, border-color .15s ease, background-color .15s ease;
 }
-button:hover:not(:disabled), .button-link:hover { border-color: var(--accent); color: var(--accent); }
+/* Naive 按钮也是 <button>：高度由它自己的 --n-height 决定，悬停配色也交给它（否则主按钮悬停时字会和底色同色）。 */
+.n-button { min-height: 0; }
+button:hover:not(:disabled, .n-button), .button-link:hover { border-color: var(--accent); color: var(--accent); }
 button:disabled { opacity: .45; cursor: default; }
 input[type="search"], input[type="text"] {
   min-height: 36px; padding: .4rem .6rem; min-width: 0;

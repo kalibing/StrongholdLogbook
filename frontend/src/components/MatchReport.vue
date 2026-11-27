@@ -16,11 +16,10 @@ const dialog = ref<HTMLDialogElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
 const names = ref(new Map<string, string>())
 const missingPortraits = reactive(new Set<string>())
-// 发起干员 = 策略对应的分队干员（band 映射）；initiator 多为「本人 / 队友」，表示由谁发起。
+// 发起干员 = 策略对应的分队干员（band 映射）；initiator 为「本人 / 队友」时只表示由谁发起，不展示。
 const PARTIES = ['本人', '队友']
 const initiatorName = computed(() => unitOf(props.detail?.strategy)
   || (props.detail?.initiator && !PARTIES.includes(props.detail.initiator) ? props.detail.initiator : ''))
-const party = computed(() => (props.detail?.initiator && PARTIES.includes(props.detail.initiator) ? props.detail.initiator : ''))
 const initiatorAvatar = computed(() => avatarFor(names.value, initiatorName.value || null))
 const strategy = computed(() => strategyOf(props.detail?.strategy))
 const strategyArt = computed(() => strategyIcon(props.detail?.strategy))
@@ -91,7 +90,7 @@ onMounted(async () => {
       </div>
 
       <div v-else-if="detail" class="report-content">
-        <dl v-if="strategy || initiatorName || party" class="report-setup">
+        <dl v-if="strategy || initiatorName" class="report-setup">
           <div v-if="strategy">
             <dt>开局策略</dt>
             <dd>
@@ -100,17 +99,13 @@ onMounted(async () => {
             </dd>
           </div>
           <div v-if="initiatorName">
-            <dt>发起干员</dt>
+            <!-- 只写干员名：标签文字和头像缺图时的首字占位都不显示，读屏仍保留「发起干员」。 -->
+            <dt class="sr-only">发起干员</dt>
             <dd>
               <img v-if="initiatorAvatar && !missingPortraits.has(initiatorAvatar)" :src="initiatorAvatar" width="24" height="24" alt=""
                 @error="missingPortraits.add(initiatorAvatar)">
-              <span v-else class="report-avatar-fallback report-avatar-fallback--small" aria-hidden="true">{{ initiatorName.slice(0, 1) }}</span>
               {{ initiatorName }}
             </dd>
-          </div>
-          <div v-if="party">
-            <dt>发起者</dt>
-            <dd>{{ party }}</dd>
           </div>
         </dl>
 
@@ -270,7 +265,6 @@ onMounted(async () => {
   display: inline-grid; place-items: center; flex: none; width: 36px; aspect-ratio: 1;
   border-radius: var(--radius); color: var(--muted); background: var(--panel);
 }
-.report-avatar-fallback--small { width: 24px; background: var(--inset); }
 
 @media (max-width: 660px) {
   .report-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }

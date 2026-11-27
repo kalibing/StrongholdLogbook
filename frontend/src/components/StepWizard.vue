@@ -52,18 +52,19 @@ function go(index: number) {
 </template>
 
 <style scoped>
-.wizard { display: grid; gap: 1.1rem; }
+/* 按向导自身宽度（不是视口）收步骤名：放在两栏布局的窄栏里时，视口很宽但向导只有 500px 左右。 */
+.wizard { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.1rem; container-type: inline-size; }
 
 /* 进度条：编号 → 步骤名 → 一条伸到下一步的细线；走过的线变主色。线跟在文字后面，不会压到字上。 */
 .wizard-rail { display: flex; margin: 0; padding: 0; list-style: none; }
 .wizard-rail li { display: flex; flex: 1; align-items: center; min-width: 0; }
 .wizard-rail li:last-child { flex: none; }
 .wizard-rail li:not(:last-child)::after {
-  content: ""; flex: 1; min-width: 1.5rem; height: 1px; margin-inline: .8rem; background: var(--line-strong);
+  content: ""; flex: 1; min-width: .75rem; height: 1px; margin-inline: .6rem; background: var(--line-strong);
 }
 .wizard-rail li[data-state='done']::after { background: var(--accent); }
 .wizard-rail-step {
-  display: flex; flex: none; align-items: center; gap: .6rem; max-width: 100%; min-height: 0; padding: 0; justify-content: flex-start;
+  display: flex; flex: 0 1 auto; align-items: center; gap: .6rem; min-width: 0; max-width: 100%; min-height: 0; padding: 0; justify-content: flex-start;
   border: 0; background: transparent; color: var(--muted); text-align: left; white-space: nowrap;
 }
 .wizard-rail-step:hover:not(:disabled) { border: 0; color: var(--text); }
@@ -90,7 +91,7 @@ function go(index: number) {
   .wizard-enter-from { opacity: 0; transform: translateX(10px); }
   .wizard-leave-to { opacity: 0; transform: translateX(-6px); }
 }
-@media (max-width: 620px) {
+@container (max-width: 600px) {
   .wizard-title { display: none; }
   [data-state='current'] .wizard-title { display: block; }
 }
