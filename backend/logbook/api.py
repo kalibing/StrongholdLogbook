@@ -161,6 +161,14 @@ def current_user(request: Request):
     raise HTTPException(401, "请先登录")
 
 
+def current_admin(request: Request, user=Depends(current_user)):
+    """管理员接口的依赖：先要求登录（401），再要求账号在管理员名单里（403）。每次请求都查库，撤权立即生效。"""
+    with request.app.state.pool.connection() as database:
+        if not accounts.is_admin(database, user["id"]):
+            raise HTTPException(403, "需要管理员权限")
+    return user
+
+
 @app.get("/api/health")
 def health(request: Request):
     with request.app.state.pool.connection() as database:
@@ -352,6 +360,43 @@ class MarkRead(BaseModel):
 def read_notifications(details: MarkRead, request: Request, user=Depends(current_user)):
     with request.app.state.pool.connection() as database:
         notifications.mark_read(database, user["id"], details.ids)
+
+
+class NoticeDraft(BaseModel):
+    title: str = Field(min_length=1, max_length=notifications.TITLE_LIMIT * 2)
+    body: str = Field(min_length=1, max_length=notifications.BODY_LIMIT * 2)
+    # 留空发全站公告；填账号名则只发给该账号。
+    username: str | None = Field(default=None, max_length=64)
+
+
+@app.get("/api/admin/notifications")
+def admin_notifications(request: Request, user=Depends(current_admin)):
+    with request.app.state.pool.connection() as database:
+        return {"items": notifications.recent(database)}
+
+
+@app.post("/api/admin/notifications", status_code=status.HTTP_201_CREATED)
+def publish_notification(details: NoticeDraft, request: Request, user=Depends(current_admin)):
+    with request.app.state.pool.connection() as database:
+        target = None
+        username = (details.username or "").strip().lower()
+        if username:
+            account = database.execute("SELECT id FROM users WHERE username = %s", (username,)).fetchone()
+            if not account:
+                raise HTTPException(404, "收件账号不存在")
+            target = account["id"]
+        try:
+            notice_id = notifications.create(database, details.title, details.body, target)
+        except notifications.NotificationError as error:
+            raise HTTPException(422, str(error)) from error
+    return {"id": str(notice_id)}
+
+
+@app.delete("/api/admin/notifications/{notice_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_notification(notice_id: UUID, request: Request, user=Depends(current_admin)):
+    with request.app.state.pool.connection() as database:
+        if not notifications.remove(database, notice_id):
+            raise HTTPException(404, "通知不存在")
 
 
 @app.delete("/api/session", status_code=status.HTTP_204_NO_CONTENT)

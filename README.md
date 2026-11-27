@@ -269,7 +269,17 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 
 ## 站内通知
 
-侧栏左下角的铃铛显示未读数，点开即可查看并全部标为已读。通知是纯文本，网页没有写通知的接口，只能由站长在服务端发布：
+侧栏左下角的铃铛显示未读数，点开即可查看并全部标为已读。通知是纯文本，可以由管理员在网页「公告管理」页发布，也可以在服务端用命令行发布。
+
+**管理员**：所有接口都靠登录会话（HttpOnly Cookie）鉴权；`/api/admin/*` 额外要求账号在管理员名单里，否则返回 403。名单只能在服务端维护，网页没有授权接口，撤销后立即生效：
+
+```bash
+python -m logbook.admin grant-admin alice     # 授予管理员（侧栏随之出现「公告管理」）
+python -m logbook.admin revoke-admin alice    # 撤销
+python -m logbook.admin list-admins
+```
+
+管理员接口：`GET /api/admin/notifications`（最近 50 条）、`POST /api/admin/notifications`（`{title, body, username?}`，不填 `username` 即全站公告）、`DELETE /api/admin/notifications/{id}`。命令行发布：
 
 ```bash
 python -m logbook.admin announce "维护通知" '今晚 23:00 停机维护\n期间无法导入战绩'   # 全站公告，\n 表示换行

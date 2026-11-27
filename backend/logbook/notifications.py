@@ -1,8 +1,8 @@
 """站内通知：全站公告（user_id 为 NULL）与发给单个账号的通知，按账号记录已读。
 
 正文按纯文本存储和展示（前端不会当 HTML 渲染），只去掉控制字符并限制长度。
-发通知的入口只有服务端：命令行（admin announce / notify）和服务端流程（如注册欢迎），
-网页没有写通知的接口。
+发通知的入口：命令行（admin announce / notify）、服务端流程（如注册欢迎），
+以及仅限管理员账号的 /api/admin/notifications 接口。
 """
 
 import unicodedata
@@ -72,6 +72,23 @@ def mark_read(database, user_id, ids: list[UUID] | None) -> None:
             "INSERT INTO notification_reads (user_id, notification_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
             (user_id, UUID(item["id"])),
         )
+
+
+def recent(database) -> list[dict]:
+    """管理视角：最近的全部通知（含发给个人的），附收件人账号名。"""
+    rows = database.execute("""
+        SELECT n.id, n.title, n.body, n.created_at, u.username FROM notifications AS n
+        LEFT JOIN users AS u ON u.id = n.user_id
+        ORDER BY n.created_at DESC, n.id DESC LIMIT %s
+    """, (LIST_LIMIT,)).fetchall()
+    return [{
+        "id": str(row["id"]),
+        "kind": "announcement" if row["username"] is None else "personal",
+        "username": row["username"],
+        "title": row["title"],
+        "body": row["body"],
+        "created_at": row["created_at"],
+    } for row in rows]
 
 
 def remove(database, notification_id: UUID) -> bool:

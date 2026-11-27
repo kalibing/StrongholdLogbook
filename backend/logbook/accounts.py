@@ -81,7 +81,13 @@ def load(database, user) -> dict:
         "avatar_url": avatar_url(row["avatar_version"] if row else None),
         "username_editable": username_editable(database, user["id"]),
         "needs_password": needs_password(database, user["id"]),
+        "is_admin": is_admin(database, user["id"]),
     }
+
+
+def is_admin(database, user_id) -> bool:
+    """管理员名单只能用命令行（admin grant-admin / revoke-admin）维护，网页没有授权接口。"""
+    return database.execute("SELECT 1 FROM admins WHERE user_id = %s", (user_id,)).fetchone() is not None
 
 
 def username_editable(database, user_id) -> bool:

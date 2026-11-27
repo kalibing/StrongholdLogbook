@@ -7,6 +7,17 @@ export interface User {
   username_editable?: boolean
   /** QQ 机器人渠道免密登录、还没设置过密码 */
   needs_password?: boolean
+  /** 在管理员名单里，可以发布和删除站内通知 */
+  is_admin?: boolean
+}
+/** 公告管理页里的一条通知；username 为空表示全站公告 */
+export interface AdminNotice {
+  id: string
+  kind: 'announcement' | 'personal'
+  username: string | null
+  title: string
+  body: string
+  created_at: string
 }
 export interface Role { id: string; name: string }
 export interface Facet { protocol: string; play: string; difficulty: string }

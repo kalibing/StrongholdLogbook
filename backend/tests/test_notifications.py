@@ -115,3 +115,68 @@ def test_admin_commands(site, monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["admin", "notify", "nobody", "t", "b"])
     with pytest.raises(SystemExit):
         admin.main()
+
+
+def grant(name):
+    with storage.connect() as database:
+        user_id = database.execute("SELECT id FROM users WHERE username = %s", (name,)).fetchone()["id"]
+        database.execute("INSERT INTO admins (user_id) VALUES (%s)", (user_id,))
+
+
+def test_admin_api_requires_login_and_admin_role(site):
+    client, _ = site
+    draft = {"title": "公告", "body": "正文"}
+    client.cookies.clear()
+    assert client.get("/api/admin/notifications").status_code == 401
+    assert client.post("/api/admin/notifications", json=draft, headers=HEADERS).status_code == 401
+    login(client, "alice")
+    assert client.get("/api/session").json()["is_admin"] is False
+    assert client.get("/api/admin/notifications").status_code == 403
+    assert client.post("/api/admin/notifications", json=draft, headers=HEADERS).status_code == 403
+    assert client.delete(f"/api/admin/notifications/{uuid4()}", headers=HEADERS).status_code == 403
+    with storage.connect() as database:
+        assert database.execute("SELECT count(*) AS n FROM notifications").fetchone()["n"] == 0
+
+
+def test_admin_publishes_and_removes_notices(site):
+    client, _ = site
+    grant("alice")
+    login(client, "alice")
+    assert client.get("/api/session").json()["is_admin"] is True
+    # 跨站请求依旧被来源校验拦下
+    assert client.post("/api/admin/notifications", json={"title": "t", "body": "b"}).status_code == 403
+    created = client.post("/api/admin/notifications", json={"title": "维护", "body": "今晚\n维护"}, headers=HEADERS)
+    assert created.status_code == 201
+    personal = client.post("/api/admin/notifications", json={"title": "私信", "body": "给 bob", "username": "BOB"}, headers=HEADERS)
+    assert personal.status_code == 201
+    assert client.post("/api/admin/notifications", json={"title": "x", "body": "y", "username": "nobody"}, headers=HEADERS).status_code == 404
+    assert client.post("/api/admin/notifications", json={"title": "x" * 61, "body": "y"}, headers=HEADERS).status_code == 422
+    items = client.get("/api/admin/notifications").json()["items"]
+    assert {(item["title"], item["username"]) for item in items} == {("维护", None), ("私信", "bob")}
+    assert [item["title"] for item in client.get("/api/notifications").json()["items"]] == ["维护"]
+    login(client, "bob")
+    assert {item["title"] for item in client.get("/api/notifications").json()["items"]} == {"维护", "私信"}
+    login(client, "alice")
+    notice_id = created.json()["id"]
+    assert client.delete(f"/api/admin/notifications/{notice_id}", headers=HEADERS).status_code == 204
+    assert client.delete(f"/api/admin/notifications/{notice_id}", headers=HEADERS).status_code == 404
+    assert client.get("/api/notifications").json()["items"] == []
+
+
+def test_admin_role_commands_take_effect_immediately(site, monkeypatch, capsys):
+    client, _ = site
+    login(client, "alice")
+    assert client.get("/api/admin/notifications").status_code == 403
+    monkeypatch.setattr(sys, "argv", ["admin", "grant-admin", "alice"])
+    admin.main()
+    admin.main()  # 重复授予不报错
+    assert client.get("/api/admin/notifications").status_code == 200
+    monkeypatch.setattr(sys, "argv", ["admin", "list-admins"])
+    admin.main()
+    assert capsys.readouterr().out.strip().endswith("alice")
+    monkeypatch.setattr(sys, "argv", ["admin", "revoke-admin", "alice"])
+    admin.main()
+    assert client.get("/api/admin/notifications").status_code == 403
+    monkeypatch.setattr(sys, "argv", ["admin", "grant-admin", "nobody"])
+    with pytest.raises(SystemExit):
+        admin.main()

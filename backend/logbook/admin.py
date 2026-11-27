@@ -58,10 +58,7 @@ def notices(argv) -> None:
                 parser.error(str(error))
             print(f"已发布通知 {notice_id}")
         elif args.command == "list-notices":
-            for row in connection.execute("""
-                SELECT n.id, n.title, n.created_at, u.username FROM notifications AS n
-                LEFT JOIN users AS u ON u.id = n.user_id ORDER BY n.created_at DESC LIMIT 50
-            """).fetchall():
+            for row in notifications.recent(connection):
                 print(f"{row['id']}  {row['created_at']:%Y-%m-%d %H:%M}  {row['username'] or '全站'}  {row['title']}")
         else:
             try:
@@ -73,10 +70,45 @@ def notices(argv) -> None:
             print("已删除")
 
 
+def admins(argv) -> None:
+    """管理员名单：grant-admin / revoke-admin 授予或撤销，list-admins 查看。管理员可在网页发布和删除通知。"""
+    parser = argparse.ArgumentParser(prog="logbook.admin", description="管理管理员名单")
+    commands = parser.add_subparsers(dest="command", required=True)
+    for name, text in (("grant-admin", "授予管理员权限"), ("revoke-admin", "撤销管理员权限")):
+        commands.add_parser(name, help=text).add_argument("username")
+    commands.add_parser("list-admins", help="列出全部管理员")
+    args = parser.parse_args(argv)
+    with connect() as connection:
+        if args.command == "list-admins":
+            for row in connection.execute(
+                "SELECT u.username FROM admins AS a JOIN users AS u ON u.id = a.user_id ORDER BY u.username",
+            ).fetchall():
+                print(row["username"])
+            return
+        account = connection.execute(
+            "SELECT id FROM users WHERE username = %s", (args.username.strip().lower(),),
+        ).fetchone()
+        if not account:
+            parser.error("账号不存在")
+        if args.command == "grant-admin":
+            connection.execute(
+                "INSERT INTO admins (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (account["id"],),
+            )
+            print("已授予管理员权限")
+        else:
+            connection.execute("DELETE FROM admins WHERE user_id = %s", (account["id"],))
+            print("已撤销管理员权限")
+
+
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] in {"announce", "notify", "list-notices", "remove-notice"}:
         return notices(sys.argv[1:])
-    parser = argparse.ArgumentParser(description="管理站点登录账号；通知相关命令见 announce / notify / list-notices / remove-notice")
+    if len(sys.argv) > 1 and sys.argv[1] in {"grant-admin", "revoke-admin", "list-admins"}:
+        return admins(sys.argv[1:])
+    parser = argparse.ArgumentParser(
+        description="管理站点登录账号；通知命令见 announce / notify / list-notices / remove-notice，"
+                    "管理员命令见 grant-admin / revoke-admin / list-admins",
+    )
     parser.add_argument("command", choices=["create-user", "reset-password"])
     parser.add_argument("username")
     args = parser.parse_args()

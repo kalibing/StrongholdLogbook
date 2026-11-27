@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { NButton, NConfigProvider, NDialogProvider, NDropdown, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, zhCN } from 'naive-ui'
 import {
   CalendarOutline, CloseOutline, CloudDownloadOutline, GridOutline, ListOutline, LogOutOutline, MenuOutline,
-  MoonOutline, PeopleOutline, PersonOutline, RibbonOutline, SunnyOutline,
+  MegaphoneOutline, MoonOutline, PeopleOutline, PersonOutline, RibbonOutline, SunnyOutline,
 } from '@vicons/ionicons5'
 import type { DropdownOption, GlobalThemeOverrides } from 'naive-ui'
 import { api, ApiError, message, post } from './api'
@@ -75,6 +75,10 @@ const navItems = [
   { route: 'achievements', title: '成就档案', icon: RibbonOutline },
   { route: 'data-import', title: '数据导入', icon: CloudDownloadOutline },
 ]
+/** 管理员额外看到「公告管理」；真正的权限校验在后端。 */
+const visibleNav = computed(() => user.value?.is_admin
+  ? [...navItems, { route: 'admin', title: '公告管理', icon: MegaphoneOutline }]
+  : navItems)
 
 
 function applyTheme(value: Theme) {
@@ -320,7 +324,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
       </RouterLink>
 
       <nav class="side-nav" aria-label="主导航">
-        <RouterLink v-for="item in navItems" :key="item.route" class="side-link" :to="{ name: item.route }"
+        <RouterLink v-for="item in visibleNav" :key="item.route" class="side-link" :to="{ name: item.route }"
           :title="item.title" :aria-current="route.name === item.route ? 'page' : undefined">
           <NIcon class="side-icon" :component="item.icon" aria-hidden="true" />
           <span class="side-text">{{ item.title }}</span>

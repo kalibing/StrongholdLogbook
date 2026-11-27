@@ -117,6 +117,12 @@ SCHEMA = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS admins (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        granted_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS qq_identities (
         bot_app_id TEXT NOT NULL,
         openid TEXT NOT NULL,
