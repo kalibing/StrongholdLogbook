@@ -44,11 +44,26 @@ const records = computed(() => {
   ]
 })
 
-/** 活跃热力图：按周分列，周一在上；颜色按当天局数分四档。 */
-const heat = computed(() => (data.value?.activity.days ?? []).map(entry => ({
-  ...entry, level: entry.count === 0 ? 0 : entry.count <= 2 ? 1 : entry.count <= 4 ? 2 : entry.count <= 7 ? 3 : 4,
-})))
-const activeDays = computed(() => heat.value.filter(entry => entry.count).length)
+/** 热力图只看最近 20 周：一整年大半是空格，反而看不清最近的节奏。 */
+const WEEKS = 20
+/** 活跃热力图：按周分列，周一在上；颜色按当天局数分四档。接口返回的第一天是周一，按 7 天切整周。 */
+const heat = computed(() => {
+  const days = data.value?.activity.days ?? []
+  const lastWeek = Math.floor(Math.max(days.length - 1, 0) / 7) * 7
+  return days.slice(Math.max(0, lastWeek - (WEEKS - 1) * 7)).map(entry => ({
+    ...entry, level: entry.count === 0 ? 0 : entry.count <= 2 ? 1 : entry.count <= 4 ? 2 : entry.count <= 7 ? 3 : 4,
+  }))
+})
+const heatSummary = computed(() => {
+  const played = heat.value.filter(entry => entry.count)
+  const total = played.reduce((sum, entry) => sum + entry.count, 0)
+  const best = played.reduce<(typeof played)[number] | null>((top, entry) => (!top || entry.count > top.count ? entry : top), null)
+  return [
+    { label: '对局', value: number(total), unit: '局' },
+    { label: '有对局', value: number(played.length), unit: '天' },
+    { label: '单日最多', value: best ? number(best.count) : '—', unit: best ? '局' : '', hint: best?.day ?? '' },
+  ]
+})
 
 // 窄屏时热力图横向滚动：默认停在最右（最近几周），而不是一年前的空白。
 const heatWrap = ref<HTMLElement | null>(null)
@@ -89,8 +104,9 @@ watch(heatWrap, element => { if (element) element.scrollLeft = element.scrollWid
     <section class="panel career-card" aria-labelledby="career-activity">
       <div class="split">
         <h2 id="career-activity">活跃度</h2>
-        <span class="period">{{ data.activity.start }} — {{ data.activity.end }} · {{ activeDays }} 天有对局</span>
+        <span class="period">近 {{ WEEKS }} 周 · {{ heat[0]?.day }} — {{ data.activity.end }}</span>
       </div>
+      <div class="career-activity">
       <div ref="heatWrap" class="career-heat-wrap">
         <ol class="career-heat-days" aria-hidden="true"><li>一</li><li></li><li>三</li><li></li><li>五</li><li></li><li>日</li></ol>
         <ol class="career-heat">
@@ -98,6 +114,12 @@ watch(heatWrap, element => { if (element) element.scrollLeft = element.scrollWid
             <span class="sr-only">{{ entry.day }} {{ entry.count }} 局</span>
           </li>
         </ol>
+      </div>
+      <dl class="career-heat-summary">
+        <div v-for="item in heatSummary" :key="item.label" :title="item.hint">
+          <dt>{{ item.label }}</dt><dd><b>{{ item.value }}</b>{{ item.unit }}</dd>
+        </div>
+      </dl>
       </div>
       <p class="career-heat-legend muted" aria-hidden="true">
         少 <i class="heat-0"></i><i class="heat-1"></i><i class="heat-2"></i><i class="heat-3"></i><i class="heat-4"></i> 多
@@ -128,19 +150,29 @@ watch(heatWrap, element => { if (element) element.scrollLeft = element.scrollWid
 .career-tile small { font-size: .74rem; }
 .career-loss { color: var(--loss); }
 
-/* —— 活跃热力图：一年 53 列铺满面板宽度；窄屏时每格至少 10px，横向滚动 —— */
-.career-heat-wrap { display: flex; gap: .4rem; margin-top: .9rem; overflow-x: auto; padding-bottom: .25rem; }
-.career-heat-days, .career-heat { margin: 0; padding: 0; list-style: none; display: grid; grid-template-rows: repeat(7, 1fr); gap: 3px; }
-.career-heat-days { position: sticky; left: 0; z-index: 1; flex: none; padding-right: .3rem; background: var(--panel); color: var(--muted); font-size: .68rem; align-items: center; }
-.career-heat { flex: 1; min-width: calc(53 * 13px); grid-auto-flow: column; grid-auto-columns: minmax(10px, 1fr); }
-.career-heat li { aspect-ratio: 1; border-radius: 2px; }
-.career-heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: .5rem; font-size: .74rem; }
+/* —— 活跃热力图：近 20 周，固定格子大小；右侧是这段时间的小结 —— */
+.career {
+  --heat-0: var(--inset); --heat-1: #14304a; --heat-2: #19598a; --heat-3: #2489c8; --heat-4: #5cc3f7;
+}
+:root[data-theme='light'] .career { --heat-1: #d5eaf8; --heat-2: #92c9ee; --heat-3: #3a95d3; --heat-4: #0a6aa8; }
+.career-activity { display: flex; align-items: center; gap: clamp(1rem, 4vw, 3rem); margin-top: 1rem; }
+.career-heat-wrap { display: flex; gap: .45rem; min-width: 0; overflow-x: auto; padding-bottom: .25rem; }
+.career-heat-days, .career-heat { margin: 0; padding: 0; list-style: none; display: grid; grid-template-rows: repeat(7, 18px); gap: 4px; }
+.career-heat-days { position: sticky; left: 0; z-index: 1; flex: none; padding-right: .2rem; background: var(--panel); color: var(--muted); font-size: .7rem; align-items: center; }
+.career-heat { grid-auto-flow: column; grid-auto-columns: 18px; }
+.career-heat li { border-radius: 2px; }
+.career-heat-summary { display: grid; gap: .9rem; margin: 0; flex: 1; min-width: 8rem; }
+.career-heat-summary div { padding-left: .8rem; border-left: 2px solid var(--line); }
+.career-heat-summary dt { color: var(--muted); font-size: .75rem; letter-spacing: .06em; }
+.career-heat-summary dd { margin: .1rem 0 0; color: var(--muted); font-size: .8rem; }
+.career-heat-summary b { margin-right: .2rem; color: var(--text); font: 700 1.6rem/1 var(--numbers); }
+.career-heat-legend { display: flex; align-items: center; justify-content: flex-start; gap: 4px; margin-top: .75rem; font-size: .74rem; }
 .career-heat-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
-.heat-0 { background: var(--inset); outline: 1px solid color-mix(in srgb, var(--line) 70%, transparent); outline-offset: -1px; }
-.heat-1 { background: color-mix(in srgb, var(--accent) 28%, var(--inset)); }
-.heat-2 { background: color-mix(in srgb, var(--accent) 52%, var(--inset)); }
-.heat-3 { background: color-mix(in srgb, var(--accent) 76%, var(--inset)); }
-.heat-4 { background: var(--accent); }
+.heat-0 { background: var(--heat-0); outline: 1px solid color-mix(in srgb, var(--line) 80%, transparent); outline-offset: -1px; }
+.heat-1 { background: var(--heat-1); }
+.heat-2 { background: var(--heat-2); }
+.heat-3 { background: var(--heat-3); }
+.heat-4 { background: var(--heat-4); }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -153,6 +185,8 @@ watch(heatWrap, element => { if (element) element.scrollLeft = element.scrollWid
   .career-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 730px) {
+  .career-activity { flex-direction: column; align-items: stretch; }
+  .career-heat-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .career-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .career-boxes--three { grid-template-columns: 1fr; }
 }

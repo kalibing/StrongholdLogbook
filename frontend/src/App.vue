@@ -11,6 +11,7 @@ import { api, ApiError, message, post } from './api'
 import { logbookKey, newFilters, type Theme } from './context'
 import type { Facet, User } from './models'
 import HeadingArt from './components/HeadingArt.vue'
+import LogoMark from './components/LogoMark.vue'
 
 const STORAGE_THEME = 'logbook:theme'
 const route = useRoute()
@@ -29,20 +30,20 @@ const theme = ref<Theme>('dark')
 const navOpen = ref(false)
 const overrides = computed<GlobalThemeOverrides>(() => ({
   common: {
-    primaryColor: theme.value === 'dark' ? '#e1ea8f' : '#62731a',
-    primaryColorHover: theme.value === 'dark' ? '#ecf2b4' : '#566516',
-    primaryColorPressed: theme.value === 'dark' ? '#c8d27a' : '#4a5812',
-    borderRadius: '3px',
+    primaryColor: theme.value === 'dark' ? '#3cb4f0' : '#0a73b5',
+    primaryColorHover: theme.value === 'dark' ? '#6cc7f4' : '#0866a1',
+    primaryColorPressed: theme.value === 'dark' ? '#2a9bd4' : '#06598c',
+    borderRadius: '2px',
     borderRadiusSmall: '2px',
     fontFamily: 'inherit',
     bodyColor: 'transparent',
-    cardColor: theme.value === 'dark' ? '#0f1314' : '#ffffff',
-    modalColor: theme.value === 'dark' ? '#0f1314' : '#ffffff',
-    popoverColor: theme.value === 'dark' ? '#131819' : '#ffffff',
-    borderColor: theme.value === 'dark' ? '#253033' : '#d3dbd8',
-    textColorBase: theme.value === 'dark' ? '#eef2f0' : '#172022',
-    textColor2: theme.value === 'dark' ? '#c6cfcc' : '#36423f',
-    placeholderColor: theme.value === 'dark' ? '#97a39f' : '#5a6865',
+    cardColor: theme.value === 'dark' ? '#17191c' : '#ffffff',
+    modalColor: theme.value === 'dark' ? '#17191c' : '#ffffff',
+    popoverColor: theme.value === 'dark' ? '#1f2226' : '#ffffff',
+    borderColor: theme.value === 'dark' ? '#2f3338' : '#dadde2',
+    textColorBase: theme.value === 'dark' ? '#f1f2f3' : '#15171a',
+    textColor2: theme.value === 'dark' ? '#c3c7cc' : '#3c424a',
+    placeholderColor: theme.value === 'dark' ? '#979ca3' : '#6a7079',
   },
 }))
 
@@ -208,7 +209,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
   <div class="shell" :class="{ 'shell--bare': !user, 'shell--nav-open': navOpen }">
     <aside v-if="user" id="sidebar" class="sidebar" aria-label="侧边栏">
       <RouterLink class="side-brand" to="/">
-        <i class="shield" aria-hidden="true"></i>
+        <LogoMark :size="32" />
         <span class="side-brand-copy"><b>卫戍协议</b><small>作战档案</small></span>
       </RouterLink>
 
@@ -250,7 +251,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
           <template #icon><NIcon :component="navOpen ? CloseOutline : MenuOutline" /></template>
         </NButton>
         <RouterLink class="side-brand side-brand--compact" to="/">
-          <i class="shield" aria-hidden="true"></i>
+          <LogoMark :size="26" />
           <span class="side-brand-copy"><b>卫戍协议</b><small>作战档案</small></span>
         </RouterLink>
         <NButton quaternary class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"

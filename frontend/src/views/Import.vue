@@ -594,7 +594,7 @@ onBeforeUnmount(() => {
 .import-heading-top { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .import-badge {
   padding: .1rem .5rem; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  border-radius: 999px; background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent); font-size: .7rem; font-weight: 700; letter-spacing: .06em;
 }
 .import-form, .current-import { display: grid; gap: .9rem; }
@@ -603,11 +603,11 @@ onBeforeUnmount(() => {
 /* 分段切换：一条整体的轨道，选中项是滑入的实色块，两项等宽。 */
 .import-methods {
   display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: fit-content; max-width: 100%; min-width: 0;
-  margin: 0; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: var(--inset);
+  margin: 0; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset);
 }
 .import-methods label {
   position: relative; display: grid; place-items: center; min-height: 32px; padding: 0 1rem;
-  border-radius: 4px; color: var(--muted); cursor: pointer; font-size: .8125rem; white-space: nowrap;
+  border-radius: var(--radius); color: var(--muted); cursor: pointer; font-size: .8125rem; white-space: nowrap;
   transition: color .15s, background-color .15s, box-shadow .15s;
 }
 .import-methods label:hover { color: var(--text); }
@@ -620,7 +620,7 @@ onBeforeUnmount(() => {
 .import-methods:disabled label { cursor: default; }
 .import-cmd {
   display: grid; margin: .1rem 0 0; border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
-  border-radius: 4px; background: var(--bg); overflow: hidden;
+  border-radius: var(--radius); background: var(--bg); overflow: hidden;
 }
 .import-cmd figcaption {
   padding: .3rem .6rem; border-bottom: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
@@ -636,7 +636,7 @@ onBeforeUnmount(() => {
 .import-submit {
   display: flex; align-items: center; justify-content: space-between; gap: .6rem 1rem; flex-wrap: wrap;
   margin-top: .1rem; padding: .7rem .8rem; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: linear-gradient(100deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 72%);
 }
 .import-submit .muted { font-size: .8125rem; }

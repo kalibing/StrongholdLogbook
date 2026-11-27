@@ -339,11 +339,14 @@ function openMatch(id: string) {
 .overview-cards {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: .55rem;
+  gap: 1px;
   min-width: 0;
   margin: 1rem 0;
   padding: 0;
-  border: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--line);
+  overflow: hidden;
 }
 .overview-cards label { position: relative; min-width: 0; cursor: pointer; }
 .overview-cards input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
@@ -352,28 +355,23 @@ function openMatch(id: string) {
   align-items: center;
   justify-content: center;
   gap: .5rem;
-  min-height: 3rem;
+  min-height: 2.9rem;
   padding: .45rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
   background: var(--panel);
+  letter-spacing: .08em;
   color: var(--muted);
   font-weight: 650;
   text-align: center;
 }
 .overview-card :deep(.n-icon) { flex: none; }
-.overview-cards label:hover .overview-card { border-color: var(--control-line); color: var(--text); }
-.overview-cards input:checked + .overview-card {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
-  color: var(--accent);
-}
-.overview-cards input:focus-visible + .overview-card { outline: 2px solid var(--accent); outline-offset: 2px; }
+.overview-cards label:hover .overview-card { background: var(--raised); color: var(--text); }
+/* 选中：实色填充 + 深色字，和侧栏选中一致。 */
+.overview-cards input:checked + .overview-card { background: var(--accent); color: var(--accent-ink); }
+.overview-cards input:focus-visible + .overview-card { outline: 2px solid var(--accent); outline-offset: -3px; }
 @media (prefers-reduced-motion: no-preference) {
   .overview-card {
-    transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
+    transition: background-color .16s ease, color .16s ease, transform .16s ease;
   }
-  .overview-cards label:hover .overview-card { transform: translateY(-1px); }
   .overview-cards label:active .overview-card { transform: scale(.98); }
   .overview-panel-enter-active {
     transition: opacity .2s ease-out, transform .2s cubic-bezier(.2, .7, .3, 1);
@@ -389,7 +387,7 @@ function openMatch(id: string) {
 .strategy-card .usage-heading img { object-fit: contain; flex: none; }
 @media (max-width: 900px) { .strategy-usage { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .overview-trophies {
-  margin-top: .75rem; padding: .48rem .75rem; border: 1px solid var(--line); border-radius: 3px;
+  margin-top: .75rem; padding: .48rem .75rem; border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--inset); color: var(--text); font-size: .92rem;
 }
 .overview-trophies > div { display: flex; align-items: center; justify-content: space-between; gap: .65rem; }

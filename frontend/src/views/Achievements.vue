@@ -441,11 +441,11 @@ onBeforeUnmount(() => {
 .achievements-page > .load-message { margin: 0; }
 .connect { padding: 1.5rem; display: grid; gap: 1rem; }
 .connect-head h2 { margin-bottom: .4rem; }
-.connect-head code, .hint code, .steps code { background: var(--inset); border: 1px solid var(--line); border-radius: 4px; padding: 0 .25rem; }
+.connect-head code, .hint code, .steps code { background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 .25rem; }
 .binding-methods { display: flex; gap: .5rem; flex-wrap: wrap; min-width: 0; border: 0; padding: 0; margin: 0; }
 .binding-methods label {
   position: relative;
-  padding: .45rem .9rem; border-radius: 999px; border: 1px solid var(--control-line);
+  padding: .45rem .9rem; border-radius: var(--radius); border: 1px solid var(--control-line);
   background: var(--inset); color: var(--muted); cursor: pointer; font: inherit;
 }
 .binding-methods input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
@@ -463,7 +463,7 @@ onBeforeUnmount(() => {
 .binding-methods label:not(:has(input[value="agent"])):has(input:checked) { opacity: 1; }
 .agent-command {
   margin: 0; padding: .6rem .7rem; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
-  border-radius: 4px; background: var(--inset); overflow-x: auto;
+  border-radius: var(--radius); background: var(--inset); overflow-x: auto;
 }
 .agent-command code {
   font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; font-size: .8125rem;
@@ -474,7 +474,7 @@ onBeforeUnmount(() => {
 .risk-box {
   --warn: #e8a13c;
   position: relative; display: grid; gap: .5rem;
-  padding: .85rem 1rem .9rem 1.5rem; border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line)); border-radius: 6px;
+  padding: .85rem 1rem .9rem 1.5rem; border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line)); border-radius: var(--radius);
   background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 9%, transparent), color-mix(in srgb, var(--warn) 3%, transparent));
   overflow: hidden;
 }
@@ -498,7 +498,7 @@ onBeforeUnmount(() => {
 .risk-box b { color: var(--text); font-weight: 600; }
 .risk-actions { margin: .2rem 0 0; font-size: .8125rem; display: flex; flex-wrap: wrap; gap: .45rem; align-items: baseline; }
 .risk-actions a { color: var(--accent); text-decoration: underline; }
-.risk-actions code { background: var(--inset); border: 1px solid var(--line); border-radius: 4px; padding: 0 .25rem; }
+.risk-actions code { background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 .25rem; }
 
 .achv-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: clamp(1rem, 3vw, 2rem); }
 .achv-radar { display: grid; grid-template-rows: auto 1fr; min-width: 0; }
@@ -512,14 +512,14 @@ onBeforeUnmount(() => {
 .namecard {
   position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: center; gap: .65rem;
   width: 100%; min-width: 0; min-height: 3.75rem; aspect-ratio: 20 / 7;
-  padding: .45rem .65rem; border-radius: 6px; background: var(--inset);
+  padding: .45rem .65rem; border-radius: var(--radius); background: var(--inset);
 }
 .namecard-art { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .namecard:has(.namecard-art:not([hidden])) {
   background: transparent; color: #f1f5fa; padding-bottom: calc(.45rem + 2.5%);
 }
 .namecard:has(.namecard-art:not([hidden]))::before {
-  content: ''; position: absolute; z-index: -1; inset: 0 2.8% 16.5%; border-radius: 6px;
+  content: ''; position: absolute; z-index: -1; inset: 0 2.8% 16.5%; border-radius: var(--radius);
   background: linear-gradient(90deg, #0c1219b8, #0c121970 53%, transparent 90%);
 }
 .namecard:has(.namecard-art:not([hidden])) small { color: #d1d9e4; }
@@ -563,7 +563,7 @@ onBeforeUnmount(() => {
 .social-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
 .metric-card, .mate-card {
   min-width: 0; min-height: 5.25rem; padding: .55rem .65rem;
-  background: var(--inset); border: 1px solid var(--line); border-radius: 6px;
+  background: var(--inset); border: 1px solid var(--line); border-radius: var(--radius);
 }
 .metric-card { display: flex; align-items: center; gap: .45rem; }
 .metric-card span, .mate-stats dt { display: block; color: var(--muted); font-size: .8125rem; }
@@ -595,14 +595,14 @@ onBeforeUnmount(() => {
 }
 .badge {
   display: grid; grid-template-rows: auto 1fr; gap: .42rem; justify-items: center; min-width: 0;
-  padding: .45rem .45rem .55rem; border: 1px solid var(--line); border-radius: 6px; background: var(--inset);
+  padding: .45rem .45rem .55rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset);
 }
 .badge-visual { position: relative; width: 100%; max-width: 8rem; aspect-ratio: 1; }
 .badge-art { display: block; width: 100%; height: 100%; object-fit: contain; }
 .badge strong { align-self: center; font-size: .875rem; line-height: 1.3; text-align: center; overflow-wrap: anywhere; }
 .badge-mark {
   position: absolute; top: .2rem; right: .2rem; display: grid; place-items: center;
-  width: 1.65rem; aspect-ratio: 1; border-radius: 4px;
+  width: 1.65rem; aspect-ratio: 1; border-radius: var(--radius);
   border: 1px solid #8ae6d1; background: #102825;
 }
 .badge-mark img { display: block; width: 100%; height: 100%; object-fit: contain; transform: scale(1.25); }
@@ -614,7 +614,7 @@ onBeforeUnmount(() => {
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-areas: "medal name" "medal stats";
   column-gap: 1rem; row-gap: .45rem;
-  min-height: 6.4rem; padding: 1rem 1.15rem 1.05rem 1rem; border-radius: 8px; overflow: hidden;
+  min-height: 6.4rem; padding: 1rem 1.15rem 1.05rem 1rem; border-radius: var(--radius); overflow: hidden;
   background: radial-gradient(75% 120% at 10% 42%, color-mix(in srgb, var(--win) 14%, transparent), transparent 62%), var(--inset);
   border: 1px solid var(--line);
 }
@@ -628,7 +628,7 @@ onBeforeUnmount(() => {
 .band-card[data-rank='1'] .band-medal::before { box-shadow: inset 0 0 0 1px rgba(127, 240, 210, .32); }
 .band-rank {
   position: absolute; top: .5rem; right: .55rem; z-index: 1;
-  padding: .1rem .4rem; border-radius: 3px;
+  padding: .1rem .4rem; border-radius: var(--radius);
   font-family: var(--numbers); font-size: .6875rem; letter-spacing: .12em; color: var(--accent);
   background: rgba(94, 168, 152, .14); border: 1px solid rgba(94, 168, 152, .22);
 }

@@ -192,7 +192,7 @@ onMounted(async () => {
 #detail {
   --elite-border: #e1a744;
   width: min(49rem, calc(100% - 1.5rem)); max-height: min(46rem, calc(100dvh - 1.5rem));
-  padding: 0; overflow: hidden; border: 1px solid var(--control-line); border-radius: 8px;
+  padding: 0; overflow: hidden; border: 1px solid var(--control-line); border-radius: var(--radius);
   background: var(--panel); color: var(--text); box-shadow: 0 1rem 3.75rem #0005;
   animation: report-enter .14s cubic-bezier(.2, 0, .38, .9) both;
 }
@@ -220,13 +220,13 @@ onMounted(async () => {
 
 .report-stats {
   grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; margin: 0; overflow: hidden;
-  border: 1px solid var(--line); border-radius: 5px; background: var(--line);
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--line);
 }
 .report-stats > div { min-width: 0; border: 0; border-radius: 0; padding: .55rem .65rem; background: var(--inset); }
 .report-stats dt, .report-setup dt { color: var(--muted); font-size: .75rem; }
 .report-stats dd { font: 700 1.04rem/1.4 var(--numbers); overflow-wrap: anywhere; }
 #detail .report-stats dd.report-gain { color: var(--win); }
-.report-setup { display: flex; flex-wrap: wrap; gap: .45rem 1.4rem; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--inset); }
+.report-setup { display: flex; flex-wrap: wrap; gap: .45rem 1.4rem; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset); }
 .report-setup > div, .report-setup dd { display: flex; gap: .4rem; align-items: center; }
 .report-setup dt { font-size: .82rem; }
 .report-setup dd { font-size: 1rem; font-weight: 700; }
@@ -244,7 +244,7 @@ onMounted(async () => {
 .report-section .squad .squad-card {
   display: grid; grid-template-columns: var(--unit-portrait-size) minmax(0, 1fr); align-items: center;
   gap: .5rem; min-width: 0;
-  padding: .45rem .5rem; border-radius: 5px; background: var(--inset);
+  padding: .45rem .5rem; border-radius: var(--radius); background: var(--inset);
 }
 .report-section .squad .squad-card--elite {
   border-color: color-mix(in srgb, var(--elite-border) 65%, var(--line));
@@ -252,7 +252,7 @@ onMounted(async () => {
 }
 .unit-details { display: grid; gap: .28rem; min-width: 0; }
 .unit-heading { display: flex; align-items: center; gap: .45rem; min-width: 0; }
-.unit-portrait { display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: 5px; background: var(--chart-label); overflow: hidden; }
+.unit-portrait { display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: var(--radius); background: var(--chart-label); overflow: hidden; }
 .unit-portrait img, .unit-portrait .report-avatar-fallback { width: 100%; height: 100%; }
 .unit-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .unit-name, .equipment-name { min-width: 0; overflow-wrap: anywhere; }
@@ -268,7 +268,7 @@ onMounted(async () => {
 .report-section .equipment-chip--advanced img { outline: 1px solid #d8a044; outline-offset: 1px; }
 .report-avatar-fallback {
   display: inline-grid; place-items: center; flex: none; width: 36px; aspect-ratio: 1;
-  border-radius: 4px; color: var(--muted); background: var(--panel);
+  border-radius: var(--radius); color: var(--muted); background: var(--panel);
 }
 .report-avatar-fallback--small { width: 24px; background: var(--inset); }
 

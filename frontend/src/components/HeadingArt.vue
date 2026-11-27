@@ -117,8 +117,9 @@ watch(() => route.path, () => { lock.value += 1 })
 
 <style scoped>
 .hero-art {
-  --hud: #43d8bc;
-  --target: #f2a046;
+  /* 跟随站点配色：靶环 / 扫描用主色蓝，HUD 角标与节点用中性灰，只有警报保留红色。 */
+  --hud: color-mix(in srgb, var(--text) 62%, transparent);
+  --target: var(--accent);
   --alert: #e2433f;
   /* 警报周期：撕裂条与靶环抖动共用，保证同一帧发生。 */
   --alarm: 12s;
@@ -126,7 +127,7 @@ watch(() => route.path, () => { lock.value += 1 })
   position: absolute; inset: 0 0 0 37%; overflow: hidden; pointer-events: none;
   mask-image: linear-gradient(90deg, transparent, #000 30%);
 }
-:root[data-theme='light'] .hero-art { --hud: #1d8f7b; --target: #c8701c; --alert: #c8302d; }
+:root[data-theme='light'] .hero-art { --hud: color-mix(in srgb, var(--text) 55%, transparent); --alert: #c8302d; }
 /* 浅色底上橙色光晕和扫描扇形显得太重，压一压。 */
 :root[data-theme='light'] .hero-svg :is(.hero-glow, .hero-sweep-fill) { opacity: .55; }
 

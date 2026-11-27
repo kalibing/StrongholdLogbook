@@ -110,7 +110,7 @@ async function generate() {
 .daily-review { padding: 1.2rem clamp(1rem, 2.5vw, 1.65rem); }
 .review-heading { flex-wrap: wrap; }
 .review-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; margin-block: .7rem; }
-.review-metrics > div { padding: .55rem .7rem; border: 1px solid var(--line); border-radius: 3px; background: var(--inset); }
+.review-metrics > div { padding: .55rem .7rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset); }
 .review-metrics dt { display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .8rem; }
 .review-metrics dt i { color: var(--accent); }
 .review-metrics dd { margin-top: .3rem; font: 650 1.25rem/1.15 var(--numbers); overflow-wrap: anywhere; }
