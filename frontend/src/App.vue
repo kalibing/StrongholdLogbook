@@ -2,7 +2,10 @@
 import { computed, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NConfigProvider, NDialogProvider, NDropdown, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, zhCN } from 'naive-ui'
-import { LogOutOutline, MoonOutline, PersonOutline, SunnyOutline } from '@vicons/ionicons5'
+import {
+  CalendarOutline, CloseOutline, CloudDownloadOutline, GridOutline, ListOutline, LogOutOutline, MenuOutline,
+  MoonOutline, PeopleOutline, PersonOutline, RibbonOutline, SunnyOutline,
+} from '@vicons/ionicons5'
 import type { DropdownOption, GlobalThemeOverrides } from 'naive-ui'
 import { api, ApiError, message, post } from './api'
 import { logbookKey, newFilters, type Theme } from './context'
@@ -22,47 +25,42 @@ const username = ref('')
 const password = ref('')
 const loggingIn = ref(false)
 const theme = ref<Theme>('dark')
-const nav = ref<HTMLElement | null>(null)
-const indicator = ref({ left: 0, width: 0 })
+/** 窄屏时侧边栏收成抽屉，这里记录是否展开。 */
+const navOpen = ref(false)
 const overrides = computed<GlobalThemeOverrides>(() => ({
   common: {
-    primaryColor: theme.value === 'dark' ? '#dfe6a8' : '#687820',
-    primaryColorHover: theme.value === 'dark' ? '#eaf0be' : '#5f701b',
-    primaryColorPressed: theme.value === 'dark' ? '#c9d296' : '#516017',
+    primaryColor: theme.value === 'dark' ? '#e1ea8f' : '#62731a',
+    primaryColorHover: theme.value === 'dark' ? '#ecf2b4' : '#566516',
+    primaryColorPressed: theme.value === 'dark' ? '#c8d27a' : '#4a5812',
     borderRadius: '3px',
     borderRadiusSmall: '2px',
     fontFamily: 'inherit',
     bodyColor: 'transparent',
-    cardColor: theme.value === 'dark' ? '#12141a' : '#ffffff',
-    modalColor: theme.value === 'dark' ? '#12141a' : '#ffffff',
-    popoverColor: theme.value === 'dark' ? '#161a22' : '#ffffff',
-    borderColor: theme.value === 'dark' ? '#2a313c' : '#d8dfe7',
-    textColorBase: theme.value === 'dark' ? '#f3f4f6' : '#1a212b',
-    textColor2: theme.value === 'dark' ? '#c9d0da' : '#3b4653',
-    placeholderColor: theme.value === 'dark' ? '#a4acb8' : '#5d6a78',
+    cardColor: theme.value === 'dark' ? '#0f1314' : '#ffffff',
+    modalColor: theme.value === 'dark' ? '#0f1314' : '#ffffff',
+    popoverColor: theme.value === 'dark' ? '#131819' : '#ffffff',
+    borderColor: theme.value === 'dark' ? '#253033' : '#d3dbd8',
+    textColorBase: theme.value === 'dark' ? '#eef2f0' : '#172022',
+    textColor2: theme.value === 'dark' ? '#c6cfcc' : '#36423f',
+    placeholderColor: theme.value === 'dark' ? '#97a39f' : '#5a6865',
   },
 }))
 
-function measureNav() {
-  if (!nav.value) return
-  const active = nav.value.querySelector<HTMLElement>('a[aria-current="page"]')
-  // 「个人主页」不在主导航里：收起指示条，而不是停在上一页的位置。
-  if (!active) {
-    indicator.value = { ...indicator.value, width: 0 }
-    return
-  }
-  const rect = active.getBoundingClientRect()
-  const base = nav.value.getBoundingClientRect()
-  indicator.value = { left: rect.left - base.left + 8, width: Math.max(12, rect.width - 16) }
-}
-const titles = [
-  { route: 'overview', title: '战绩总览' },
-  { route: 'yesterday', title: '昨日战报' },
-  { route: 'matches', title: '对局记录' },
-  { route: 'operators', title: '干员统计' },
-  { route: 'achievements', title: '成就档案' },
-  { route: 'data-import', title: '数据导入' },
+const navItems = [
+  { route: 'overview', title: '战绩总览', code: 'OVERVIEW', icon: GridOutline },
+  { route: 'yesterday', title: '昨日战报', code: 'DAILY BRIEF', icon: CalendarOutline },
+  { route: 'matches', title: '对局记录', code: 'MATCH LOG', icon: ListOutline },
+  { route: 'operators', title: '干员统计', code: 'OPERATORS', icon: PeopleOutline },
+  { route: 'achievements', title: '成就档案', code: 'ARCHIVE', icon: RibbonOutline },
+  { route: 'data-import', title: '数据导入', code: 'DATA SYNC', icon: CloudDownloadOutline },
 ]
+/** 页面编号：侧栏和面包屑里用同一套 01–06，个人主页等不在导航里的页面显示 --。 */
+const pageIndex = computed(() => {
+  const index = navItems.findIndex(item => item.route === route.name)
+  return index < 0 ? '--' : String(index + 1).padStart(2, '0')
+})
+const pageCode = computed(() => navItems.find(item => item.route === route.name)?.code
+  ?? (route.name === 'profile' ? 'PROFILE' : 'RECORD'))
 
 function applyTheme(value: Theme) {
   theme.value = value
@@ -164,19 +162,21 @@ async function loadFacets() {
 
 watch([revision, user], () => { void loadFacets() })
 
-watch([() => route.name, user], () => { void nextTick(measureNav) })
+watch(() => route.fullPath, () => { navOpen.value = false })
+function onKey(event: KeyboardEvent) {
+  if (event.key === 'Escape') navOpen.value = false
+}
 onMounted(() => {
   const stored = (document.documentElement.dataset.theme as Theme | undefined)
     ?? (window.localStorage.getItem(STORAGE_THEME) as Theme | null)
   applyTheme(stored === 'light' ? 'light' : 'dark')
   window.addEventListener('logbook-logout', resetSession)
-  window.addEventListener('resize', measureNav)
+  window.addEventListener('keydown', onKey)
   void restoreSession()
-  void nextTick(measureNav)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('logbook-logout', resetSession)
-  window.removeEventListener('resize', measureNav)
+  window.removeEventListener('keydown', onKey)
 })
 
 function setUser(value: User) {
@@ -185,7 +185,7 @@ function setUser(value: User) {
 const accountName = computed(() => user.value?.display_name || user.value?.username || '')
 const accountInitial = computed(() => Array.from(accountName.value)[0]?.toUpperCase() ?? '?')
 
-/** 右上角头像的下拉菜单：顶部显示昵称与登录账号，下面是个人主页和退出登录。 */
+/** 侧栏底部账号卡的下拉菜单：顶部显示昵称与登录账号，下面是个人主页和退出登录。 */
 const menuIcon = (icon: typeof PersonOutline) => () => h(NIcon, { component: icon })
 const accountMenu = computed<DropdownOption[]>(() => [
   {
@@ -211,76 +211,120 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
   <NConfigProvider :theme="theme === 'dark' ? darkTheme : null" :theme-overrides="overrides" :locale="zhCN" :date-locale="dateZhCN">
   <NMessageProvider>
   <NDialogProvider>
-  <header class="site-header">
-    <div class="header-inner">
-      <RouterLink class="brand" to="/"><i class="shield" aria-hidden="true"></i>卫戍协议<span>作战档案</span></RouterLink>
-      <nav v-if="user" ref="nav" aria-label="主导航">
-        <i class="nav-indicator" :style="{ transform: `translateX(${indicator.left}px)`, width: indicator.width + 'px' }" aria-hidden="true"></i>
-        <RouterLink v-for="item in titles" :key="item.route" :to="{ name: item.route }"
-          :aria-current="route.name === item.route ? 'page' : undefined">{{ item.title }}</RouterLink>
+  <div class="shell" :class="{ 'shell--bare': !user, 'shell--nav-open': navOpen }">
+    <aside v-if="user" id="sidebar" class="sidebar" aria-label="侧边栏">
+      <RouterLink class="side-brand" to="/">
+        <i class="shield" aria-hidden="true"></i>
+        <span class="side-brand-copy">
+          <b>卫戍协议</b>
+          <small>STRONGHOLD · LOGBOOK</small>
+        </span>
+      </RouterLink>
+      <i class="hazard" aria-hidden="true"></i>
+
+      <nav class="side-nav" aria-label="主导航">
+        <p class="side-label" aria-hidden="true"><span>TACTICAL INDEX</span><i></i></p>
+        <RouterLink v-for="(item, index) in navItems" :key="item.route" class="side-link" :to="{ name: item.route }"
+          :title="item.title" :aria-current="route.name === item.route ? 'page' : undefined">
+          <span class="side-index" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span>
+          <NIcon class="side-icon" :component="item.icon" aria-hidden="true" />
+          <span class="side-text"><b>{{ item.title }}</b><small aria-hidden="true">{{ item.code }}</small></span>
+        </RouterLink>
       </nav>
-      <div class="account-actions">
-        <NButton quaternary circle size="small" class="theme-toggle"
-          :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
+
+      <div class="side-foot">
+        <p class="side-status" aria-hidden="true"><i></i>LINK ONLINE<span>PRTS</span></p>
+        <div class="side-account">
+          <NDropdown trigger="click" placement="top-start" :options="accountMenu" @select="selectAccount">
+            <button type="button" class="account-card" :class="{ 'account-card--active': route.name === 'profile' }"
+              :aria-label="`账号菜单：${accountName}`" :title="accountName">
+              <span class="account-avatar" aria-hidden="true">
+                <img v-if="user.avatar_url" :src="user.avatar_url" alt="">
+                <span v-else>{{ accountInitial }}</span>
+              </span>
+              <span class="account-copy"><b>{{ accountName }}</b><small>@{{ user.username }}</small></span>
+            </button>
+          </NDropdown>
+          <NButton quaternary class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
+            :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
+            <template #icon>
+              <NIcon :key="theme" class="theme-toggle-icon" :component="theme === 'dark' ? SunnyOutline : MoonOutline" />
+            </template>
+          </NButton>
+        </div>
+      </div>
+    </aside>
+    <button v-if="user" type="button" class="side-scrim" tabindex="-1" aria-hidden="true" @click="navOpen = false"></button>
+
+    <div class="workspace">
+      <header class="topbar">
+        <NButton v-if="user" quaternary class="topbar-menu" :aria-label="navOpen ? '收起导航' : '展开导航'"
+          aria-controls="sidebar" :aria-expanded="navOpen" @click="navOpen = !navOpen">
+          <template #icon><NIcon :component="navOpen ? CloseOutline : MenuOutline" /></template>
+        </NButton>
+        <RouterLink class="side-brand side-brand--compact" to="/">
+          <i class="shield" aria-hidden="true"></i>
+          <span class="side-brand-copy"><b>卫戍协议</b><small>STRONGHOLD · LOGBOOK</small></span>
+        </RouterLink>
+        <NButton quaternary class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
           :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
           <template #icon>
             <NIcon :key="theme" class="theme-toggle-icon" :component="theme === 'dark' ? SunnyOutline : MoonOutline" />
           </template>
         </NButton>
-        <NDropdown v-if="user" trigger="click" placement="bottom-end" :options="accountMenu" @select="selectAccount">
-          <button type="button" class="account-avatar" :class="{ 'account-avatar--active': route.name === 'profile' }"
-            :aria-label="`账号菜单：${accountName}`" :title="accountName">
-            <img v-if="user.avatar_url" :src="user.avatar_url" alt="">
-            <span v-else aria-hidden="true">{{ accountInitial }}</span>
-          </button>
-        </NDropdown>
-      </div>
-    </div>
-  </header>
+      </header>
 
-  <main class="layout">
-    <div v-if="pending" class="loading-shell" role="status">正在读取数据…</div>
+      <main class="layout">
+        <div v-if="pending" class="loading-shell" role="status"><i aria-hidden="true"></i>正在读取数据…</div>
 
-    <template v-else-if="user || route.meta.public">
-      <div class="heading">
-        <div class="heading-copy">
-          <h1>{{ route.meta.title }}</h1>
-          <p class="heading-description">{{ route.meta.description }}</p>
+        <template v-else-if="user || route.meta.public">
+          <p class="crumbs" aria-hidden="true">
+            <span>卫戍协议</span><i>/</i><span>作战档案</span><i>/</i><b>{{ route.meta.title }}</b>
+            <em>{{ pageIndex }} · {{ pageCode }}</em>
+          </p>
+          <div class="heading">
+            <div class="heading-copy">
+              <p class="heading-code" aria-hidden="true">SECTION {{ pageIndex }}<span>{{ pageCode }}</span></p>
+              <h1>{{ route.meta.title }}</h1>
+              <p class="heading-description">{{ route.meta.description }}</p>
+            </div>
+            <HeadingArt />
+          </div>
+          <p v-if="logoutError" class="load-message" role="alert">{{ logoutError }} <button type="button" @click="logout">重试</button></p>
+          <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
+          <RouterView v-else v-slot="{ Component, route: pageRoute }">
+            <Transition name="page">
+              <div :key="pageRoute.name" class="route-content"><component :is="Component" /></div>
+            </Transition>
+          </RouterView>
+        </template>
+
+        <div v-else class="login-layout">
+          <section class="panel login-panel" aria-labelledby="login-title">
+            <i class="hazard" aria-hidden="true"></i>
+            <header class="login-head">
+              <p class="eyebrow">STRONGHOLD PROTOCOL <span>/</span> 作战档案</p>
+              <h1 id="login-title">身份验证</h1>
+              <p class="muted">登录后查看对局记录、盟约趋势和干员出场统计。</p>
+            </header>
+            <form class="login-form" @submit.prevent="login">
+              <label class="filter-field">用户名
+                <NInput v-model:value="username" size="large" placeholder="用户名" :input-props="{ autocomplete: 'username', maxlength: 64 }" />
+              </label>
+              <label class="filter-field">密码
+                <NInput v-model:value="password" type="password" size="large" show-password-on="click"
+                  placeholder="密码" :input-props="{ autocomplete: 'current-password', maxlength: 256 }" />
+              </label>
+              <p v-if="error" class="load-message" role="alert">{{ error }}</p>
+              <NButton type="primary" size="large" block attr-type="submit" :loading="loggingIn">
+                {{ loggingIn ? '登录中…' : '登录' }}
+              </NButton>
+            </form>
+          </section>
         </div>
-        <HeadingArt />
-      </div>
-      <p v-if="logoutError" class="load-message" role="alert">{{ logoutError }} <button type="button" @click="logout">重试</button></p>
-      <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
-      <RouterView v-else v-slot="{ Component, route: pageRoute }">
-        <Transition name="page">
-          <div :key="pageRoute.name" class="route-content"><component :is="Component" /></div>
-        </Transition>
-      </RouterView>
-    </template>
-
-    <div v-else class="login-layout">
-      <section class="panel login-panel" aria-labelledby="login-title">
-        <header class="login-head">
-          <p class="eyebrow">卫戍协议 <span>/</span> 作战档案</p>
-          <h1 id="login-title">登录</h1>
-          <p class="muted">对局记录、盟约趋势和干员出场统计。</p>
-        </header>
-        <form class="login-form" @submit.prevent="login">
-          <label class="filter-field">用户名
-            <NInput v-model:value="username" size="large" placeholder="用户名" :input-props="{ autocomplete: 'username', maxlength: 64 }" />
-          </label>
-          <label class="filter-field">密码
-            <NInput v-model:value="password" type="password" size="large" show-password-on="click"
-              placeholder="密码" :input-props="{ autocomplete: 'current-password', maxlength: 256 }" />
-          </label>
-          <p v-if="error" class="load-message" role="alert">{{ error }}</p>
-          <NButton type="primary" size="large" block attr-type="submit" :loading="loggingIn">
-            {{ loggingIn ? '登录中…' : '登录' }}
-          </NButton>
-        </form>
-      </section>
+      </main>
     </div>
-  </main>
+  </div>
   </NDialogProvider>
   </NMessageProvider>
   </NConfigProvider>

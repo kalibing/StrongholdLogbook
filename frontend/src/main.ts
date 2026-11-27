@@ -1,7 +1,11 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
+import '@fontsource/barlow-condensed/500.css'
+import '@fontsource/barlow-condensed/600.css'
+import '@fontsource/barlow-condensed/700.css'
 import './style.css'
+import './theme.css'
 
 const router = createRouter({
   history: createWebHistory(),

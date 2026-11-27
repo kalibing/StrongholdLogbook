@@ -57,45 +57,6 @@ button:hover:not(:disabled), .button-link:hover, select:hover, input[type="searc
   color: var(--accent);
 }
 
-.site-header { position: sticky; top: 0; z-index: 20; background: #121a27; border-bottom: 1px solid var(--line); }
-.header-inner, .layout { width: min(var(--layout), calc(100% - 3rem)); margin-inline: auto; }
-.header-inner { min-height: 64px; display: flex; align-items: center; gap: 2.5rem; }
-.brand { display: inline-flex; align-items: center; gap: .55rem; font-weight: 750; white-space: nowrap; }
-.brand span { color: var(--muted); font-size: .8125rem; font-weight: 500; margin-left: .25rem; }
-.shield {
-  display: inline-grid;
-  place-items: center;
-  width: 27px;
-  height: 29px;
-  background: var(--accent);
-  clip-path: polygon(50% 0, 96% 23%, 87% 70%, 50% 100%, 13% 70%, 4% 23%);
-}
-.shield::after {
-  content: "";
-  width: 14px;
-  height: 15px;
-  background: #172024;
-  clip-path: polygon(50% 0, 100% 34%, 50% 100%, 0 34%);
-}
-nav { display: flex; align-self: stretch; gap: .35rem; }
-nav a {
-  display: grid;
-  place-items: center;
-  min-height: 46px;
-  padding: .4rem .9rem;
-  border-block: 2px solid transparent;
-  color: var(--muted);
-  font-size: .9rem;
-  white-space: nowrap;
-}
-nav a:hover { color: var(--text); }
-nav a[aria-current="page"] {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  background: linear-gradient(0deg, #deef8111, transparent 75%);
-}
-#account { margin-left: auto; border-color: #737e52; color: var(--accent); background: #222b26; }
-#account:hover { background: #303b2b; }
 
 .layout { padding-block: 1.5rem 4rem; }
 .heading {
@@ -290,13 +251,9 @@ dialog::backdrop { background: #080d16c9; }
 .squad .equipment-chip img { width: 22px; height: 22px; }
 
 @media (max-width: 900px) {
-  .header-inner { flex-wrap: wrap; gap: 0 .8rem; padding-top: .5rem; }
-  .site-header nav { order: 1; width: 100%; gap: .15rem; }
-  .site-header nav a { flex: 1; padding-inline: .15rem; font-size: clamp(.75rem, 3.7vw, .9rem); letter-spacing: normal; }
   #roster { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 730px) {
-  .header-inner, .layout { width: calc(100% - 1.5rem); }
   .layout { padding-top: .75rem; }
   .heading, .heading-compact { min-height: 135px; }
   .heading-description { max-width: 25rem; font-size: .9rem; }
@@ -351,9 +308,6 @@ dialog::backdrop { background: #080d16c9; }
   #operatorRows td:first-child { min-width: 6.5rem; }
 }
 @media (max-width: 440px) {
-  .brand span { display: none; }
-  .site-header nav { gap: 0; }
-  .site-header nav a { min-width: 0; padding-inline: 0; font-size: clamp(.6875rem, 3.45vw, .875rem); }
   .performance, .stat-panel, .trend-panel { padding-inline: .75rem; }
   .performance-row { gap: .55rem; }
   .recent { align-items: start; }
@@ -368,11 +322,6 @@ dialog::backdrop { background: #080d16c9; }
 }
 
 /* ===== 应用扩展：登录、角色切换、档案管理、弹窗反馈 ===== */
-.account-actions { display: flex; align-items: center; gap: .55rem; margin-left: auto; }
-.account-actions .select-field select { min-width: 8.5rem; min-height: 38px; }
-.account-actions button { min-height: 38px; }
-#account { border-color: #737e52; color: var(--accent); background: #222b26; }
-#account:hover:not(:disabled) { background: #303b2b; }
 
 .login-layout { display: grid; gap: 1rem; max-width: 30rem; margin: 2.5rem auto 0; }
 .login-panel { padding: 1.2rem; }
@@ -474,8 +423,6 @@ h1 { font-weight: 800; letter-spacing: .035em; }
 h2 { font-weight: 700; letter-spacing: .05em; }
 h3 { letter-spacing: .03em; }
 
-.site-header { background: #0b0d11; border-bottom-color: #2a303a; }
-nav a { border-block-width: 2px; letter-spacing: .04em; }
 
 .heading {
   border-radius: 3px;
@@ -709,7 +656,7 @@ img { max-width: 100%; }
 .page-enter-from { opacity: .6; }
 
 .panel, .filters, .trend-panel, .table-panel { transition: border-color .2s ease, background .2s ease; }
-.paging button, .account-actions button { transition: color .18s ease, border-color .18s ease, background .18s ease; }
+.paging button { transition: color .18s ease, border-color .18s ease, background .18s ease; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -819,10 +766,6 @@ img { max-width: 100%; }
     linear-gradient(180deg, #e9eef4 0, transparent 320px),
     repeating-linear-gradient(90deg, #00000005 0 1px, transparent 1px 120px);
 }
-:root[data-theme="light"] .site-header { background: #ffffff; border-bottom-color: var(--line); }
-:root[data-theme="light"] nav a { color: var(--muted); }
-:root[data-theme="light"] nav a[aria-current="page"] { color: var(--accent); background: linear-gradient(0deg, #6f7f2418, transparent 75%); }
-:root[data-theme="light"] #account { background: #f1f4ea; border-color: #b3bd86; color: #4c5a1f; }
 :root[data-theme="light"] .heading {
   border-color: #cfd9e4;
   background: linear-gradient(112deg, #e9eff7 30%, #eef3fa 68%, #e7edf6);
@@ -892,20 +835,6 @@ img { max-width: 100%; }
 .flatpickr-calendar.arrowTop::before, .flatpickr-calendar.arrowTop::after { border-bottom-color: var(--line) !important; }
 .flatpickr-calendar.arrowBottom::before, .flatpickr-calendar.arrowBottom::after { border-top-color: var(--line) !important; }
 
-/* ===== 导航滑动指示器 ===== */
-.site-header nav { position: relative; }
-.nav-indicator {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 2px;
-  pointer-events: none;
-  transition: transform .2s cubic-bezier(.22, .61, .36, 1), width .2s cubic-bezier(.22, .61, .36, 1);
-}
-.site-header nav a { position: relative; z-index: 1; }
-.site-header nav a[aria-current="page"] { border-bottom-color: transparent; background: none; }
 
 /* ===== Naive UI 尺寸对齐 ===== */
 .filters > .filter-field { width: clamp(9rem, 14vw, 12.5rem); }
@@ -945,9 +874,6 @@ img { max-width: 100%; }
 @media (max-width: 980px) { .filter-actions { margin-left: 0; width: 100%; justify-content: space-between; } }
 
 
-/* 导航选中态：只用滑动指示器，不再叠加底色 */
-nav a[aria-current="page"] { background: none !important; }
-:root[data-theme="light"] nav a[aria-current="page"] { background: none !important; color: var(--accent); }
 :root[data-theme="light"] .heading { background: linear-gradient(112deg, #dde6f1 30%, #e4ebf5 68%, #dbe4ef); }
 :root[data-theme="light"] .heading-description { color: #4b5866; }
 :root[data-theme="light"] .eyebrow { color: #5f6f1f; }
@@ -959,7 +885,6 @@ nav a[aria-current="page"] { background: none !important; }
 .login-head h1 { font-size: 1.9rem; letter-spacing: .02em; }
 .login-form { display: grid; gap: 1rem; }
 .login-form .n-input { --n-border-radius: 3px; }
-.site-header .account-actions .n-button { --n-border-radius: 3px; }
 .theme-toggle { color: var(--muted); }
 .theme-toggle:hover { color: var(--accent); }
 
@@ -1171,25 +1096,3 @@ td .with-avatar { white-space: nowrap; }
   .import-step-main { grid-row: 1; grid-column: 2; }
   .import-step-action { grid-row: 2; grid-column: 2; justify-content: flex-start; }
 }
-
-/* 页头右上角的圆形头像：点开是账号菜单（个人主页 / 退出登录） */
-.account-avatar {
-  display: grid; place-items: center; width: 38px; height: 38px; min-height: 0 !important; flex: none; padding: 2px;
-  border: 1px solid var(--control-line); border-radius: 50%; background: var(--inset); cursor: pointer;
-  transition: border-color .18s ease, box-shadow .18s ease;
-}
-.account-avatar:hover, .account-avatar--active, .account-avatar[aria-expanded="true"] { border-color: var(--accent); }
-.account-avatar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.account-avatar > :is(img, span) { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.account-avatar > span { color: var(--accent); font: 700 .95rem/1 var(--numbers); }
-.account-menu-head { display: grid; gap: .1rem; min-width: 10rem; padding: .5rem .85rem .35rem; }
-.account-menu-head strong { font-size: .9rem; }
-.account-menu-head small { color: var(--muted); font-size: .75rem; }
-
-/* 中等宽度：品牌副标题和账号名收起，只留图标，避免页头比窗口还宽出现横向滚动。 */
-@media (min-width: 901px) and (max-width: 1120px) {
-  .header-inner { gap: 1.25rem; }
-  .brand span { display: none; }
-  .site-header nav a { padding-inline: .6rem; }
-}
-.account-actions { flex: none; }
