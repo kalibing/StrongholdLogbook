@@ -97,6 +97,8 @@ pwsh -File scripts\dev.ps1              # 三个窗口：API 8000 / worker / 网
 pwsh -File scripts\dev.ps1 -NoWorker    # 只要 API 与网页
 ```
 
+Linux / macOS 用 `scripts/dev.sh`（`--no-worker` 同上），虚拟环境路径是 `.venv/bin/python`。
+
 ### 1. 后端（SQLite，最省事）
 
 ```powershell
@@ -154,6 +156,75 @@ docker compose exec api python -m logbook.admin create-user alice
 ```
 
 Compose 会先跑 `alembic upgrade head`（`migrate` 服务），再启动 API 与 worker；Caddy 只在 `HOST_BIND` 上发布端口，默认 `127.0.0.1`。对外提供 HTTPS 时把 `SITE_ADDRESS` 设成域名，Caddy 自动申请证书，并把 `PUBLIC_ORIGIN` 改成同一个 `https://` 源。
+
+## Linux 服务器部署
+
+服务端按 Linux 设计：镜像基于 Debian（`python:3.13-slim`、`caddy:2-alpine`），CI 也跑在 Ubuntu 上。只有「本机助手」是给用户电脑用的 Windows 程序，服务器只负责提供下载。
+
+### 方式一：Docker Compose（推荐）
+
+需要 Docker Engine 24+ 与 Compose 插件。域名先解析到服务器，防火墙放行 80 / 443（TCP，443 另放 UDP 以启用 HTTP/3）。
+
+```bash
+git clone <仓库地址> /opt/logbook && cd /opt/logbook
+scripts/init-env.sh logbook.example.com   # 生成 .env：随机数据库密码与凭据密钥，权限 600
+docker compose up -d --build
+docker compose exec api python -m logbook.admin create-user alice
+```
+
+- `init-env.sh` 不带参数时生成仅本机可访问的 `http://localhost:8080` 配置；带域名时监听 `0.0.0.0:80/443`，`PUBLIC_ORIGIN` 设为 `https://域名`，Caddy 自动申请证书。
+- `.env` 里的 `LOGBOOK_CREDENTIAL_KEY` 务必另外备份；丢失后已保存的森空岛 / 成就令牌无法解密，需要用户重新绑定。
+- 本机助手：在 Windows 上运行 `scripts/build-agent.ps1`，把生成的 `ArknightsAchvAgent.exe` 拷到服务器 `deploy/download/`，无需重建镜像。目录里没有文件时下载地址返回 404。
+- 升级：`git pull && docker compose up -d --build`，`migrate` 服务会先执行数据库迁移。
+- 备份：`docker compose exec -T db pg_dump -U logbook -Fc logbook > logbook-$(date +%F).dump`。
+
+Compose 里的安全布置：
+
+| 项 | 做法 |
+| --- | --- |
+| 网络 | `data` 为内部网络（无出网），只有 db / migrate / api / worker；`edge` 连接 Caddy 与 api。只有 Caddy 对宿主机发布端口。 |
+| 容器 | api / worker / migrate / Caddy 均 `read_only`、`no-new-privileges`、`cap_drop: ALL`（Caddy 只保留 `NET_BIND_SERVICE`），后端以 UID 10001 运行。 |
+| 日志 | json-file 轮转，单容器最多 30 MB。 |
+| 来源 IP | uvicorn 启用 `--proxy-headers`，从 Caddy 的 `X-Forwarded-For` 取真实客户端 IP 用于登录限速；api 不对外发布端口，客户端无法绕过 Caddy 伪造该头。 |
+
+### 方式二：裸机 + systemd
+
+适合不想装 Docker 的小机器。以 Debian / Ubuntu 为例：
+
+```bash
+sudo apt install python3 python3-venv fonts-noto-cjk caddy postgresql   # SQLite 部署可不装 postgresql
+sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin logbook
+sudo git clone <仓库地址> /opt/logbook
+sudo python3 -m venv /opt/logbook/.venv
+sudo /opt/logbook/.venv/bin/pip install -r /opt/logbook/backend/requirements.txt
+
+# 环境变量（属主 root、权限 600，systemd 读取后再以 logbook 用户启动服务）
+sudo install -d -m 755 /etc/logbook
+sudo install -m 600 /opt/logbook/deploy/systemd/logbook.env.example /etc/logbook/logbook.env
+sudoedit /etc/logbook/logbook.env
+
+# PostgreSQL：建库后执行迁移（SQLite 跳过这一步，启动时自动建表）
+sudo -u postgres createuser -P logbook && sudo -u postgres createdb -O logbook logbook
+# 与服务相同的用户、环境与目录执行一次性命令
+lb() { sudo systemd-run --pty --wait --collect -q -p User=logbook -p EnvironmentFile=/etc/logbook/logbook.env   -p WorkingDirectory=/opt/logbook/backend -p StateDirectory=logbook /opt/logbook/.venv/bin/python -m "$@"; }
+lb alembic upgrade head
+
+sudo cp /opt/logbook/deploy/systemd/logbook-{api,worker}.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now logbook-api logbook-worker
+
+# 前端：任意机器上 npm ci && npm run build，把 frontend/dist 拷到 /var/www/logbook
+# Caddy：改好 caddy-logbook.conf 里的域名后
+sudo install -d /etc/systemd/system/caddy.service.d
+sudo cp /opt/logbook/deploy/systemd/caddy-logbook.conf /etc/systemd/system/caddy.service.d/logbook.conf
+sudo cp /opt/logbook/deploy/Caddyfile /etc/caddy/Caddyfile
+sudo systemctl daemon-reload && sudo systemctl restart caddy
+```
+
+- API 只监听 `127.0.0.1:8000`，由 Caddy 反代；同一份 `deploy/Caddyfile` 通过 `API_UPSTREAM` / `SITE_ROOT` 环境变量切换 Compose 与裸机。
+- 两个 unit 带完整的 systemd 沙箱（`ProtectSystem=strict`、`NoNewPrivileges`、系统调用过滤、无任何 capability），唯一可写目录是 `/var/lib/logbook`（权限 700）。SQLite 部署把 `LOGBOOK_SQLITE` 指到该目录。
+- 建账号：`lb logbook.admin create-user alice`（`lb` 为上面定义的 shell 函数，交互输入密码）。
+- 本机助手 exe 放在 `/var/www/logbook/download/`。
+- 日志：`journalctl -u logbook-api -u logbook-worker -f`。
 
 ## 成就档案（鹰角通行证）
 
@@ -256,7 +327,7 @@ curl.exe -X POST "http://localhost:8000/api/imports" `
 ## 测试与检查
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest          # 后端：80 个用例，无需外部数据库
+.\.venv\Scripts\python.exe -m pytest          # 后端：135 个用例，无需外部数据库
 cd frontend; npm run typecheck                # vue-tsc
 cd frontend; npm run build                    # 生产构建
 ```
@@ -282,9 +353,10 @@ cd frontend; npm run build                    # 生产构建
 ## 安全要点
 
 - 密码用 Argon2 哈希，会话令牌只存 SHA-256 摘要；Cookie 为 `HttpOnly` + `SameSite=Strict`，HTTPS 下自动加 `__Host-` 前缀与 `Secure`。
-- 同一账号连续 8 次密码错误锁定 15 分钟；登录失败分支仍会执行一次哈希校验以避免时序泄露。
-- 所有写请求校验 `Origin`，所有响应带 `Cache-Control: no-store`，Caddy 追加 CSP、`X-Frame-Options` 等头。
-- 上传体积、局数和待处理任务数都有上限。导入由独立进程写库。
+- 同一账号连续 8 次密码错误锁定 15 分钟；同一来源 IP 15 分钟内失败 20 次后拒绝继续尝试（防止换账号名撞库）；登录失败分支仍会执行一次哈希校验以避免时序泄露。
+- 所有写请求校验 `Origin`，所有响应带 `Cache-Control: no-store`。Caddy 追加严格 CSP（脚本只允许同源文件，不允许内联脚本）、HSTS、`X-Frame-Options`、`Permissions-Policy`、COOP / CORP 等头。
+- 任何请求体在后端统一限制为 9 MB（Caddy 再兜底 10 MB），上传体积、局数和待处理任务数另有各自的上限。导入由独立进程写库。
+- 部署层的隔离（内部网络、只读容器、systemd 沙箱）见「Linux 服务器部署」。
 
 ### 凭据密钥
 

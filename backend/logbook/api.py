@@ -19,6 +19,7 @@ from .config import settings
 from .credentials import ACHIEVEMENTS, SKLAND, CredentialStorageError, initialize_vault
 from .db import connection_pool
 from .errors import UniqueConflict
+from .limits import FailureThrottle, RequestSizeLimit
 from .records import CHINA, Filters, read_snapshot
 from .security import COOKIE, SESSION_TTL, USERNAME_PATTERN, dummy_hash, hasher, new_session, session_hash, verify_password
 from .storage import json_param
@@ -45,6 +46,9 @@ async def lifespan(application):
 
 
 app = FastAPI(title="卫戍协议战绩档案", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+app.add_middleware(RequestSizeLimit)
+# 按来源 IP 限制登录失败次数，防止换着账号名撞库；账号级锁定见 login()。
+login_throttle = FailureThrottle()
 
 
 @app.middleware("http")
@@ -107,6 +111,9 @@ def session(request: Request, user=Depends(current_user)):
 
 @app.post("/api/session")
 def login(details: Login, request: Request, response: Response):
+    client = request.client.host if request.client else "unknown"
+    if login_throttle.blocked(client):
+        raise HTTPException(429, "登录尝试过多，请稍后重试")
     with request.app.state.pool.connection() as database:
         user = database.execute("SELECT * FROM users WHERE username = %s FOR UPDATE", (details.username,)).fetchone()
         now = datetime.now(timezone.utc)
@@ -130,6 +137,7 @@ def login(details: Login, request: Request, response: Response):
             database.execute("UPDATE users SET failed_logins = %s, locked_until = %s WHERE id = %s",
                              (failures, now + timedelta(minutes=15) if failures >= 8 else None, user["id"]))
     if not authenticated:
+        login_throttle.failed(client)
         raise HTTPException(401, "用户名或密码错误")
     with request.app.state.pool.connection() as database:
         account = accounts.load(database, user)

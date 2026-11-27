@@ -6,13 +6,7 @@
     <meta name="description" content="卫戍协议的个人对局档案、战报与数据统计">
     <title>卫戍协议 · 作战档案</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <script>
-      try {
-        document.documentElement.dataset.theme = localStorage.getItem('logbook:theme') === 'light' ? 'light' : 'dark'
-      } catch (error) {
-        document.documentElement.dataset.theme = 'dark'
-      }
-    </script>
+    <script src="/theme-init.js"></script>
     <style>
       /* 首屏关键样式：避免样式表加载前的白闪与布局跳动 */
       html { background: #080b0c; color-scheme: dark; scrollbar-gutter: stable; }
