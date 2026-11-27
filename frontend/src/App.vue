@@ -30,20 +30,20 @@ const theme = ref<Theme>('dark')
 const navOpen = ref(false)
 const overrides = computed<GlobalThemeOverrides>(() => ({
   common: {
-    primaryColor: theme.value === 'dark' ? '#3cb4f0' : '#0a73b5',
-    primaryColorHover: theme.value === 'dark' ? '#6cc7f4' : '#0866a1',
-    primaryColorPressed: theme.value === 'dark' ? '#2a9bd4' : '#06598c',
+    primaryColor: theme.value === 'dark' ? '#bde05c' : '#557313',
+    primaryColorHover: theme.value === 'dark' ? '#cfea84' : '#47610f',
+    primaryColorPressed: theme.value === 'dark' ? '#a3c646' : '#3b510b',
     borderRadius: '2px',
     borderRadiusSmall: '2px',
     fontFamily: 'inherit',
     bodyColor: 'transparent',
-    cardColor: theme.value === 'dark' ? '#17191c' : '#ffffff',
-    modalColor: theme.value === 'dark' ? '#17191c' : '#ffffff',
-    popoverColor: theme.value === 'dark' ? '#1f2226' : '#ffffff',
-    borderColor: theme.value === 'dark' ? '#2f3338' : '#dadde2',
-    textColorBase: theme.value === 'dark' ? '#f1f2f3' : '#15171a',
-    textColor2: theme.value === 'dark' ? '#c3c7cc' : '#3c424a',
-    placeholderColor: theme.value === 'dark' ? '#979ca3' : '#6a7079',
+    cardColor: theme.value === 'dark' ? '#111714' : '#ffffff',
+    modalColor: theme.value === 'dark' ? '#111714' : '#ffffff',
+    popoverColor: theme.value === 'dark' ? '#18201c' : '#ffffff',
+    borderColor: theme.value === 'dark' ? '#2c3832' : '#d6ded9',
+    textColorBase: theme.value === 'dark' ? '#eef3ef' : '#131a16',
+    textColor2: theme.value === 'dark' ? '#bfcac4' : '#37433d',
+    placeholderColor: theme.value === 'dark' ? '#94a29b' : '#63706a',
   },
 }))
 

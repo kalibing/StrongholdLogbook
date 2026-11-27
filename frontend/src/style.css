@@ -2,7 +2,7 @@
  * 卫戍协议 · 作战档案 —— 全局样式
  *
  * 设计取向（参照明日方舟 / 卫戍协议的界面语言）：
- * - 功能优先、克制：近黑的中性底，白字，主色只出现在「当前 / 选中 / 关键数字」；
+ * - 功能优先、克制：带墨绿的近黑底，白字，黄绿主色只出现在「当前 / 选中 / 关键数字」；
  * - 层级靠明度阶梯和细线，不靠圆角和大阴影；直角为主（2px），浮层才用毛玻璃；
  * - 数据块：小号灰色标签在上，大号窄体数字在下，左对齐；
  * - 区块标题前有一个实心小方块；选中态是实色填充 + 深色字（方舟的选中按钮就是这样）；
@@ -12,28 +12,28 @@
 /* ---------- 设计变量 ---------- */
 :root {
   color-scheme: dark;
-  /* 石墨灰底（方舟终端界面的中性深灰，不带青色），罗德岛蓝作主色，琥珀只用于警示。 */
-  --bg: #0f1113;
-  --panel: #17191c;
-  --raised: #1f2226;
-  --inset: #121417;
-  --line: #2a2d32;
-  --line-strong: #3b3f46;
-  --control-line: #464b53;
-  --text: #f1f2f3;
-  --text-2: #c3c7cc;
-  --muted: #8b9097;
-  --accent: #3cb4f0;
-  --accent-ink: #04121b;
-  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  /* 卫戍协议的青黑底：底色带一点墨绿，黄绿（荧光柠檬绿）作主色，薄荷青作 HUD 辅色，琥珀只用于警示。 */
+  --bg: #0a0e0c;
+  --panel: #111714;
+  --raised: #18201c;
+  --inset: #0d1210;
+  --line: #222c27;
+  --line-strong: #33403a;
+  --control-line: #3e4c45;
+  --text: #eef3ef;
+  --text-2: #bfcac4;
+  --muted: #86948d;
+  --accent: #bde05c;
+  --accent-ink: #0f1608;
+  --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent);
   --hud: #47d6bb;
   --warn: #f2b53a;
-  --win: #8fdca0;
+  --win: #7fdcae;
   --loss: #ff8f9c;
-  --chart-line: #9fd6ff;
+  --chart-line: #cfe98a;
   --chart-average: #f2b53a;
-  --chart-grid: #2a2d32;
-  --chart-label: #1f2226;
+  --chart-grid: #222c27;
+  --chart-label: #18201c;
   --radius: 2px;
   --side: 224px;
   --layout: 80rem;
@@ -49,26 +49,26 @@
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #eef0f2;
+  --bg: #edf1ee;
   --panel: #ffffff;
   --raised: #ffffff;
-  --inset: #f4f5f7;
-  --line: #dfe2e6;
-  --line-strong: #c5cad1;
-  --control-line: #b9bfc7;
-  --text: #15171a;
-  --text-2: #3c424a;
-  --muted: #6a7079;
-  --accent: #0a73b5;
+  --inset: #f3f6f4;
+  --line: #dbe2de;
+  --line-strong: #c2ccc7;
+  --control-line: #b4bfb9;
+  --text: #131a16;
+  --text-2: #37433d;
+  --muted: #63706a;
+  --accent: #557313;
   --accent-ink: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 9%, transparent);
   --hud: #1b8a76;
   --warn: #b0670f;
-  --win: #1f6c44;
+  --win: #1d6e48;
   --loss: #b0334a;
-  --chart-line: #0a73b5;
+  --chart-line: #557313;
   --chart-average: #b0670f;
-  --chart-grid: #e7e9ec;
+  --chart-grid: #e5eae7;
   --chart-label: #ffffff;
 }
 
@@ -360,9 +360,9 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
   background: linear-gradient(135deg, var(--raised), var(--inset));
 }
 .op img { position: absolute; inset: 0 0 0 auto; width: auto; height: 104%; object-fit: contain; object-position: right center; }
-.op div { position: relative; z-index: 1; width: 100%; padding: 24px 9px 8px; background: linear-gradient(transparent, #090b0cf2); }
-.op b { display: block; color: #f3f4f4; font-size: .9375rem; line-height: 1.3; }
-.op small { display: block; color: #b9c0be; font-size: .75rem; }
+.op div { position: relative; z-index: 1; width: 100%; padding: 24px 9px 8px; background: linear-gradient(transparent, #080b09f2); }
+.op b { display: block; color: #f1f4f2; font-size: .9375rem; line-height: 1.3; }
+.op small { display: block; color: #b6c0bb; font-size: .75rem; }
 .op-fallback {
   position: absolute; inset: 0 0 0 auto; display: grid; place-items: center; width: 50%; height: 100%;
   background: repeating-linear-gradient(135deg, var(--raised) 0 6px, var(--inset) 6px 12px);
@@ -572,7 +572,7 @@ dialog::backdrop { background: color-mix(in srgb, var(--bg) 70%, transparent); b
 .icon-gallery { display: grid; gap: 1rem; padding: 1rem 1.15rem; }
 .icon-gallery .icon-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1.4rem; }
 .icon-gallery figure { display: grid; justify-items: center; gap: .5rem; min-width: 96px; margin: 0; }
-.icon-gallery .icon-original { box-sizing: content-box; padding: .55rem; border-radius: var(--radius); background: #243047; }
+.icon-gallery .icon-original { box-sizing: content-box; padding: .55rem; border-radius: var(--radius); background: #1a2620; }
 .icon-gallery figcaption { color: var(--muted); font-size: .8125rem; text-align: center; }
 .icon-gallery .icon-sizes { display: inline-flex; align-items: flex-end; gap: .7rem; height: 34px; }
 .icon-gallery code { color: var(--muted); font-size: .8125rem; }
@@ -644,7 +644,7 @@ dialog::backdrop { background: color-mix(in srgb, var(--bg) 70%, transparent); b
   .shell--nav-open .sidebar { transform: none; visibility: visible; transition-delay: 0s; }
   .side-scrim {
     display: block; position: fixed; inset: 0; z-index: 35; min-height: 0; padding: 0; border: 0; border-radius: 0;
-    background: #02040570; opacity: 0; pointer-events: none; transition: opacity .24s ease;
+    background: #02050370; opacity: 0; pointer-events: none; transition: opacity .24s ease;
   }
   .side-scrim:hover:not(:disabled) { border: 0; }
   .shell--nav-open .side-scrim { opacity: 1; pointer-events: auto; }

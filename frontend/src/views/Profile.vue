@@ -159,7 +159,7 @@ async function removeAvatar() {
 }
 .profile-emblem-hint {
   position: absolute; inset: 3px; display: grid; place-items: center;
-  clip-path: inherit; background: #0b0e13b3; color: #f3f4f6; font-size: .85rem; font-style: normal;
+  clip-path: inherit; background: #0a0f0cb3; color: #f3f4f6; font-size: .85rem; font-style: normal;
   opacity: 0; transition: opacity .18s ease;
 }
 .profile-emblem:is(:hover, :focus-visible) .profile-emblem-hint, .profile-emblem--busy .profile-emblem-hint { opacity: 1; }

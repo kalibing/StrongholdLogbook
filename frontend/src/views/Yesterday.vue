@@ -226,7 +226,7 @@ function changePageSize(size: number) {
 .daily-rate span, .daily-totals dt { color: var(--muted); font-size: .82rem; }
 .daily-highlight-grid dt { color: var(--muted); font-size: .95rem; }
 .daily-rate strong {
-  color: var(--accent);
+  color: var(--text);
   font: 700 clamp(2.75rem, 5vw, 4.5rem)/.95 var(--numbers);
   letter-spacing: -.035em;
   font-variant-numeric: tabular-nums;
@@ -242,7 +242,7 @@ function changePageSize(size: number) {
 .daily-trophies > div, .daily-trophies dt { display: flex; align-items: center; gap: .5rem; }
 .daily-trophies > div { justify-content: space-between; }
 .daily-trophies dt { font-size: .85rem; color: var(--muted); }
-.daily-trophies dd { color: var(--accent); font: 700 1.5rem/1 var(--numbers); }
+.daily-trophies dd { color: var(--text); font: 700 1.5rem/1 var(--numbers); }
 .daily-trophies .loss { color: var(--loss); }
 .daily-highlight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem 1rem; margin-top: .75rem; }
 .daily-highlight-grid > div { padding-top: .45rem; border-top: 1px solid var(--line); }

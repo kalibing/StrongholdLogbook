@@ -518,13 +518,13 @@ onBeforeUnmount(() => {
 }
 .namecard-art { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .namecard:has(.namecard-art:not([hidden])) {
-  background: transparent; color: #f1f5fa; padding-bottom: calc(.45rem + 2.5%);
+  background: transparent; color: #f1f5f2; padding-bottom: calc(.45rem + 2.5%);
 }
 .namecard:has(.namecard-art:not([hidden]))::before {
   content: ''; position: absolute; z-index: -1; inset: 0 2.8% 16.5%; border-radius: var(--radius);
-  background: linear-gradient(90deg, #0c1219b8, #0c121970 53%, transparent 90%);
+  background: linear-gradient(90deg, #0b110eb8, #0b110e70 53%, transparent 90%);
 }
-.namecard:has(.namecard-art:not([hidden])) small { color: #d1d9e4; }
+.namecard:has(.namecard-art:not([hidden])) small { color: #d0dad4; }
 .namecard-avatar { border: 1px solid var(--line); }
 .namecard-copy { display: grid; min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
 .namecard-copy h2 { font-size: clamp(1rem, 1.6vw, 1.2rem); }

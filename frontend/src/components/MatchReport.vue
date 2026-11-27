@@ -197,9 +197,9 @@ onMounted(async () => {
   animation: report-enter .14s cubic-bezier(.2, 0, .38, .9) both;
 }
 #detail[open] { display: flex; flex-direction: column; }
-#detail::backdrop { background: rgb(8 14 23 / 66%); }
+#detail::backdrop { background: rgb(6 11 9 / 66%); }
 :global(:root[data-theme='light'] #detail) { --elite-border: #a86b20; }
-:global(:root[data-theme='light'] #detail::backdrop) { background: rgb(22 31 47 / 46%); }
+:global(:root[data-theme='light'] #detail::backdrop) { background: rgb(20 32 26 / 46%); }
 @keyframes report-enter { from { transform: translateY(4px); } to { transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { #detail { animation: none; } }
 
