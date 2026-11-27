@@ -34,10 +34,21 @@ export interface Operator {
   usage_rate: number
   win_rate: number
 }
+export interface StrategyStat {
+  /** 记录里的原值：可能是 band id，也可能是策略名 */
+  name: string
+  count: number
+  wins: number
+  losses: number
+  usage_rate: number
+  win_rate: number
+}
 export interface TrophyBadge { icon: string | null; level: number | null }
 export interface Overview {
   trophy_change: number | null
   trophy_badge: TrophyBadge | null
+  /** 账号累计奖杯：profile 来自成就档案，matches 为导入对局的奖杯记录累加（旧后端没有此字段） */
+  trophy_total?: { total: number; source: 'profile' | 'matches' } | null
   matches: number
   wins: number
   excluded: number
@@ -100,6 +111,9 @@ export interface DailyReview {
   total_duration_seconds: number | null
   latest_loss: ReviewMatch | null
   most_kills: (ReviewMatch & { kills: number }) | null
+  /** 旧后端没有这两项 */
+  most_layers?: (ReviewMatch & { layers: number }) | null
+  most_coins?: (ReviewMatch & { coins: number }) | null
   ai_available: boolean
 }
 export interface ImportJob {

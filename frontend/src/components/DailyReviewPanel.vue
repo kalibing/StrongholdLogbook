@@ -23,20 +23,22 @@ const duration = computed(() => {
   const minutes = Math.floor(seconds / 60) % 60
   return `${hours ? `${number(hours)} 小时 ` : ''}${minutes} 分`
 })
+// 关键对局：击杀、盟约层数、金币花费三项之最（不列败局）。同一局拿下多项时合并成一行。
 const keyMatches = computed(() => {
-  const { most_kills, latest_loss } = props.review
-  const matches = []
-  if (most_kills) matches.push({
-    ...most_kills,
-    label: most_kills.id === latest_loss?.id ? '最高击杀 · 最近败局' : '最高击杀',
-    value: `${number(most_kills.kills)} 次击杀`,
-  })
-  if (latest_loss && latest_loss.id !== most_kills?.id) matches.push({
-    ...latest_loss,
-    label: '最近败局',
-    value: latest_loss.rounds == null ? '' : `通过 ${number(latest_loss.rounds)} 回合`,
-  })
-  return matches
+  const { most_kills, most_layers, most_coins } = props.review
+  const picks = [
+    most_kills && { match: most_kills, label: '最高击杀', value: `${number(most_kills.kills)} 次击杀` },
+    most_layers && { match: most_layers, label: '盟约最高', value: `${number(most_layers.layers)} 层盟约` },
+    most_coins && { match: most_coins, label: '金币最多', value: `${number(most_coins.coins)} 金币` },
+  ].filter(pick => !!pick)
+  const rows = new Map<string, { id: string; played_at: string; difficulty: string; labels: string[]; values: string[] }>()
+  for (const { match, label, value } of picks) {
+    const row = rows.get(match.id) ?? { id: match.id, played_at: match.played_at, difficulty: match.difficulty, labels: [], values: [] }
+    row.labels.push(label)
+    row.values.push(value)
+    rows.set(match.id, row)
+  }
+  return [...rows.values()].map(row => ({ ...row, label: row.labels.join(' · '), value: row.values.join(' · ') }))
 })
 
 onBeforeUnmount(() => request.abort())

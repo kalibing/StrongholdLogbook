@@ -169,6 +169,19 @@ Compose 会先跑 `alembic upgrade head`（`migrate` 服务），再启动 API �
 链路、字段字典、两种标识的判定依据与已知限制见 [docs/achievements.md](docs/achievements.md)。
 令牌按天失效，过期后页面继续展示上次快照并提示。
 
+## 昨日战报图片
+
+`GET /api/daily-review/image` 返回当前登录账号的战报 PNG（宽 1080，高度随内容变化），口径与网页「昨日战报」一致：北京时间按开局时间归档，默认排除疑似直接退出。
+
+- 不带参数取北京时间的昨天；`?day=2026-11-20` 取指定日期（标题会写成「每日战报」）。
+- 需要登录会话；响应带 `Cache-Control: private, no-store`。
+- 渲染用 Pillow，服务器必须有中文字体：Docker 镜像已安装 `fonts-noto-cjk`；裸机部署可安装同名包，或用 `LOGBOOK_CARD_FONT` / `LOGBOOK_CARD_FONT_BOLD` 指定字体文件。找不到字体时返回 503。
+- 战报里的策略名由 `backend/logbook/bands.py` 换算（森空岛记录存的是分队干员名），该表从 `frontend/src/bands.ts` 生成，两边需同步。
+
+```powershell
+curl.exe -b cookies.txt -o daily.png "http://localhost:8000/api/daily-review/image"
+```
+
 ## 导入战绩
 
 在「数据导入」页同步森空岛，或通过 API 补录 JSON 快照：

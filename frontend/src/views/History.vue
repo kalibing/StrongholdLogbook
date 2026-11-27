@@ -20,9 +20,14 @@ const resultOptions: { label: string; value: Result | '' }[] = [
 ]
 const page = ref(1)
 const detailUrl = ref<string | null>(null)
-/** 分队（发起干员）名：优先用记录里的发起者，其次从 band 映射推出。 */
+/**
+ * 悬停提示：策略对应的分队干员（由 band 映射推出，例如「条文修正」→ 但书）。
+ * 记录里的 initiator 多为「本人 / 队友」，只有映射不到且它确实是干员名时才拿来兜底。
+ */
 function rowUnitName(row: MatchSummary) {
-  return row.initiator || unitOf(row.strategy)
+  const unit = unitOf(row.strategy)
+  if (unit) return unit
+  return row.initiator && !['本人', '队友'].includes(row.initiator) ? row.initiator : ''
 }
 
 const listUrl = computed(() => '/matches' + query(filters, {
@@ -37,7 +42,8 @@ const pages = computed(() => data.value?.pages ?? 1)
 const current = computed(() => data.value?.page ?? page.value)
 const total = computed(() => data.value?.total ?? 0)
 const displayedPageSize = computed(() => Number(new URLSearchParams(resolvedUrl.value?.split('?')[1]).get('limit')) || pageSize.value)
-const hasFilters = computed(() => Boolean(result.value || Object.values(filters).some(Boolean)))
+// 「包含疑似直接退出」只会让结果更多，不算缩小范围的筛选。
+const hasFilters = computed(() => Boolean(result.value || filters.protocol || filters.play || filters.difficulty || filters.start || filters.end))
 
 function resetFilters() {
   Object.assign(filters, newFilters())
@@ -111,7 +117,7 @@ watch(result, () => { page.value = 1 })
             <td><span class="chip" :class="{ loss: row.result === 'loss' }">{{ row.result === 'win' ? '胜' : '负' }}</span></td>
             <td data-label="模拟方式">{{ row.play }}</td>
             <td data-label="难度 / 等级"><TierTag :label="difficultyLabel(row.difficulty)" /></td>
-            <HoverTip as="td" data-label="策略" :text="rowUnitName(row)">
+            <HoverTip as="td" data-label="策略" :text="rowUnitName(row)" :focusable="false">
               <span class="strategy-cell">
                 <img v-if="strategyIcon(row.strategy)" class="strategy-icon" :src="strategyIcon(row.strategy)" alt="">
                 <span class="strategy-name">{{ strategyOf(row.strategy) || '—' }}</span>

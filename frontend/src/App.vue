@@ -102,12 +102,15 @@ async function login() {
   }
 }
 
+// 退出失败只提示一行，不能借用 error：它会把整页内容换成「重试会话」。
+const logoutError = ref('')
 async function logout() {
+  logoutError.value = ''
   try {
     await api('/session', { method: 'DELETE' })
     resetSession()
   } catch (reason) {
-    error.value = message(reason)
+    logoutError.value = `退出登录失败：${message(reason)}`
   }
 }
 
@@ -173,7 +176,7 @@ provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
     <div v-if="pending" class="loading-shell" role="status">正在读取数据…</div>
 
     <template v-else-if="user || route.meta.public">
-      <div class="heading" :class="{ 'heading-compact': route.name !== 'overview' }">
+      <div class="heading">
         <div class="heading-copy">
           <p class="eyebrow">卫戍协议 <span>/</span> {{ user?.username ?? '本地资源' }}</p>
           <h1>{{ route.meta.title }}</h1>
@@ -181,6 +184,7 @@ provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
         </div>
         <HeadingArt />
       </div>
+      <p v-if="logoutError" class="load-message" role="alert">{{ logoutError }} <button type="button" @click="logout">重试</button></p>
       <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
       <RouterView v-else v-slot="{ Component, route: pageRoute }">
         <Transition name="page">

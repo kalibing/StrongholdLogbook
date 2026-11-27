@@ -6,7 +6,7 @@ import { query, useResource } from '../api'
 import { BOND_ICONS, bossName } from '../assets'
 import { strategyIcon, strategyOf } from '../bands'
 import { logbook, newFilters } from '../context'
-import { clockTime, difficultyLabel, number, percent, pickMajorBond, resultLabel, signed } from '../format'
+import { clockTime, difficultyLabel, number, percent, pickMajorBond, resultLabel } from '../format'
 import type { DailyReview, MatchDetail, MatchPage, Overview } from '../models'
 import MatchReport from '../components/MatchReport.vue'
 import TierTag from '../components/TierTag.vue'
@@ -91,7 +91,6 @@ function changePageSize(size: number) {
   <div class="daily">
     <div class="daily-date split">
       <time :datetime="day">{{ day }}</time>
-      <span>北京时间 · 按开局时间统计</span>
     </div>
 
     <p v-if="pending" class="daily-status muted" role="status">正在汇总昨日战绩…</p>
@@ -114,10 +113,9 @@ function changePageSize(size: number) {
         <div class="daily-meter" aria-hidden="true"><i :style="{ width: rate * 100 + '%' }"></i></div>
         <dl class="daily-trophies">
           <div>
-            <dt><TrophyIcon :badge="overview.trophy_badge" :size="25" />奖杯变化</dt>
-            <dd :class="{ loss: (overview.trophy_change ?? 0) < 0 }">
-              {{ signed(overview.trophy_change ?? null) }}
-            </dd>
+            <!-- 奖杯只在联合模拟通关时获得、不会扣减，所以写「获得奖杯」而不是带正负号的变化量。 -->
+            <dt><TrophyIcon :badge="overview.trophy_badge" :total="overview.trophy_total?.total" :size="25" />获得奖杯</dt>
+            <dd>{{ number(overview.trophy_change ?? null) }}</dd>
           </div>
         </dl>
       </section>

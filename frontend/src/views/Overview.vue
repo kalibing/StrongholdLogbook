@@ -5,7 +5,7 @@ import { FlameOutline, LayersOutline, NuclearOutline, PeopleOutline, ShieldOutli
 import { logbook } from '../context'
 import { query, useResource } from '../api'
 import { BOND_ICONS, BOSS_MARKS, difficultyIcon, FUNDS_ICON } from '../assets'
-import { number, percent, pickMajorBond, playRank, resultLabel, signed } from '../format'
+import { number, percent, pickMajorBond, playRank, resultLabel } from '../format'
 import { portrait } from '../icons'
 import { strategyIcon, strategyOf, unitOf } from '../bands'
 import type { DistributionGroup, MatchDetail, Overview } from '../models'
@@ -123,12 +123,11 @@ function openMatch(id: string) {
               </div>
               <small v-if="data.excluded" class="excluded-count">已排除 {{ number(data.excluded) }} 局</small>
             </div>
-            <dl class="overview-trophies" title="汇总当前筛选内有奖杯记录的对局">
+            <dl class="overview-trophies"
+              :title="data.trophy_total?.source === 'profile' ? '来自成就档案的累计奖杯' : '按已导入对局的奖杯记录累计，绑定成就档案后以游戏数据为准'">
               <div>
-                <dt><TrophyIcon :badge="data.trophy_badge" :size="38" />奖杯变化</dt>
-                <dd class="trophy-change-value" :class="{ 'trophy-change-value--loss': (data.trophy_change ?? 0) < 0 }">
-                  {{ signed(data.trophy_change ?? null) }}
-                </dd>
+                <dt><TrophyIcon :badge="data.trophy_badge" :total="data.trophy_total?.total" :size="38" />奖杯总数</dt>
+                <dd class="trophy-change-value">{{ number(data.trophy_total?.total ?? null) }}</dd>
               </div>
             </dl>
           </section>
@@ -272,8 +271,11 @@ function openMatch(id: string) {
       <div v-else-if="section === 'operators'">
       <section v-if="data.strategies" class="content-section" aria-labelledby="strategies-title">
         <div class="split section-heading">
-          <h2 id="strategies-title">常用策略</h2>
-          <span class="muted">按开局局数排序</span>
+          <div>
+            <h2 id="strategies-title">常用策略</h2>
+            <p class="muted">按开局局数排序</p>
+          </div>
+          <RouterLink class="button-link" :to="{ name: 'operators', query: { view: 'strategies' } }">完整策略列表</RouterLink>
         </div>
         <div v-if="data.strategies.length" class="strategy-usage">
           <article v-for="item in data.strategies" :key="item.name" class="usage-card strategy-card" :title="unitOf(item.name) || undefined">

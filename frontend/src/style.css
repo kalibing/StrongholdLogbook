@@ -20,6 +20,8 @@
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
   background: var(--bg);
   color: var(--text);
+  /* 始终给滚动条留位：换页时内容还在加载、页面变短，滚动条消失会让整个布局左右跳一下。 */
+  scrollbar-gutter: stable;
 }
 
 *, *::before, *::after { box-sizing: border-box; }

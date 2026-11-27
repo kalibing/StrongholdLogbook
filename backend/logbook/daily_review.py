@@ -75,6 +75,8 @@ def summarize(rows):
 
     loss = next((row for row in rows if row["result"] == "loss"), None)
     most_kills = max((row for row in rows if row["kills"] is not None), key=lambda row: row["kills"], default=None)
+    most_layers = max((row for row in rows if row["bonds"]), key=stats.bond_total, default=None)
+    most_coins = max((row for row in rows if row.get("coins") is not None), key=lambda row: row["coins"], default=None)
     durations = [row["duration_seconds"] for row in rows if row["duration_seconds"] is not None]
     return {
         "bonds": [{"name": name, "layers": layers} for name, layers in totals.most_common()],
@@ -89,6 +91,8 @@ def summarize(rows):
         ],
         "latest_loss": match_stamp(loss) if loss else None,
         "most_kills": {**match_stamp(most_kills), "kills": most_kills["kills"]} if most_kills else None,
+        "most_layers": {**match_stamp(most_layers), "layers": stats.bond_total(most_layers)} if most_layers else None,
+        "most_coins": {**match_stamp(most_coins), "coins": most_coins["coins"]} if most_coins else None,
     }
 
 
