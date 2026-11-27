@@ -245,9 +245,7 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 侧栏左下角的铃铛显示未读数，点开即可查看并全部标为已读。通知是纯文本，网页没有写通知的接口，只能由站长在服务端发布：
 
 ```bash
-python -m logbook.admin announce "维护通知" '今晚 23:00 停机维护
-期间无法导入战绩'   # 全站公告，
- 表示换行
+python -m logbook.admin announce "维护通知" '今晚 23:00 停机维护\n期间无法导入战绩'   # 全站公告，\n 表示换行
 python -m logbook.admin notify 123456789 "账号提醒" "……"                          # 发给单个账号
 python -m logbook.admin list-notices                                              # 最近 50 条及其 ID
 python -m logbook.admin remove-notice <通知 ID>
