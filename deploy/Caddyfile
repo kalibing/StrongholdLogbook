@@ -2,6 +2,7 @@
 #   SITE_ADDRESS   站点地址；写域名（如 logbook.example.com）时 Caddy 自动申请 HTTPS 证书
 #   API_UPSTREAM   FastAPI 地址；Compose 里是 api:8000，裸机 systemd 部署是 127.0.0.1:8000
 #   SITE_ROOT      前端构建产物目录；Compose 镜像里是 /srv，裸机默认 /var/www/logbook
+#   QQBOT_UPSTREAM QQ 机器人回调服务；Compose 里是 qqbot:8001，裸机是 127.0.0.1:8001
 {$SITE_ADDRESS:http://localhost} {
   encode zstd gzip
 
@@ -27,6 +28,18 @@
 
   handle /api/* {
     reverse_proxy {$API_UPSTREAM:api:8000}
+  }
+
+  # QQ 机器人回调（POST /qqbot/webhook）。只转发这一个路径，其余 /qqbot/* 一律 404。
+  # 机器人服务没启动时这里返回 502，不影响站点其他部分。
+  handle /qqbot/webhook {
+    request_body {
+      max_size 64KB
+    }
+    reverse_proxy {$QQBOT_UPSTREAM:qqbot:8001}
+  }
+  handle /qqbot/* {
+    respond 404
   }
 
   @retired_login path /hg /hg/*

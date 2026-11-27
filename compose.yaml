@@ -91,6 +91,25 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # QQ 机器人回调（可选）：配好 QQBOT_APP_ID / QQBOT_APP_SECRET 后用
+  #   docker compose --profile qqbot up -d --build
+  # 启动。只能访问数据库和 QQ 开放平台，不读会话与导入令牌。
+  qqbot:
+    <<: *hardening
+    build: ./backend
+    profiles: [qqbot]
+    command: ["uvicorn", "logbook.qqbot:app", "--host", "0.0.0.0", "--port", "8001",
+              "--proxy-headers", "--forwarded-allow-ips", "*", "--no-server-header"]
+    environment:
+      <<: *database
+      QQBOT_APP_ID: ${QQBOT_APP_ID:-}
+      QQBOT_APP_SECRET: ${QQBOT_APP_SECRET:-}
+    networks: [data, edge]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   web:
     build:
       context: .

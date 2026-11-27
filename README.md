@@ -43,6 +43,7 @@ backend/
     hypergryph.py     鹰角通行证 → u8 token → playerSummary 取数
     achievements.py   成就档案归一化（六维 / 称号 / 社交 / 特殊标识）
     worker.py         导入队列消费进程（幂等 upsert）
+    qqbot.py          QQ 官方机器人回调（独立进程，单聊发「登录」取一次性免密链接）
     storage.py        存储适配层：PostgreSQL / SQLite 双后端
     sqlite_schema.py  SQLite 建表语句（与 Alembic 迁移逐列一致）
     errors.py         跨驱动的存储异常
@@ -239,6 +240,26 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 
 链路、字段字典、两种标识的判定依据与已知限制见 [docs/achievements.md](docs/achievements.md)。
 令牌按天失效，过期后页面继续展示上次快照并提示。
+
+## QQ 机器人
+
+用户在 QQ 里私聊机器人发「登录」，机器人回一个一次性免密登录链接；第一次发会自动建号（账号名 `qq-` 加随机串），登录后网页弹窗提示设置密码，并可改一次账号名。其他消息回复用法说明。
+
+**准备**（QQ 开放平台 → 机器人管理）：
+
+1. 取得 AppID 与 AppSecret，写进 `.env` 的 `QQBOT_APP_ID` / `QQBOT_APP_SECRET`。
+2. 事件订阅选 Webhook，回调地址填 `https://你的域名/qqbot/webhook`（平台要求 HTTPS，端口限 80 / 443 / 8080 / 8443），订阅单聊消息事件 `C2C_MESSAGE_CREATE`。
+3. 启动：`docker compose --profile qqbot up -d --build`。保存回调地址时平台会发校验请求（op 13），服务会自动应答。
+4. 用测试 QQ 号私聊机器人发「登录」，点开链接即可。
+
+**安全设计**：
+
+- 独立进程 `logbook.qqbot:app`，Caddy 只转发 `POST /qqbot/webhook`，请求体上限 64 KB；不经过网页 API 的 Origin 校验，也不读会话、战绩和导入令牌。
+- 每个业务事件都按文档用 Ed25519 验签（私钥种子由 AppSecret 派生，签名内容为时间戳 + 原始请求体），时间戳与本机相差超过 10 分钟拒绝，同一事件 ID 只处理一次；`X-Bot-Appid` 与配置不符直接 403。
+- 登录链接 10 分钟有效、单次使用，库里只存 SHA-256；每个 openid 每小时最多签发 5 个。日志不记录消息原文、openid、令牌和凭据。
+- 官方机器人拿不到 QQ 号，账号按 `(AppID, openid)` 唯一。
+
+**未经实测、接入时需要确认的点**：文档没给 op 12 回包示例（当前回 `{"op": 12, "d": 0}`）；纯文本消息里的链接是否会被平台拦截文档没写，若被拦截需改用 Markdown 消息（需在平台申请）。OpenAPI 地址按文档用 `https://api.bot.qq.com`，可用 `QQBOT_API_BASE` / `QQBOT_TOKEN_URL` 覆盖。裸机部署用 `deploy/systemd/logbook-qqbot.service`（监听 127.0.0.1:8001）。
 
 ## 站内通知
 

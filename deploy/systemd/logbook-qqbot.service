@@ -1,0 +1,48 @@
+# Linux 裸机部署：QQ 机器人回调（可选；只监听本机回环，由 Caddy 转发 /qqbot/webhook）
+# 安装步骤见 README「Linux 服务器部署 → 方式二」
+[Unit]
+Description=Stronghold Logbook QQ bot webhook
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=logbook
+Group=logbook
+WorkingDirectory=/opt/logbook/backend
+EnvironmentFile=/etc/logbook/logbook.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# 默认只信任 127.0.0.1 上 Caddy 传来的 X-Forwarded-For
+ExecStart=/opt/logbook/.venv/bin/uvicorn logbook.qqbot:app --host 127.0.0.1 --port 8001 --proxy-headers --no-server-header
+Restart=on-failure
+RestartSec=3
+
+# 沙箱：只允许写 SQLite 数据目录（PostgreSQL 部署时该目录也无害）
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+StateDirectory=logbook
+StateDirectoryMode=0700
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
