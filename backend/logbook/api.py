@@ -14,7 +14,7 @@ from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import achievements, daily_card, daily_review, hypergryph, skland, stats
+from . import achievements, daily_card, daily_review, hypergryph, profile, skland, stats
 from .config import settings
 from .credentials import ACHIEVEMENTS, SKLAND, CredentialStorageError, initialize_vault
 from .db import connection_pool
@@ -235,22 +235,54 @@ def overview(
             "SELECT id, played_at, result, strategy, rounds, kills, coins, trophies, suspected_exit, bonds, operators "
             f"FROM matches WHERE {where} ORDER BY played_at, id", params,
         ).fetchall()
-        profile = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user["id"],)).fetchone()
-        # 奖杯是账号累计值，不随筛选变化：没绑定成就档案时用全部对局的奖杯记录累加兜底。
-        recorded = database.execute(
-            "SELECT SUM(trophies) AS total, COUNT(trophies) AS counted FROM matches WHERE user_id = %s", (user["id"],),
-        ).fetchone()
+        trophies = trophy_summary(database, user["id"])
     records = candidates if filters.include_exits else [row for row in candidates if not row["suspected_exit"]]
-    payload = (profile["payload"] if profile else None) or {}
+    return {**stats.overview(records, len(candidates) - len(records), scope), **trophies}
+
+
+def trophy_summary(database, user_id) -> dict:
+    """奖杯是账号累计值，不随筛选变化：优先用成就档案，没绑定时用全部对局的奖杯记录累加兜底。"""
+    link = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user_id,)).fetchone()
+    recorded = database.execute(
+        "SELECT SUM(trophies) AS total, COUNT(trophies) AS counted FROM matches WHERE user_id = %s", (user_id,),
+    ).fetchone()
+    payload = (link["payload"] if link else None) or {}
     trophy = payload.get("trophy")
     badge = {"icon": trophy.get("icon"), "level": trophy.get("level")} if trophy else None
     if trophy and trophy.get("total") is not None:
-        trophy_total = {"total": trophy["total"], "source": "profile"}
+        total = {"total": trophy["total"], "source": "profile"}
     elif recorded and recorded["counted"]:
-        trophy_total = {"total": max(0, int(recorded["total"] or 0)), "source": "matches"}
+        total = {"total": max(0, int(recorded["total"] or 0)), "source": "matches"}
     else:
-        trophy_total = None
-    return {**stats.overview(records, len(candidates) - len(records), scope), "trophy_badge": badge, "trophy_total": trophy_total}
+        total = None
+    return {"trophy_badge": badge, "trophy_total": total}
+
+
+@app.get("/api/profile")
+def my_profile(request: Request, user=Depends(current_user)):
+    """「我的主页」：账号生涯汇总，不受筛选影响；疑似直接退出的对局不计入。"""
+    with request.app.state.pool.connection() as database:
+        rows = database.execute(
+            "SELECT played_at, play, difficulty, result, strategy, kills, duration_seconds, suspected_exit, bonds, operators "
+            "FROM matches WHERE user_id = %s ORDER BY played_at, id", (user["id"],),
+        ).fetchall()
+        link = database.execute("SELECT nickname, payload FROM achv_links WHERE user_id = %s", (user["id"],)).fetchone()
+        trophies = trophy_summary(database, user["id"])
+    kept = [row for row in rows if not row["suspected_exit"]]
+    payload = (link["payload"] if link else None) or {}
+    player = payload.get("player") or {}
+    # 只给展示用的字段：不返回 uid、手机号、令牌。
+    account = {
+        "nickname": player.get("nickname") or (link["nickname"] if link else None),
+        "nick_number": player.get("nick_number"),
+        "level": player.get("level"),
+        "likes": payload.get("likes"),
+        "titles": len(payload.get("titles") or []),
+    } if link else None
+    return {
+        "username": user["username"], "account": account, **trophies,
+        **profile.summarize(kept, len(rows) - len(kept), datetime.now(CHINA).date()),
+    }
 
 
 def daily_review_data(request, day, user_id):

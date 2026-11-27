@@ -170,7 +170,7 @@ const levelBands = [
           <figcaption>橙色态</figcaption>
         </figure>
         <figure>
-          <img src="/art/hidden-boss-mark-white.png" width="132" height="103" alt="白色剪影">
+          <img class="icon-on-dark" src="/art/hidden-boss-mark-white.png" width="132" height="103" alt="白色剪影">
           <figcaption>白色剪影</figcaption>
         </figure>
         <figure>
@@ -207,3 +207,8 @@ const levelBands = [
     </div>
   </section>
 </template>
+
+<style scoped>
+/* 白色剪影在浅色背景上会消失，垫一块深色底。 */
+.icon-on-dark { box-sizing: content-box; padding: 6px; border-radius: 4px; background: #1b2230; }
+</style>
