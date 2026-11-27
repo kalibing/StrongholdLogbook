@@ -2,7 +2,7 @@
  * 卫戍协议 · 作战档案 —— 全局样式
  *
  * 设计取向（参照明日方舟 / 卫戍协议的界面语言）：
- * - 功能优先、克制：带墨绿的近黑底，白字，黄绿主色只出现在「当前 / 选中 / 关键数字」；
+ * - 功能优先、克制：青黑底，白字，柠檬黄绿主色只出现在「当前 / 选中 / 关键数字」；
  * - 层级靠明度阶梯和细线，不靠圆角和大阴影；直角为主（2px），浮层才用毛玻璃；
  * - 数据块：小号灰色标签在上，大号窄体数字在下，左对齐；
  * - 区块标题前有一个实心小方块；选中态是实色填充 + 深色字（方舟的选中按钮就是这样）；
@@ -12,28 +12,28 @@
 /* ---------- 设计变量 ---------- */
 :root {
   color-scheme: dark;
-  /* 卫戍协议的青黑底：底色带一点墨绿，黄绿（荧光柠檬绿）作主色，薄荷青作 HUD 辅色，琥珀只用于警示。 */
-  --bg: #0a0e0c;
-  --panel: #111714;
-  --raised: #18201c;
-  --inset: #0d1210;
-  --line: #222c27;
-  --line-strong: #33403a;
-  --control-line: #3e4c45;
-  --text: #eef3ef;
-  --text-2: #bfcac4;
-  --muted: #86948d;
-  --accent: #bde05c;
-  --accent-ink: #0f1608;
-  --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent);
-  --hud: #47d6bb;
+  /* 卫戍协议配色（沿用 17818c7，改蓝之前的版本）：青黑底、柠檬黄绿主色、薄荷青 HUD 辅色，琥珀只用于警示。 */
+  --bg: #080b0c;
+  --panel: #0f1415;
+  --raised: #141a1b;
+  --inset: #0b0f10;
+  --line: #1f2829;
+  --line-strong: #2e3a3b;
+  --control-line: #354140;
+  --text: #ecf0ee;
+  --text-2: #c6cfcc;
+  --muted: #8d9996;
+  --accent: #e1ea8f;
+  --accent-ink: #12160a;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --hud: #43d8bc;
   --warn: #f2b53a;
-  --win: #7fdcae;
-  --loss: #ff8f9c;
-  --chart-line: #cfe98a;
-  --chart-average: #f2b53a;
-  --chart-grid: #222c27;
-  --chart-label: #18201c;
+  --win: #b9e8b4;
+  --loss: #ffb3ba;
+  --chart-line: #d3d9ff;
+  --chart-average: #7bc9f1;
+  --chart-grid: #2b313b;
+  --chart-label: #1c2028;
   --radius: 2px;
   --side: 224px;
   --layout: 80rem;
@@ -49,26 +49,26 @@
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #edf1ee;
+  --bg: #f1f3f2;
   --panel: #ffffff;
   --raised: #ffffff;
-  --inset: #f3f6f4;
-  --line: #dbe2de;
-  --line-strong: #c2ccc7;
-  --control-line: #b4bfb9;
-  --text: #131a16;
-  --text-2: #37433d;
-  --muted: #63706a;
-  --accent: #557313;
+  --inset: #f4f6f5;
+  --line: #dde3e0;
+  --line-strong: #c6cfcb;
+  --control-line: #b9c4c0;
+  --text: #162022;
+  --text-2: #36423f;
+  --muted: #5b6966;
+  --accent: #62731a;
   --accent-ink: #ffffff;
-  --accent-soft: color-mix(in srgb, var(--accent) 9%, transparent);
-  --hud: #1b8a76;
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --hud: #1d8f7b;
   --warn: #b0670f;
-  --win: #1d6e48;
-  --loss: #b0334a;
-  --chart-line: #557313;
-  --chart-average: #b0670f;
-  --chart-grid: #e5eae7;
+  --win: #216d43;
+  --loss: #a83348;
+  --chart-line: #3f6fb5;
+  --chart-average: #1a658e;
+  --chart-grid: #e4e9ef;
   --chart-label: #ffffff;
 }
 
@@ -77,7 +77,7 @@
 [hidden] { display: none !important; }
 body {
   margin: 0; min-height: 100vh; font-size: 1rem; line-height: 1.55;
-  background: radial-gradient(900px 460px at 92% -12%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 70%) fixed, var(--bg);
+  background: radial-gradient(1000px 480px at 90% -10%, color-mix(in srgb, var(--hud) 6%, transparent), transparent 70%) fixed, var(--bg);
 }
 /* 极细的颗粒噪点：方舟在大面积纯色上加低密度颗粒，避免平涂显得单薄。 */
 body::before {
@@ -214,7 +214,7 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
   isolation: isolate; position: relative; display: grid; align-items: center;
   min-height: 148px; overflow: hidden; margin-bottom: 1.25rem; padding: 1.5rem clamp(1rem, 4vw, 2rem);
   border: 1px solid var(--line); border-radius: var(--radius);
-  background: linear-gradient(110deg, var(--panel) 40%, color-mix(in srgb, var(--panel) 93%, var(--accent)));
+  background: linear-gradient(110deg, var(--panel) 35%, color-mix(in srgb, var(--panel) 90%, var(--hud)));
 }
 /* 左上一道主色短线 + 右下切角：方舟面板最常见的两处点缀，只留这两处。 */
 .heading::before { content: ""; position: absolute; inset: 0 auto auto 0; width: 56px; height: 3px; background: var(--accent); }
@@ -223,10 +223,10 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
   background: linear-gradient(135deg, transparent 50%, var(--line) 50%, var(--line) calc(50% + 1px), var(--bg) calc(50% + 1px));
 }
 .heading-copy { position: relative; z-index: 1; }
-/* 偶尔扫过整个页头的一道主色扫描线，像终端刷新；9 秒里只在前 1.5 秒移动。 */
+/* 偶尔扫过整个页头的一道薄荷青扫描线，像终端刷新；9 秒里只在前 1.5 秒移动。 */
 .heading-scan {
   position: absolute; top: 0; bottom: 0; left: -160px; width: 160px; pointer-events: none; opacity: 0;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 8%, transparent) 75%, color-mix(in srgb, var(--accent) 45%, transparent) 99%, transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--hud) 8%, transparent) 75%, color-mix(in srgb, var(--hud) 45%, transparent) 99%, transparent);
 }
 @media (prefers-reduced-motion: no-preference) {
   .heading-scan { animation: heading-scan 9s cubic-bezier(.5, 0, .3, 1) 1.4s infinite; }
@@ -271,12 +271,13 @@ input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
  * ===================================================================== */
 .filters { display: flex; flex-wrap: wrap; align-items: start; gap: .75rem 1rem; margin-bottom: 1rem; padding: .9rem 1rem; }
 .filter-field { display: grid; min-width: 0; gap: .35rem; color: var(--muted); font-size: .8125rem; letter-spacing: .04em; }
-.filters > .filter-field { width: clamp(9rem, 14vw, 12.5rem); }
-.filters > .date-range-field { flex: 1 1 28rem; width: auto; }
+.filters > .filter-field { width: clamp(9rem, 13.5vw, 12.5rem); }
+/* 基准宽度 = 日期选择器最小宽度 + 快捷区间，图标栏宽度（~1100px）下也能和三个下拉框排在一行。 */
+.filters > .date-range-field { flex: 1 1 25rem; width: auto; }
 .filters .filter-field :is(.n-select, .n-date-picker) { width: 100%; min-width: 0; }
 /* 日期范围与快捷区间同一行：选择器可伸缩，快捷区间是一条和选择器等高的分段条。 */
 .date-range-row { display: flex; align-items: stretch; gap: .5rem; }
-.date-picker-wrap { display: flex; flex: 1 1 13rem; min-width: 11rem; }
+.date-picker-wrap { display: flex; flex: 1 1 13rem; min-width: 12.5rem; }
 .date-picker-wrap .n-date-picker { width: 100%; }
 .date-presets {
   display: inline-grid; flex: none; grid-auto-flow: column; gap: 1px; overflow: hidden;

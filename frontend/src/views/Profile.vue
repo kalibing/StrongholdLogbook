@@ -180,7 +180,7 @@ async function removeAvatar() {
 .profile-error { color: var(--loss); font-size: .85rem; }
 
 .profile-facts { display: grid; gap: .4rem; margin: 0; }
-.profile-facts > div { display: grid; grid-template-columns: 5rem minmax(0, 1fr); align-items: baseline; gap: .75rem; }
+.profile-facts > div { display: grid; grid-template-columns: 4rem minmax(0, 1fr); align-items: baseline; gap: .75rem; }
 .profile-facts dt { color: var(--muted); font-size: .85rem; }
 .profile-facts dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; margin: 0; font-weight: 600; }
 .profile-facts small { font-weight: 400; font-size: .78rem; }

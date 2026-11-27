@@ -164,9 +164,12 @@ const heatSummary = computed(() => {
 
 /* —— 活跃热力图：近 20 周，固定格子大小；右侧是这段时间的小结 —— */
 .career {
-  --heat-0: var(--inset); --heat-1: #1f2f17; --heat-2: #3c5a1c; --heat-3: #7a9e2c; --heat-4: #bde05c;
+  --heat-0: var(--inset);
+  --heat-1: color-mix(in srgb, var(--accent) 28%, var(--inset));
+  --heat-2: color-mix(in srgb, var(--accent) 52%, var(--inset));
+  --heat-3: color-mix(in srgb, var(--accent) 76%, var(--inset));
+  --heat-4: var(--accent);
 }
-:root[data-theme='light'] .career { --heat-1: #e2ecc6; --heat-2: #bcd47c; --heat-3: #85a531; --heat-4: #557313; }
 /* 左边方格热力图（固定格子大小），右边三项小结竖排、占满剩余宽度。 */
 .career-activity { display: flex; align-items: stretch; gap: clamp(1rem, 3vw, 2rem); margin-top: 1rem; }
 .career-heat-wrap { display: flex; flex: none; gap: .5rem; max-width: 100%; overflow-x: auto; }
@@ -208,11 +211,14 @@ const heatSummary = computed(() => {
 @media (max-width: 980px) {
   .career-grid { grid-template-columns: 1fr; }
 }
-@media (max-width: 730px) {
+/* 热力图固定约 545px 宽，加上右侧小结（至少 12rem）需要 ~830px 视口；再窄就把小结挪到下方横排。 */
+@media (max-width: 840px) {
   .career-activity { flex-direction: column; }
   .career-heat-summary { grid-template-rows: none; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; }
   .career-heat-summary div { display: grid; justify-content: start; gap: .15rem; padding: .55rem .7rem; }
   .career-heat-summary small { display: none; }
+}
+@media (max-width: 730px) {
   .career-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .career-boxes--three { grid-template-columns: 1fr; }
 }

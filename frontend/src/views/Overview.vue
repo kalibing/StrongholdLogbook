@@ -378,8 +378,11 @@ function openMatch(id: string) {
   }
   .overview-panel-enter-from { opacity: 0; transform: translateY(7px); }
 }
+/* 窄屏五个分段排成 3 + 2：六等分网格，第一行每格占 2 份，第二行每格占 3 份，不留空格子。 */
 @media (max-width: 540px) {
-  .overview-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .overview-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .overview-cards label { grid-column: span 2; }
+  .overview-cards label:nth-child(n + 4) { grid-column: span 3; }
 }
 .trend-scope { width: 8rem; }
 /* 常用策略沿用「常用盟约」的卡片样式，只是网格单独声明。 */
