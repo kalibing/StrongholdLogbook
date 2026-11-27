@@ -26,7 +26,7 @@ Write-Host '首次使用请先建账号：cd backend; python -m logbook.admin cr
 
 Start-Process pwsh -ArgumentList @(
     '-NoExit', '-Command',
-    "Set-Location '$root\backend'; & '$python' -m uvicorn logbook.api:app --host 127.0.0.1 --port 8000 --reload"
+    "Set-Location '$root\backend'; & '$python' -m uvicorn logbook.api:app --host 127.0.0.1 --port 8010 --reload"
 )
 
 if (-not $NoWorker) {
@@ -41,4 +41,4 @@ Start-Process pwsh -ArgumentList @(
     "Set-Location '$root\frontend'; npm run dev"
 )
 
-Write-Host '已打开三个窗口：API http://127.0.0.1:8000 、worker、网页 http://localhost:5173'
+Write-Host '已打开三个窗口：API http://127.0.0.1:8010 、worker、网页 http://localhost:5173'

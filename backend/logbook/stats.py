@@ -13,8 +13,12 @@ def bond_total(row):
     return sum(bond["layers"] for bond in row["bonds"])
 
 
+def active_bonds(rows):
+    return (bond for row in rows for bond in row["bonds"] if bond["layers"] > 0)
+
+
 def peak(rows):
-    bonds = [bond for row in rows for bond in row["bonds"] if bond["layers"] > 0]
+    bonds = list(active_bonds(rows))
     if not bonds:
         return None
     layers = max(bond["layers"] for bond in bonds)
@@ -48,17 +52,22 @@ def chart_points(rows, scope):
         for day, records in groupby(rows, key=day_key):
             group = list(records)
             coins = [r["coins"] for r in group if r["coins"] is not None]
+            wins = sum(r["result"] == "win" for r in group)
             yield {
-                "label": day, "result": None, "layers": max(map(bond_total, group)),
-                "peak": peak(group), "coins": sum(coins) if coins else None,
+                "label": day, "result": None, "wins": wins, "losses": len(group) - wins,
+                "layers": max(map(bond_total, group)),
+                "peak": peak(group), "average_bond_layers": average(active_bonds(group), "layers"),
+                "coins": sum(coins) if coins else None,
                 "average_coins": average(group, "coins"),
                 "kills": average(group, "kills"), "rounds": average(group, "rounds"),
             }
         return
     for row in (rows[-10:] if scope == "recent" else rows):
         yield {
+            "match_id": row.get("id"),
             "label": row["played_at"].astimezone(CHINA).isoformat(), "result": row["result"],
-            "layers": bond_total(row), "peak": peak([row]), "coins": row["coins"],
+            "layers": bond_total(row), "peak": peak([row]),
+            "average_bond_layers": average(active_bonds([row]), "layers"), "coins": row["coins"],
             "kills": row["kills"], "rounds": row["rounds"],
         }
 
@@ -66,12 +75,12 @@ def chart_points(rows, scope):
 def overview(rows, excluded, scope):
     with_squad, operators = operator_stats(rows)
     bonds = defaultdict(list)
-    for row in rows:
-        for bond in row["bonds"]:
-            if bond["layers"] > 0:
-                bonds[bond["name"]].append(bond["layers"])
-    ordered_bonds = sorted(bonds, key=lambda name: (-len(bonds[name]), -sum(bonds[name]), name))
+    for bond in active_bonds(rows):
+        bonds[bond["name"]].append(bond["layers"])
+    bond_totals = {name: sum(layers) for name, layers in bonds.items()}
+    ordered_bonds = sorted(bonds, key=lambda name: (-len(bonds[name]), -bond_totals[name], name))
     coins = [row["coins"] for row in rows if row["coins"] is not None]
+    trophies = [change for row in rows if (change := row.get("trophies")) is not None]
     return {
         "matches": len(rows),
         "wins": sum(row["result"] == "win" for row in rows),
@@ -82,10 +91,13 @@ def overview(rows, excluded, scope):
         "max_layers": max(map(bond_total, rows), default=None),
         "peak": peak(rows),
         "total_coins": sum(coins) if coins else None,
+        "trophy_change": sum(trophies) if trophies else None,
         "average_coins": average(rows, "coins"),
         "with_squad": with_squad,
         "operators": sorted(operators, key=lambda row: (-row["count"], row["name"]))[:6],
         "bonds": [{"name": name, "count": len(bonds[name]),
-                   "average": round(sum(bonds[name]) / len(bonds[name]), 1)} for name in ordered_bonds[:8]],
+                   "average": round(bond_totals[name] / len(bonds[name]), 1)} for name in ordered_bonds[:8]],
+        "bond_layers": [{"name": name, "layers": layers}
+                        for name, layers in sorted(bond_totals.items(), key=lambda item: (-item[1], item[0]))],
         "points": list(chart_points(rows, scope)),
     }

@@ -119,6 +119,42 @@ const samples = [
 
   <section class="panel table-panel">
     <div class="split table-heading">
+      <h2>隐藏首领标记</h2>
+      <span class="period">ui/autochess · icon_boss_sp</span>
+    </div>
+    <div class="icon-gallery">
+      <p class="muted">
+        原包里是两套素材，不是一张图染两种色：<code>boss_sp_icon</code>（364×260，青主体 + 橙黄点缀）、
+        <code>icon_boss_sp_white</code>（274×215，白色剪影）、<code>icon_boss_sp_tiny</code>（80×76，战斗内小号）。
+        橙色态 = 白色剪影上色，形状与青色版完全一致。
+      </p>
+      <div class="icon-row">
+        <figure>
+          <img src="/art/hidden-boss-mark.png" width="132" height="99" alt="隐藏首领标记（青）">
+          <figcaption>彩色（青）</figcaption>
+        </figure>
+        <figure>
+          <img src="/art/hidden-boss-mark-orange.png" width="132" height="103" alt="隐藏首领标记（橙）">
+          <figcaption>橙色态</figcaption>
+        </figure>
+        <figure>
+          <img src="/art/hidden-boss-mark-white.png" width="132" height="103" alt="白色剪影">
+          <figcaption>白色剪影</figcaption>
+        </figure>
+        <figure>
+          <img src="/art/hidden-boss-mark-tiny.png" width="67" height="59" alt="小号">
+          <figcaption>tiny 67×59</figcaption>
+        </figure>
+        <figure>
+          <span class="dist-total">总 6 场<span class="dist-hidden"><img src="/art/hidden-boss-mark.png" alt="">隐藏 1</span></span>
+          <figcaption>行内效果（13px）</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel table-panel">
+    <div class="split table-heading">
       <h2>对照表</h2>
       <span class="period">{{ tiers.length }} 项</span>
     </div>

@@ -87,7 +87,7 @@ erDiagram
 | `id` | `uuid PK` | `TEXT PK` | 任务 ID |
 | `role_id` | `uuid FK` | `TEXT FK` | 归属档案 |
 | `status` | `text CHECK ('pending','done','failed')` | 同 | 状态机 |
-| `payload` | `jsonb NOT NULL` | `TEXT NOT NULL` | 校验后的对局数组，写入后置 `[]` |
+| `payload` | `jsonb NOT NULL` | `TEXT NOT NULL` | 包含 `matches` 的快照，写入后置 `[]`。旧队列也支持直接存数组 |
 | `total` | `integer NOT NULL` | 同 | 本批局数 |
 | `processed` | `integer DEFAULT 0` | 同 | 已写入局数 |
 | `error` | `text` | 同 | 失败原因 |
@@ -126,7 +126,7 @@ erDiagram
 | `squad` | `[{id, name, items[]}]`，≤150 项 | `[{"id": "char_1012_skadi2", "name": "浊心斯卡蒂", "items": ["chess_item_4_09"]}]` |
 | `operators` | `[{id, name}]`，按局去重 | 省略时由 `squad` 派生 |
 | `bosses` | `[name]`，≤50 项 | `["霜星", "泥岩"]` |
-| `payload` | 校验后的对局数组（1–5000） | 成功写入后置 `[]` |
+| `payload` | `{matches: [...]}`，保留导入时提供的字段（1–5000 局） | 成功写入后置 `[]` |
 
 ## 方言差异
 

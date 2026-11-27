@@ -161,6 +161,7 @@ def test_api_connect_and_read(client, monkeypatch):
     monkeypatch.setattr(hypergryph, "player_summary", lambda code: json.loads(json.dumps(SUMMARY)))
     assert client.get("/api/achv/status").json()["connected"] is False
     assert client.get("/api/achv/summary").status_code == 404
+    assert client.get("/api/overview").json()["trophy_badge"] is None
 
     response = client.post("/api/achv/session", json={"token": "code=" + TOKEN}, headers=HEADERS)
     assert response.status_code == 200, response.text
@@ -172,6 +173,19 @@ def test_api_connect_and_read(client, monkeypatch):
     summary = client.get("/api/achv/summary").json()
     assert summary["data"]["bands"]["summary"]["mastered"] == 1
     assert summary["warning"] is None
+    assert client.get("/api/overview").json()["trophy_badge"] == {"icon": "trophy_level8_icon", "level": 8}
+
+    with storage.connect() as database:
+        database.execute("INSERT INTO users (id, username, password_hash) VALUES (%s, %s, %s)",
+                         (uuid4(), "another-user", hasher.hash(PASSWORD)))
+        assert TOKEN not in database.execute("SELECT u8_token FROM achv_links").fetchone()["u8_token"]
+    other = TestClient(app)
+    assert other.post("/api/session", json={"username": "another-user", "password": PASSWORD},
+                      headers=HEADERS).status_code == 200
+    assert other.get("/api/achv/status").json()["connected"] is False
+    assert other.get("/api/achv/summary?refresh=true").status_code == 404
+    assert other.delete("/api/achv/session", headers=HEADERS).status_code == 204
+    assert client.get("/api/achv/status").json()["connected"] is True
 
     assert client.delete("/api/achv/session", headers=HEADERS).status_code == 204
     assert client.get("/api/achv/status").json()["connected"] is False
@@ -194,20 +208,49 @@ def test_api_requires_login(tmp_path, monkeypatch):
         assert test_client.get("/api/achv/status").status_code == 401
 
 
-def test_summary_refreshes_when_stale(client, monkeypatch):
+def test_connect_does_not_echo_credentials_in_validation_or_upstream_errors(client, monkeypatch):
+    too_long = "credential-that-must-stay-private" * 300
+    response = client.post("/api/achv/session", json={"token": too_long}, headers=HEADERS)
+    assert response.status_code == 422
+    assert "credential-that-must-stay-private" not in response.text
+
+    monkeypatch.setattr(hypergryph, "_request",
+                        lambda *_: (200, json.dumps({"status": 1, "msg": f"访问失败 {TOKEN}"})))
+    response = client.post("/api/achv/session", json={"token": TOKEN}, headers=HEADERS)
+    assert response.status_code == 424
+    assert TOKEN not in response.text
+
+
+def test_summary_reads_saved_profile_until_explicitly_refreshed(client, monkeypatch):
     monkeypatch.setattr(hypergryph, "player_summary", lambda code: json.loads(json.dumps(SUMMARY)))
     assert client.post("/api/achv/session", json={"token": "code=" + TOKEN}, headers=HEADERS).status_code == 200
 
     stale = dict(SUMMARY)
     stale["beLike"] = 200
+    stale["trophyLevel"] = 3
+    stale["careerTrophy"] = {"act3autochess": {"iconId": "trophy_level3_icon"}}
+    calls = []
 
-    monkeypatch.setattr(hypergryph, "player_summary", lambda code: json.loads(json.dumps(stale)))
+    def fetch_updated_summary(code):
+        calls.append(code)
+        return json.loads(json.dumps(stale))
+
+    monkeypatch.setattr(hypergryph, "player_summary", fetch_updated_summary)
     with storage.connect() as database:
         database.execute("UPDATE achv_links SET fetched_at = %s",
                          (datetime(2020, 1, 1, tzinfo=timezone.utc),))
     body = client.get("/api/achv/summary").json()
+    assert body["data"]["likes"] == 149
+    assert body["state"]["stale"] is True
+    assert calls == []
+
+    body = client.get("/api/achv/summary?refresh=true").json()
     assert body["data"]["likes"] == 200
     assert body["state"]["stale"] is False
+    assert len(calls) == 1
+    assert client.get("/api/overview").json()["trophy_badge"] == {"icon": "trophy_level3_icon", "level": 3}
+    assert client.get("/api/achv/summary").json()["data"]["likes"] == 200
+    assert len(calls) == 1
 
 
 # ---------------------------------------------------------------- 网页登录代理
@@ -285,11 +328,9 @@ def test_api_connect_with_access_token(client, monkeypatch):
     assert client.get("/api/achv/status").json()["source"] == "hypergryph"
 
 
-def test_hg_proxy_requires_no_origin(client):
-    """代理路由不受本站 Origin 校验影响（请求来自官方页面）。"""
-    response = client.get("/hg/", follow_redirects=False)
-    assert response.status_code == 302
-    assert response.headers["location"] == "/hg/user/login"
+def test_proxy_and_capture_routes_are_unavailable(client):
+    assert client.get("/hg/", follow_redirects=False).status_code == 404
+    assert client.get("/api/hg/capture").status_code == 404
 
 
 # ---------------------------------------------------------------- 抓包导入
@@ -308,28 +349,22 @@ def test_capture_ingest_and_candidates():
     capture.RECENT.clear()
 
 
-def test_report_endpoint_rejects_foreign_client(client):
-    """Reqable 上报只接受本机回环；TestClient 的 client.host 是 testclient。"""
+def test_report_endpoint_is_unavailable(client):
     capture.RECENT.clear()
     response = client.post("/api/hg/report", content=HAR.encode(),
-                           headers={"Content-Type": "application/json"})
-    assert response.status_code == 403
+                           headers={**HEADERS, "Content-Type": "application/json"})
+    assert response.status_code == 404
     assert capture.recent() == []
 
 
 def test_api_import_capture(client, monkeypatch):
     capture.RECENT.clear()
     capture.ingest(HAR)
-    seen = {}
-
     def fake_summary(code):
-        seen["code"] = code
-        return json.loads(json.dumps(SUMMARY))
+        pytest.fail("A shared capture must never be used to bind a website account")
 
     monkeypatch.setattr(hypergryph, "player_summary", fake_summary)
     response = client.post("/api/achv/import-capture", json={}, headers=HEADERS)
-    assert response.status_code == 200, response.text
-    assert response.json()["source_file"] == "reqable-report"
-    assert seen["code"].endswith("+tail")
-    assert client.get("/api/achv/status").json()["connected"] is True
+    assert response.status_code == 404
+    assert client.get("/api/achv/status").json()["connected"] is False
     capture.RECENT.clear()

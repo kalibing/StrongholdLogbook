@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from logbook.records import MatchInput, read_snapshot
+from logbook.skland import to_snapshot
 
 
 def test_modern_snapshot_keeps_every_field(sample_snapshot):
@@ -117,3 +118,18 @@ def test_result_and_limits_are_enforced():
             external_id="e1", played_at=datetime(2026, 11, 1, 8, 0, tzinfo=timezone.utc),
             play="独立模拟", difficulty="规程等级 1", result="win", kills=-1,
         )
+
+
+def test_skland_elite_flag_follows_current_chess_id():
+    normal = "chess_char_2_11_a"
+    golden = "chess_char_2_11_b"
+    info = {"charId": "char_4165_ctrail", "goldenChessId": golden, "evolvePhase": 2}
+    snapshot = to_snapshot([{
+        "id": "sample", "gameStartTs": 1795290440,
+        "chessSquad": [
+            {"chessId": normal, "chessInfo": {**info, "id": normal}},
+            {"chessInfo": {**info, "id": golden}},
+            {"chessId": golden, "chessInfo": {"charId": "char_4165_ctrail"}},
+        ],
+    }])
+    assert [unit["elite"] for unit in snapshot["matches"][0]["squad"]] == [False, True, None]

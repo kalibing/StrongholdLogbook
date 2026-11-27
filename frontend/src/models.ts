@@ -10,13 +10,16 @@ export interface Filters {
   include_exits: boolean
 }
 export type Result = 'win' | 'loss'
-export type Scope = 'recent' | 'all' | 'day'
 export interface Peak { layers: number; names: string[] }
 export interface Point {
+  match_id?: string | null
   label: string
   result: Result | null
+  wins?: number
+  losses?: number
   layers: number
   peak: Peak | null
+  average_bond_layers?: number | null
   coins: number | null
   average_coins?: number | null
   kills: number | null
@@ -31,7 +34,10 @@ export interface Operator {
   usage_rate: number
   win_rate: number
 }
+export interface TrophyBadge { icon: string | null; level: number | null }
 export interface Overview {
+  trophy_change: number | null
+  trophy_badge: TrophyBadge | null
   matches: number
   wins: number
   excluded: number
@@ -45,6 +51,7 @@ export interface Overview {
   with_squad: number
   operators: Operator[]
   bonds: { name: string; count: number; average: number }[]
+  bond_layers: BondLayers[]
   points: Point[]
 }
 export interface Match {
@@ -62,16 +69,37 @@ export interface Match {
   coins: number | null
   suspected_exit: boolean
 }
-export interface MatchSummary extends Match { bond_layers: number }
+export interface BondLayers { name: string; layers: number }
+export interface MatchSummary extends Match {
+  bond_layers: number
+  bonds?: BondLayers[]
+  bosses?: string[]
+}
 export interface MatchDetail extends Match {
   sync_count: number | null
   trophies: number | null
   duration_seconds: number | null
-  bonds: { name: string; layers: number }[]
+  bonds: BondLayers[]
   squad: { id: string; name: string; items: string[]; elite?: boolean | null; evolve?: number | null }[]
   bosses: string[]
 }
 export interface MatchPage { page: number; pages: number; total: number; matches: MatchSummary[] }
+export interface ReviewMetrics { matches: number; average_layers: number | null; average_rounds: number | null }
+type ReviewMatch = Pick<Match, 'id' | 'played_at' | 'play' | 'difficulty' | 'rounds'>
+export interface DailyReview {
+  bonds: BondLayers[]
+  wins: ReviewMetrics
+  losses: ReviewMetrics
+  boss_matches: number
+  normal_matches: number
+  hidden_matches: number
+  bosses: { name: string; matches: number; hidden: boolean }[]
+  longest_win_streak: number
+  total_duration_seconds: number | null
+  latest_loss: ReviewMatch | null
+  most_kills: (ReviewMatch & { kills: number }) | null
+  ai_available: boolean
+}
 export interface ImportJob {
   id: string
   status: 'pending' | 'done' | 'failed'
@@ -87,6 +115,10 @@ export interface DistributionBucket {
   wins: number
   losses: number
   total: number
+  /** 其中击破隐藏首领、普通首领，以及击破首领后落败的场次 */
+  hidden?: number
+  normal_boss?: number
+  boss_losses?: number
 }
 export interface DistributionGroup {
   play: string
@@ -175,7 +207,7 @@ export interface AchvSeason {
 }
 export interface AchvProfile {
   player: AchvPlayer
-  trophy: { total: number; level: number; icon: string | null }
+  trophy: TrophyBadge & { total: number }
   likes: number
   dimensions: AchvDimension[]
   titles: AchvTitle[]

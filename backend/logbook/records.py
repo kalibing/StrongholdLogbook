@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, time, timedelta, timezone
 from hashlib import sha256
 from typing import Annotated, Literal
@@ -5,7 +6,19 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints, TypeAdapter, field_validator, model_validator
 
 CHINA = timezone(timedelta(hours=8))
+DEFAULT_PROTOCOL = "V3_1"
 Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=180)]
+BAND_PATTERN = re.compile(r"^\s*(?P<strategy>.+?)\s*[（(]\s*(?P<initiator>.+?)\s*[)）]\s*$")
+
+def split_band(value: str | None) -> tuple[str | None, str | None]:
+    """分队字段可能写成「策略(发起干员)」，拆成策略名与角色名。"""
+    if not value:
+        return None, None
+    matched = BAND_PATTERN.match(value)
+    if not matched:
+        # 「近卫分队」这类只是分队名，既不是策略也不是发起干员
+        return None, None
+    return matched.group("strategy") or None, matched.group("initiator") or None
 Stat = Annotated[int, Field(ge=0, le=2_147_483_647)]
 SignedStat = Annotated[int, Field(ge=-2_147_483_648, le=2_147_483_647)]
 
@@ -29,7 +42,7 @@ class Unit(Operator):
 class MatchInput(BaseModel):
     external_id: Label
     played_at: datetime
-    protocol: Label = "V3_1"
+    protocol: Label = DEFAULT_PROTOCOL
     play: Label
     difficulty: Label
     result: Literal["win", "loss"]
@@ -58,11 +71,20 @@ class MatchInput(BaseModel):
     @model_validator(mode="after")
     def defaults_from_match(self):
         if self.suspected_exit is None:
-            self.suspected_exit = self.rounds == self.kills == self.coins == 0
+            object.__setattr__(self, "suspected_exit", self.rounds == self.kills == self.coins == 0)
         if not self.operators:
-            self.operators = [Operator(id=unit.id, name=unit.name) for unit in self.squad]
-        self.operators = list({operator.id: operator for operator in self.operators}.values())
+            operators = [Operator(id=unit.id, name=unit.name) for unit in self.squad]
+        else:
+            operators = self.operators
+        object.__setattr__(self, "operators", list({operator.id: operator for operator in operators}.values()))
         return self
+
+    def import_payload(self):
+        # Keep field presence so the worker can distinguish absent data from an empty list.
+        payload = self.model_dump(mode="json", exclude_unset=True)
+        if "operators" not in payload and "squad" in payload:
+            payload["operators"] = [operator.model_dump(mode="json") for operator in self.operators]
+        return payload
 
 
 MatchList = TypeAdapter(Annotated[list[MatchInput], Field(min_length=1, max_length=5000)])
@@ -94,22 +116,29 @@ def read_snapshot(payload: object) -> list[MatchInput]:
             for unit_id, name, items in row.get("阵容", [])
         ]
         known_names = {unit["id"]: unit["name"] for unit in squad}
-        return {
+        normalized = {
             "external_id": external_id, "played_at": played_at,
             "play": row["方式"], "difficulty": row["模式"],
             "result": {"胜": "win", "负": "loss"}[row["结果"]],
-            "scenario": row.get("分队") or None, "strategy": row.get("策略") or None,
-            "initiator": row.get("发起者") or None,
+            "scenario": row.get("分队") or None,
+            "strategy": row.get("策略") or split_band(row.get("分队"))[0],
+            "initiator": row.get("发起者") or split_band(row.get("分队"))[1],
             "rounds": row.get("回合"), "kills": row.get("击杀"), "coins": row.get("金币"),
             "sync_count": row.get("同步"), "trophies": row.get("奖杯增益"),
             "duration_seconds": row.get("时长"), "suspected_exit": row.get("疑似退出"),
-            "bonds": [{"name": bond[0], "layers": bond[1]} for bond in row.get("盟约", [])],
-            "operators": [
-                {"id": item, "name": dictionary_name(operators, item, known_names.get(item, item))}
-                for item in row.get("干员", [])
-            ],
-            "squad": squad, "bosses": row.get("首领", []),
         }
+        if "盟约" in row:
+            normalized["bonds"] = [{"name": bond[0], "layers": bond[1]} for bond in row["盟约"]]
+        if "干员" in row:
+            normalized["operators"] = [
+                {"id": item, "name": dictionary_name(operators, item, known_names.get(item, item))}
+                for item in row["干员"]
+            ]
+        if "阵容" in row:
+            normalized["squad"] = squad
+        if "首领" in row:
+            normalized["bosses"] = row["首领"]
+        return normalized
 
     def modern(row):
         """现代快照：用字典把干员 ID 与装备 ID 补成名称，接口因此直接可展示。"""
@@ -122,10 +151,16 @@ def read_snapshot(payload: object) -> list[MatchInput]:
                 {
                     **unit,
                     "name": unit.get("name") or dictionary_name(operators, unit.get("id"), unit.get("id")),
-                    "items": [dictionary_name(equipment, item, item) for item in (unit.get("items") or [])],
+                    **({"items": [dictionary_name(equipment, item, item) for item in (unit["items"] or [])]}
+                       if "items" in unit else {}),
                 } if isinstance(unit, dict) else unit
                 for unit in squad
             ]
+        if not normalized.get("initiator"):
+            band_strategy, band_initiator = split_band(normalized.get("scenario") or normalized.get("strategy"))
+            if band_initiator:
+                normalized["initiator"] = band_initiator
+                normalized["strategy"] = band_strategy
         listed = normalized.get("operators")
         if isinstance(listed, list):
             normalized["operators"] = [

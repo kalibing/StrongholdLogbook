@@ -29,7 +29,12 @@ services:
 
   api:
     build: ./backend
-    environment: *database
+    environment:
+      <<: *database
+      LOGBOOK_CREDENTIAL_KEY: ${LOGBOOK_CREDENTIAL_KEY:?Set LOGBOOK_CREDENTIAL_KEY in .env}
+      LOGBOOK_AI_ENDPOINT: ${LOGBOOK_AI_ENDPOINT:-}
+      LOGBOOK_AI_MODEL: ${LOGBOOK_AI_MODEL:-}
+      LOGBOOK_AI_API_KEY: ${LOGBOOK_AI_API_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -1,6 +1,7 @@
 .git
 .env
 .env.*
+**/*.credentials.key
 .venv
 private
 **/node_modules

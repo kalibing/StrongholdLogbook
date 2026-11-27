@@ -1,21 +1,25 @@
+from collections import Counter
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
-from threading import Lock
+import re
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
-from . import achievements, capture, hgproxy, hypergryph, skland, stats
+from . import achievements, daily_review, hypergryph, skland, stats
 from .config import settings
+from .credentials import ACHIEVEMENTS, SKLAND, CredentialStorageError, initialize_vault
 from .db import connection_pool
 from .errors import UniqueConflict
-from .records import Filters, read_snapshot
+from .records import CHINA, Filters, read_snapshot
 from .security import COOKIE, SESSION_TTL, USERNAME_PATTERN, dummy_hash, hasher, new_session, session_hash, verify_password
 from .storage import json_param
 
@@ -33,6 +37,8 @@ async def lifespan(application):
     pool.open()
     application.state.pool = pool
     try:
+        with pool.connection() as database:
+            application.state.credentials = initialize_vault(database)
         yield
     finally:
         pool.close()
@@ -43,12 +49,8 @@ app = FastAPI(title="卫戍协议战绩档案", docs_url=None, redoc_url=None, o
 
 @app.middleware("http")
 async def protect_requests(request: Request, call_next):
-    # /hg/* 是鹰角通行证登录页的反向代理，请求由官方页面自己发出，不校验本站 Origin。
-    proxied = (request.url.path == "/hg" or request.url.path.startswith("/hg/")
-               or request.url.path == "/api/hg/report")
     if (
-        not proxied
-        and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        request.method in {"POST", "PUT", "PATCH", "DELETE"}
         and request.headers.get("origin") != settings.public_origin
     ):
         response = JSONResponse({"detail": "请求来源无效"}, 403)
@@ -58,13 +60,17 @@ async def protect_requests(request: Request, call_next):
     return response
 
 
-app.include_router(hgproxy.router)
-app.include_router(hgproxy.capture_router)
-
-
 @app.exception_handler(PoolTimeout)
 async def database_unavailable(_request, _error):
     return JSONResponse({"detail": "数据库暂不可用，请稍后重试"}, 503)
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request: Request, error: RequestValidationError):
+    if request.method == "POST" and request.url.path in {"/api/session", "/api/achv/session"}:
+        # Pydantic's default validation response includes the submitted input.
+        return JSONResponse({"detail": "凭据格式或长度无效"}, status_code=422)
+    return await request_validation_exception_handler(request, error)
 
 
 class Login(BaseModel):
@@ -153,24 +159,20 @@ def directory(request: Request, user=Depends(current_user)):
     return {"operators": [{"id": key, "name": value} for key, value in sorted(names.items(), key=lambda item: item[1])]}
 
 
-SOLO_RANGES = (
-    (1, 4, "规程等级 1–4"),
-    (5, 8, "规程等级 5–8"),
-    (9, 14, "规程等级 9–14"),
-    (15, 20, "规程等级 15–20"),
-)
+# PRTS「卫戍协议·规程」逐级列出规程等级，并单列极速模拟。
+SOLO_TIERS = ("极速模拟", *(f"规程等级 {level}" for level in range(1, 21)))
 UNION_TIERS = ("标准模拟", "险境模拟", "绝境模拟", "终极模拟")
+LEGACY_TIERS = ("入门协议", "同盟模拟")
+DIFFICULTY_ORDER = {
+    "联合模拟": (*LEGACY_TIERS, *UNION_TIERS),
+    "独立模拟": (*SOLO_TIERS, *LEGACY_TIERS, *UNION_TIERS),
+}
 
 
-def distribution_label(play: str, difficulty: str) -> str | None:
-    """把难度归到展示分档；没有对应分档的返回 None（不展示「其他」）。"""
-    if play == "联合模拟":
-        return difficulty if difficulty in UNION_TIERS else None
-    for low, high, label in SOLO_RANGES:
-        level = difficulty.replace("规程等级", "").strip()
-        if level.isdigit() and low <= int(level) <= high:
-            return label
-    return "极速模拟" if difficulty == "极速模拟" else None
+def distribution_label(play: str, difficulty: str) -> str:
+    level = re.fullmatch(r"规程等级\s*(\d{1,2})", difficulty)
+    label = f"规程等级 {int(level[1])}" if level else difficulty
+    return label if label in DIFFICULTY_ORDER.get(play, ()) else "其他难度"
 
 
 @app.get("/api/facets")
@@ -188,27 +190,36 @@ def distribution(request: Request, filters: Annotated[Filters, Depends()], user=
     where, params = filters.sql(user["id"])
     with request.app.state.pool.connection() as database:
         rows = database.execute(
-            f"SELECT play, difficulty, result FROM matches WHERE {where}", params,
+            f"SELECT play, difficulty, result, bosses FROM matches WHERE {where}", params,
         ).fetchall()
 
-    counts: dict[tuple[str, str], list[int]] = {}
+    counts: dict[str, dict[str, Counter[str]]] = {}
     for row in rows:
-        label = distribution_label(row["play"], row["difficulty"])
-        if label is None:
-            continue
-        bucket = counts.setdefault((row["play"], label), [0, 0])
-        bucket[0 if row["result"] == "win" else 1] += 1
+        play = row["play"] if row["play"] in DIFFICULTY_ORDER else "其他模拟方式"
+        label = distribution_label(play, row["difficulty"])
+        bucket = counts.setdefault(play, {}).setdefault(label, Counter())
+        won = row["result"] == "win"
+        bucket["wins" if won else "losses"] += 1
+        boss_types = {"hidden" if hidden else "normal" for hidden in daily_review.defeated_bosses(row["bosses"]).values()}
+        bucket.update(boss_types)
+        if boss_types and not won:
+            bucket["boss_losses"] += 1
 
-    order = {
-        "联合模拟": list(UNION_TIERS),
-        "独立模拟": [label for _, _, label in SOLO_RANGES] + ["极速模拟"],
-    }
     result = []
-    for play in ("联合模拟", "独立模拟"):
+    for play in (*DIFFICULTY_ORDER, "其他模拟方式"):
+        group = counts.get(play)
+        if not group:
+            continue
         buckets = []
-        for label in order[play]:
-            wins, losses = counts.get((play, label), (0, 0))
-            buckets.append({"label": label, "wins": wins, "losses": losses, "total": wins + losses})
+        for label in (*DIFFICULTY_ORDER.get(play, ()), "其他难度"):
+            if label not in group:
+                continue
+            bucket = group[label]
+            buckets.append({
+                "label": label, "wins": bucket["wins"], "losses": bucket["losses"],
+                "total": bucket["wins"] + bucket["losses"], "hidden": bucket["hidden"],
+                "normal_boss": bucket["normal"], "boss_losses": bucket["boss_losses"],
+            })
         result.append({"play": play, "buckets": buckets})
     return result
 
@@ -221,11 +232,44 @@ def overview(
     where, params = filters.model_copy(update={"include_exits": True}).sql(user["id"])
     with request.app.state.pool.connection() as database:
         candidates = database.execute(
-            "SELECT played_at, result, rounds, kills, coins, suspected_exit, bonds, operators "
+            "SELECT id, played_at, result, rounds, kills, coins, trophies, suspected_exit, bonds, operators "
             f"FROM matches WHERE {where} ORDER BY played_at, id", params,
         ).fetchall()
+        profile = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user["id"],)).fetchone()
     records = candidates if filters.include_exits else [row for row in candidates if not row["suspected_exit"]]
-    return stats.overview(records, len(candidates) - len(records), scope)
+    payload = (profile["payload"] if profile else None) or {}
+    trophy = payload.get("trophy")
+    badge = {"icon": trophy.get("icon"), "level": trophy.get("level")} if trophy else None
+    return {**stats.overview(records, len(candidates) - len(records), scope), "trophy_badge": badge}
+
+
+def daily_review_data(request, day, user_id):
+    where, params = Filters(start=day, end=day).sql(user_id)
+    with request.app.state.pool.connection() as database:
+        rows = database.execute(
+            "SELECT id, played_at, result, play, difficulty, rounds, kills, duration_seconds, bonds, bosses "
+            f"FROM matches WHERE {where} ORDER BY played_at DESC, id DESC", params,
+        ).fetchall()
+    return daily_review.summarize(rows)
+
+
+@app.get("/api/daily-review")
+def daily_review_summary(day: date, request: Request, user=Depends(current_user)):
+    return {**daily_review_data(request, day, user["id"]), "ai_available": daily_review.model_config() is not None}
+
+
+@app.post("/api/daily-review")
+def daily_review_analysis(day: date, request: Request, user=Depends(current_user)):
+    config = daily_review.model_config()
+    if config is None:
+        raise HTTPException(503, "战报分析模型尚未配置")
+    recap = daily_review_data(request, day, user["id"])
+    if not recap["wins"]["matches"] and not recap["losses"]["matches"]:
+        raise HTTPException(422, "当天暂无可分析的对局")
+    try:
+        return {"analysis": daily_review.analyze(config, recap)}
+    except ValueError as error:
+        raise HTTPException(502, "分析服务暂未返回有效结果，请稍后重试") from error
 
 
 @app.get("/api/matches")
@@ -234,6 +278,7 @@ def matches(
     result: Literal["win", "loss"] | None = None,
     page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    include_breakdown: bool = False,
     user=Depends(current_user),
 ):
     where, params = filters.sql(user["id"])
@@ -245,14 +290,16 @@ def matches(
         count = database.execute(f"SELECT count(*) AS count FROM matches WHERE {where}", params).fetchone()["count"]
         pages = max(1, (count + limit - 1) // limit)
         page = min(page, pages)
+        columns = READ_COLUMNS + (", bonds, bosses" if include_breakdown else ", bonds")
         rows = database.execute(
-            f"SELECT {READ_COLUMNS}, bonds FROM matches WHERE {where} "
+            f"SELECT {columns} FROM matches WHERE {where} "
             "ORDER BY played_at DESC, id DESC LIMIT %s OFFSET %s",
             [*params, limit, (page - 1) * limit],
         ).fetchall()
     for row in rows:
         row["bond_layers"] = stats.bond_total(row)
-        del row["bonds"]
+        if not include_breakdown:
+            del row["bonds"]
     return {"page": page, "pages": pages, "total": count, "matches": rows}
 
 
@@ -301,7 +348,7 @@ def imports(request: Request, user=Depends(current_user)):
         """, (user["id"],)).fetchall()
 
 
-def queue_import(pool, user_id, content):
+def queue_import(pool, user_id, content, *, sealed_token=None):
     try:
         records = read_snapshot(json.loads(content))
     except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as error:
@@ -316,20 +363,41 @@ def queue_import(pool, user_id, content):
         ).fetchone()["count"]
         if pending >= MAX_PENDING_IMPORTS:
             raise HTTPException(409, "当前有多个导入任务，请稍后重试")
+        payload = {"matches": [record.import_payload() for record in records]}
         database.execute("""
             INSERT INTO import_jobs (id, user_id, status, payload, total)
             VALUES (%s, %s, 'pending', %s, %s)
-        """, (job_id, user_id, json_param([record.model_dump(mode="json") for record in records]), len(records)))
+        """, (job_id, user_id, json_param(payload), len(records)))
+        if sealed_token is not None:
+            database.execute("""
+                INSERT INTO skland_import_tokens (user_id, access_token) VALUES (%s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET access_token = EXCLUDED.access_token
+            """, (user_id, sealed_token))
     return {"id": job_id, "status": "pending", "total": len(records)}
+
+
+@app.get("/api/imports/skland/token")
+def skland_token_status(request: Request, user=Depends(current_user)):
+    with request.app.state.pool.connection() as database:
+        saved = database.execute(
+            "SELECT 1 FROM skland_import_tokens WHERE user_id = %s", (user["id"],),
+        ).fetchone()
+    return {"saved": saved is not None}
+
+
+@app.delete("/api/imports/skland/token", status_code=status.HTTP_204_NO_CONTENT)
+def clear_skland_token(request: Request, user=Depends(current_user)):
+    with request.app.state.pool.connection() as database:
+        database.execute("DELETE FROM skland_import_tokens WHERE user_id = %s", (user["id"],))
 
 
 @app.post("/api/imports/skland", status_code=status.HTTP_202_ACCEPTED)
 async def import_from_skland(request: Request, user=Depends(current_user)):
     """从森空岛拉最新战绩（固定 100 条）并入库。
 
-    必须显式提供凭据（不再读取本机客户端登录态）：
       {"cred": "...", "sign_token": "..."}   —— 森空岛凭据
-      {"token": "<鹰角 access token>"}       —— 只给 token，服务端换 cred
+      {"token": "<鹰角 access token>"}       —— 导入入队后保存 token
+      {"use_saved_token": true}             —— 使用当前账号已保存的 token
     """
     content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
     body: dict = {}
@@ -341,32 +409,61 @@ async def import_from_skland(request: Request, user=Depends(current_user)):
             except (json.JSONDecodeError, UnicodeDecodeError) as error:
                 raise HTTPException(422, "请求体不是合法 JSON") from error
 
+    if not isinstance(body, dict) or any(
+        body.get(field) is not None and not isinstance(body[field], str)
+        for field in ("cred", "sign_token", "token", "season")
+    ):
+        raise HTTPException(422, "导入凭据格式不正确")
+
     cred = (body.get("cred") or "").strip()
     sign_token = (body.get("sign_token") or "").strip()
     access_token = (body.get("token") or "").strip()
     season = (body.get("season") or skland.SEASON).strip()
+    use_saved = body.get("use_saved_token") is True and not (cred or sign_token or access_token)
+    token_to_save = access_token if access_token and not (cred and sign_token) else None
 
-    if not (cred and sign_token) and not access_token:
+    if not use_saved and not (cred and sign_token) and not access_token:
         raise HTTPException(422, "请提供森空岛凭据（cred + sign_token）或鹰角 token")
 
+    pool = request.app.state.pool
+    user_id = user["id"]
+    vault = request.app.state.credentials
+
     def pull() -> dict:
-        nonlocal cred, sign_token
+        pull_cred, pull_sign = cred, sign_token
+        token = access_token
+        if use_saved:
+            with pool.connection() as database:
+                saved = database.execute(
+                    "SELECT access_token FROM skland_import_tokens WHERE user_id = %s", (user_id,),
+                ).fetchone()
+            if saved is None:
+                raise HTTPException(404, "当前账号没有已保存的 token，请重新填写。")
+            try:
+                token = vault.unseal(SKLAND, user_id, saved["access_token"])
+            except CredentialStorageError as error:
+                raise HTTPException(424, "无法读取已保存的 token，请更换后重试。") from error
         try:
-            if not cred or not sign_token:
-                cred, sign_token = skland.cred_from_token(access_token)
-            role = skland.arknights_role(cred, sign_token)
-            records = skland.history(cred, sign_token, role, season)
+            if not pull_cred or not pull_sign:
+                pull_cred, pull_sign = skland.cred_from_token(token)
+            role = skland.arknights_role(pull_cred, pull_sign)
+            records = skland.history(pull_cred, pull_sign, role, season)
             return skland.to_snapshot(records)
+        except skland.AccessTokenRejected as error:
+            if use_saved:
+                raise HTTPException(424, "已保存的 token 无法通过鹰角验证，请更换后重试。") from error
+            raise HTTPException(424, str(error)) from error
         except skland.SklandError as error:
             raise HTTPException(424, str(error)) from error
 
     snapshot = await run_in_threadpool(pull)
     if not snapshot["matches"]:
         raise HTTPException(404, "森空岛没有返回可导入的战绩")
-    job = await run_in_threadpool(queue_import, request.app.state.pool, user["id"],
-                                  json.dumps(snapshot, ensure_ascii=False).encode())
+    sealed_token = vault.seal(SKLAND, user_id, token_to_save) if token_to_save else None
+    job = await run_in_threadpool(queue_import, pool, user_id,
+                                  json.dumps(snapshot, ensure_ascii=False).encode(), sealed_token=sealed_token)
     return {**job, "source": "skland", "records": len(snapshot["matches"]),
-            "operators": len(snapshot["operators"])}
+            "operators": len(snapshot["operators"]), "token_saved": token_to_save is not None}
 
 
 @app.post("/api/imports", status_code=status.HTTP_202_ACCEPTED)
@@ -383,11 +480,6 @@ async def upload_snapshot(request: Request, user=Depends(current_user)):
 
 
 # ------------------------------------------------------------ 成就档案（鹰角通行证）
-
-ACHV_TTL = timedelta(minutes=10)
-ACHV_CACHE: dict[str, tuple[datetime, dict]] = {}
-ACHV_LOCK = Lock()
-
 
 class AchvConnect(BaseModel):
     phone: str | None = Field(default=None, max_length=32)
@@ -407,7 +499,7 @@ def achv_state(row) -> dict:
         return {"connected": False, "source": None, "uid": None, "nickname": None,
                 "fetched_at": None, "stale": False, "phone": None}
     fetched = row["fetched_at"]
-    stale = (datetime.now(timezone.utc) - fetched) > ACHV_TTL
+    stale = fetched.astimezone(CHINA).date() < datetime.now(CHINA).date()
     return {"connected": True, "source": row["source"], "uid": row["uid"], "nickname": row["nickname"],
             "fetched_at": fetched.isoformat(), "stale": stale, "phone": row["phone_masked"]}
 
@@ -415,6 +507,7 @@ def achv_state(row) -> dict:
 def save_link(request: Request, user_id, source: str, phone: str | None, code: str, uid: str | None,
               payload: dict) -> None:
     now = datetime.now(timezone.utc)
+    sealed_token = request.app.state.credentials.seal(ACHIEVEMENTS, user_id, code)
     with request.app.state.pool.connection() as database:
         database.execute("""
             INSERT INTO achv_links
@@ -424,10 +517,8 @@ def save_link(request: Request, user_id, source: str, phone: str | None, code: s
                 source = EXCLUDED.source, phone_masked = EXCLUDED.phone_masked, u8_token = EXCLUDED.u8_token,
                 uid = EXCLUDED.uid, nickname = EXCLUDED.nickname, payload = EXCLUDED.payload,
                 fetched_at = EXCLUDED.fetched_at, updated_at = EXCLUDED.updated_at
-        """, (user_id, source, phone, code, uid, (payload.get("player") or {}).get("nickname"),
+        """, (user_id, source, phone, sealed_token, uid, (payload.get("player") or {}).get("nickname"),
               json_param(payload), now, now))
-    with ACHV_LOCK:
-        ACHV_CACHE[str(user_id)] = (now, payload)
 
 
 def fetch_link(request: Request, user_id):
@@ -440,8 +531,7 @@ def achv_status(request: Request, user=Depends(current_user)):
     row = fetch_link(request, user["id"])
     state = achv_state(row)
     if row is not None:
-        cached = ACHV_CACHE.get(str(user["id"]))
-        state["payload_ready"] = bool(cached) or row["payload"] is not None
+        state["payload_ready"] = row["payload"] is not None
     return state
 
 
@@ -487,42 +577,32 @@ def achv_summary(request: Request, refresh: bool = False, user=Depends(current_u
     state = achv_state(row)
     payload = row["payload"] or {}
     warning = None
-    if refresh or state["stale"]:
+    if refresh:
         try:
-            data = hypergryph.player_summary(row["u8_token"])
-            payload = achievements.normalize(data)
-            save_link(request, user["id"], row["source"], row["phone_masked"], row["u8_token"],
-                      row["uid"], payload)
-            state = achv_state(fetch_link(request, user["id"]))
+            code = request.app.state.credentials.unseal(ACHIEVEMENTS, user["id"], row["u8_token"])
+            data = hypergryph.player_summary(code)
+            updated = achievements.normalize(data)
+            now = datetime.now(timezone.utc)
+            with request.app.state.pool.connection() as database:
+                database.execute(
+                    "UPDATE achv_links SET nickname = %s, payload = %s, fetched_at = %s, updated_at = %s "
+                    "WHERE user_id = %s AND fetched_at = %s AND u8_token = %s",
+                    (updated["player"]["nickname"], json_param(updated), now, now,
+                     user["id"], row["fetched_at"], row["u8_token"]),
+                )
+            latest = fetch_link(request, user["id"])
+            if latest is None:
+                raise HTTPException(404, "尚未绑定鹰角通行证或成就令牌")
+            state = achv_state(latest)
+            payload = latest["payload"] or {}
         except hypergryph.CredentialError as error:
             warning = f"刷新失败，正在展示上次成功的数据：{error}"
+        except CredentialStorageError:
+            warning = "无法读取已保存的成就令牌。正在展示上次成功的数据，请重新绑定。"
     return {"state": state, "warning": warning, "data": payload}
-
-
-@app.post("/api/achv/import-capture")
-def achv_import_capture(request: Request, user=Depends(current_user)):
-    """本地便利功能：扫 Reqable 最近抓包，取最新的 u8 token 直接入库。"""
-    tokens = capture.candidate_tokens()
-    if not tokens:
-        raise HTTPException(404, "没在 Reqable 抓包里找到成就接口，先在模拟器里打开一次成就页")
-    errors: list[str] = []
-    for code, origin in tokens[:8]:
-        try:
-            data = hypergryph.player_summary(code)
-        except hypergryph.CredentialError as error:
-            errors.append(f"{origin}: {error}")
-            continue
-        payload = achievements.normalize(data)
-        payload["captured_from"] = origin
-        save_link(request, user["id"], "token", None, code, payload["player"]["uid"], payload)
-        return {"state": achv_state(fetch_link(request, user["id"])), "warnings": [], "data": payload,
-                "source_file": origin, "tried": len(errors) + 1}
-    raise HTTPException(424, "抓包里的令牌都失效了：" + "；".join(errors[:2]))
 
 
 @app.delete("/api/achv/session", status_code=status.HTTP_204_NO_CONTENT)
 def achv_disconnect(request: Request, user=Depends(current_user)):
     with request.app.state.pool.connection() as database:
         database.execute("DELETE FROM achv_links WHERE user_id = %s", (user["id"],))
-    with ACHV_LOCK:
-        ACHV_CACHE.pop(str(user["id"]), None)

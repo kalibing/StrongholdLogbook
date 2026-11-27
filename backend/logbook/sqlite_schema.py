@@ -1,6 +1,6 @@
 """SQLite 后端的内置表结构。
 
-与 migrations/versions/0001_initial.py 一一对应：表名、列名、唯一约束与索引相同，
+与 PostgreSQL 迁移保持一致：表名、列名、唯一约束与索引相同，
 只把 PostgreSQL 的 uuid / timestamptz / jsonb / bytea 映射成 TEXT / INTEGER / TEXT / BLOB。
 时间戳统一存 UTC 秒级整数，由 storage 适配层转回带时区的 datetime。
 """
@@ -66,6 +66,12 @@ SCHEMA = (
     """,
     "CREATE INDEX IF NOT EXISTS pending_import_jobs ON import_jobs (created_at, id) WHERE status = 'pending'",
     "CREATE INDEX IF NOT EXISTS user_import_jobs ON import_jobs (user_id, created_at DESC)",
+    """
+    CREATE TABLE IF NOT EXISTS skland_import_tokens (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        access_token TEXT NOT NULL
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS achv_links (
         user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

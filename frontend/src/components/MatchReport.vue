@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { BOND_ICONS, BOSS_ICONS, ELITE_ICONS, EQUIPMENT_ICONS, STRATEGY_ICONS } from '../assets'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { BOND_ICONS, bossName } from '../assets'
+import BossLabel from './BossLabel.vue'
+import { strategyIcon, strategyOf } from '../bands'
 import { avatarFor, loadDirectory } from '../directory'
+import { resolveEquipment } from '../equipment'
 import { dateTime, difficultyLabel, number, resultLabel } from '../format'
 import { portrait } from '../icons'
 import type { MatchDetail } from '../models'
@@ -14,12 +17,26 @@ const closeButton = ref<HTMLButtonElement | null>(null)
 const names = ref(new Map<string, string>())
 const missingPortraits = reactive(new Set<string>())
 const initiatorAvatar = computed(() => avatarFor(names.value, props.detail?.initiator ?? null))
-const displayItem = (name: string) => name.startsWith('chess_item_') ? '未识别装备' : name
+const strategy = computed(() => strategyOf(props.detail?.strategy))
+const strategyArt = computed(() => strategyIcon(props.detail?.strategy))
 const itemCounts = (items: string[]) => {
   const counts = new Map<string, number>()
   for (const item of items) counts.set(item, (counts.get(item) ?? 0) + 1)
-  return [...counts].map(([name, count]) => ({ name, count }))
+  return [...counts].map(([id, count]) => ({ id, count, ...resolveEquipment(id) }))
 }
+const equipmentSlots = 2
+const squad = computed(() => (props.detail?.squad ?? []).map((unit, index) => ({
+  ...unit,
+  key: `${unit.id}:${index}`,
+  equipment: itemCounts(unit.items),
+})))
+const expandedEquipment = reactive(new Set<string>())
+watch(() => props.detail?.id, () => expandedEquipment.clear())
+
+function toggleEquipment(key: string) {
+  if (!expandedEquipment.delete(key)) expandedEquipment.add(key)
+}
+const defeatedBosses = computed(() => (props.detail?.bosses ?? []).map(bossName))
 const activeBonds = computed(() => (props.detail?.bonds ?? []).filter(bond => bond.layers > 0))
 const totalLayers = computed(() => activeBonds.value.reduce((sum, bond) => sum + bond.layers, 0))
 const duration = computed(() => {
@@ -69,21 +86,12 @@ onMounted(async () => {
       </div>
 
       <div v-else-if="detail" class="report-content">
-        <dl class="report-stats">
-          <div><dt>回合</dt><dd>{{ number(detail.rounds) }}</dd></div>
-          <div><dt>击杀</dt><dd>{{ number(detail.kills) }}</dd></div>
-          <div><dt>金币花费</dt><dd>{{ number(detail.coins) }}</dd></div>
-          <div><dt>同步次数</dt><dd>{{ number(detail.sync_count) }}</dd></div>
-          <div><dt>时长</dt><dd>{{ duration }}</dd></div>
-          <div><dt>奖杯变化</dt><dd>{{ number(detail.trophies) }}</dd></div>
-        </dl>
-
-        <dl v-if="detail.strategy || detail.initiator" class="report-setup">
-          <div v-if="detail.strategy">
+        <dl v-if="strategy || detail.initiator" class="report-setup">
+          <div v-if="strategy">
             <dt>开局策略</dt>
             <dd>
-              <img v-if="STRATEGY_ICONS[detail.strategy]" :src="STRATEGY_ICONS[detail.strategy]" width="24" height="24" alt="">
-              {{ detail.strategy }}
+              <img v-if="strategyArt" :src="strategyArt" width="30" height="30" alt="">
+              {{ strategy }}
             </dd>
           </div>
           <div v-if="detail.initiator">
@@ -95,6 +103,15 @@ onMounted(async () => {
               {{ detail.initiator }}
             </dd>
           </div>
+        </dl>
+
+        <dl class="report-stats">
+          <div><dt>回合</dt><dd>{{ number(detail.rounds) }}</dd></div>
+          <div><dt>击杀</dt><dd>{{ number(detail.kills) }}</dd></div>
+          <div><dt>金币花费</dt><dd>{{ number(detail.coins) }}</dd></div>
+          <div><dt>同步次数</dt><dd>{{ number(detail.sync_count) }}</dd></div>
+          <div><dt>时长</dt><dd>{{ duration }}</dd></div>
+          <div><dt>奖杯变化</dt><dd>{{ number(detail.trophies) }}</dd></div>
         </dl>
 
         <div class="report-breakdown">
@@ -114,10 +131,9 @@ onMounted(async () => {
 
           <section class="report-section">
             <h3>已击杀首领</h3>
-            <div v-if="detail.bosses.length" class="boss-grid">
-              <div v-for="boss in detail.bosses" :key="boss" class="art-card">
-                <img v-if="BOSS_ICONS[boss]" :src="BOSS_ICONS[boss]" width="42" height="42" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
-                <b>{{ boss }}</b>
+            <div v-if="defeatedBosses.length" class="boss-grid">
+              <div v-for="(boss, index) in defeatedBosses" :key="index" class="art-card">
+                <BossLabel :name="boss" :size="36" />
               </div>
             </div>
             <p v-else class="muted">无首领击杀记录</p>
@@ -126,21 +142,33 @@ onMounted(async () => {
 
         <section class="report-section">
           <h3>最终阵容</h3>
-          <ul v-if="detail.squad.length" class="squad">
-            <li v-for="(unit, index) in detail.squad" :key="unit.id + index" :class="{ elite: unit.elite }">
-              <span class="unit-portrait" :class="{ elite: unit.elite }">
-                <img v-if="!missingPortraits.has(portrait(unit.id))" :src="portrait(unit.id)" width="36" height="36" alt=""
+          <ul v-if="squad.length" class="squad">
+            <li v-for="unit in squad" :key="unit.key" class="squad-card"
+              :class="{ 'squad-card--elite': unit.elite }" :title="unit.elite ? '精锐' : undefined">
+              <span class="unit-portrait">
+                <img v-if="!missingPortraits.has(portrait(unit.id))" :src="portrait(unit.id)" width="52" height="52" alt=""
                   @error="missingPortraits.add(portrait(unit.id))">
                 <span v-else class="report-avatar-fallback" aria-hidden="true">{{ unit.name.slice(0, 1) }}</span>
-                <img v-if="unit.elite || unit.evolve === 2" class="elite-badge" :src="ELITE_ICONS.elite2" width="14" height="14" :alt="unit.elite ? '精锐' : '精二'">
-                <img v-else-if="unit.evolve === 1" class="elite-badge" :src="ELITE_ICONS.elite1" width="14" height="14" alt="精一">
               </span>
-              <b>{{ unit.name }}</b>
-              <div v-if="unit.items.length" class="equipment-list">
-                <span v-for="item in itemCounts(unit.items)" :key="item.name" class="equipment-chip">
-                  <img v-if="EQUIPMENT_ICONS[item.name]" :src="EQUIPMENT_ICONS[item.name]" alt="" @error="($event.target as HTMLImageElement).style.display = 'none'">
-                  <span>{{ displayItem(item.name) }}<template v-if="item.count > 1"> ×{{ item.count }}</template></span>
-                </span>
+              <div class="unit-details">
+                <div class="unit-heading">
+                  <b class="unit-name">{{ unit.name }}<span v-if="unit.elite" class="unit-status">，精锐</span></b>
+                  <button v-if="unit.equipment.length > equipmentSlots" type="button" class="equipment-more"
+                    :aria-expanded="expandedEquipment.has(unit.key)"
+                    :aria-label="expandedEquipment.has(unit.key) ? '收起额外装备' : `查看其余 ${unit.equipment.length - equipmentSlots} 种装备`"
+                    @click="toggleEquipment(unit.key)">
+                    {{ expandedEquipment.has(unit.key) ? '收起' : `+${unit.equipment.length - equipmentSlots}` }}
+                  </button>
+                </div>
+                <div v-if="unit.equipment.length" class="equipment-list">
+                  <span v-for="item in unit.equipment.slice(0, expandedEquipment.has(unit.key) ? unit.equipment.length : equipmentSlots)"
+                    :key="item.id" class="equipment-chip"
+                    :class="{ 'equipment-chip--advanced': item.advanced }" :title="item.advanced ? '进阶装备' : undefined">
+                    <img v-if="item.icon" :src="item.icon" :alt="item.advanced ? '进阶' : ''" @error="($event.target as HTMLImageElement).style.display = 'none'">
+                    <span class="equipment-name">{{ item.name }}</span>
+                    <span v-if="item.count > 1" class="equipment-count">×{{ item.count }}</span>
+                  </span>
+                </div>
               </div>
             </li>
           </ul>
@@ -153,6 +181,7 @@ onMounted(async () => {
 
 <style scoped>
 #detail {
+  --elite-border: #e1a744;
   width: min(49rem, calc(100% - 1.5rem)); max-height: min(46rem, calc(100dvh - 1.5rem));
   padding: 0; overflow: hidden; border: 1px solid var(--control-line); border-radius: 8px;
   background: var(--panel); color: var(--text); box-shadow: 0 1rem 3.75rem #0005;
@@ -160,6 +189,7 @@ onMounted(async () => {
 }
 #detail[open] { display: flex; flex-direction: column; }
 #detail::backdrop { background: rgb(8 14 23 / 66%); }
+:global(:root[data-theme='light'] #detail) { --elite-border: #a86b20; }
 :global(:root[data-theme='light'] #detail::backdrop) { background: rgb(22 31 47 / 46%); }
 @keyframes report-enter { from { transform: translateY(4px); } to { transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { #detail { animation: none; } }
@@ -186,25 +216,55 @@ onMounted(async () => {
 .report-stats > div { min-width: 0; border: 0; border-radius: 0; padding: .55rem .65rem; background: var(--inset); }
 .report-stats dt, .report-setup dt { color: var(--muted); font-size: .75rem; }
 .report-stats dd { font: 700 1.04rem/1.4 var(--numbers); overflow-wrap: anywhere; }
-.report-setup { display: flex; flex-wrap: wrap; gap: .45rem 1.6rem; }
+.report-setup { display: flex; flex-wrap: wrap; gap: .45rem 1.4rem; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--inset); }
 .report-setup > div, .report-setup dd { display: flex; gap: .4rem; align-items: center; }
-.report-setup dd { font-size: .875rem; font-weight: 650; }
+.report-setup dt { font-size: .82rem; }
+.report-setup dd { font-size: 1rem; font-weight: 700; }
 .report-setup img { object-fit: contain; }
 
 .report-breakdown { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1rem; }
 .report-section { display: grid; gap: .45rem; align-content: start; min-width: 0; border-top: 1px solid var(--line); padding-top: .6rem; }
 .report-section h3 small { margin-left: .35rem; font-weight: 400; }
 .report-section :is(.bond-grid, .boss-grid, .squad) { margin-top: 0; }
-.report-section .squad { grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
-.report-section .squad li { align-content: start; }
-.report-section .squad li > b { min-width: 0; overflow-wrap: anywhere; }
-.report-section .equipment-list { flex-basis: 100%; }
+.boss-grid .art-card { font-weight: 650; }
+.report-section .squad {
+  --unit-portrait-size: clamp(2.65rem, 3.75vw, 3.25rem);
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem;
+}
+.report-section .squad .squad-card {
+  display: grid; grid-template-columns: var(--unit-portrait-size) minmax(0, 1fr); align-items: center;
+  gap: .5rem; min-width: 0;
+  padding: .45rem .5rem; border-radius: 5px; background: var(--inset);
+}
+.report-section .squad .squad-card--elite {
+  border-color: color-mix(in srgb, var(--elite-border) 65%, var(--line));
+  background: linear-gradient(100deg, color-mix(in srgb, var(--elite-border) 8%, var(--inset)), var(--inset) 72%);
+}
+.unit-details { display: grid; gap: .28rem; min-width: 0; }
+.unit-heading { display: flex; align-items: center; gap: .45rem; min-width: 0; }
+.unit-portrait { display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: 5px; background: var(--chart-label); overflow: hidden; }
+.unit-portrait img, .unit-portrait .report-avatar-fallback { width: 100%; height: 100%; }
+.unit-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.unit-name, .equipment-name { min-width: 0; overflow-wrap: anywhere; }
+.unit-name { flex: 1; font-size: .88rem; line-height: 1.25; }
+.equipment-more { flex: none; min-height: 1.5rem; padding: .08rem .25rem; color: var(--accent); font-size: .75rem; }
+.squad-card .equipment-list { display: grid; gap: .13rem; }
+.report-section .equipment-chip {
+  gap: .28rem; padding: 0; background: transparent;
+  color: color-mix(in srgb, var(--text) 78%, var(--muted)); font-size: .75rem; line-height: 1.22;
+}
+.report-section .equipment-chip img { width: 17px; height: 17px; flex: none; object-fit: contain; border-radius: 2px; background: var(--chart-label); }
+.equipment-count { flex: none; margin-inline-start: auto; font: 650 .75rem var(--numbers); color: var(--muted); }
+.report-section .equipment-chip--advanced img { outline: 1px solid #d8a044; outline-offset: 1px; }
 .report-avatar-fallback {
   display: inline-grid; place-items: center; flex: none; width: 36px; aspect-ratio: 1;
   border-radius: 4px; color: var(--muted); background: var(--panel);
 }
 .report-avatar-fallback--small { width: 24px; background: var(--inset); }
 
-@media (max-width: 660px) { .report-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 660px) {
+  .report-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .report-section .squad { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 460px) { .report-breakdown { grid-template-columns: minmax(0, 1fr); } }
 </style>

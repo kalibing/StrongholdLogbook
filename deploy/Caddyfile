@@ -12,12 +12,9 @@
     reverse_proxy api:8000
   }
 
-  # 鹰角通行证登录页反向代理（网页登录取 access token）
-  handle /hg/* {
-    reverse_proxy api:8000
-  }
-  handle /hg {
-    reverse_proxy api:8000
+  @retired_login path /hg /hg/*
+  handle @retired_login {
+    respond 404
   }
 
   handle {

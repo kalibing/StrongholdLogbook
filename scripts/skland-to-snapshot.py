@@ -58,8 +58,8 @@ def equip_name(equip_id: str, equipment_names: dict) -> str:
     return equipment_names.get(equip_id) or equipment_names.get(equip_id.split("_e_")[0]) or equip_id
 
 
-def unit(char_id: str, name: str, items: list[str], elite: bool, evolve) -> dict:
-    entry = {"id": char_id, "name": name, "items": items, "elite": bool(elite)}
+def unit(char_id: str, name: str, items: list[str], elite: bool | None, evolve) -> dict:
+    entry = {"id": char_id, "name": name, "items": items, "elite": elite}
     if isinstance(evolve, int):
         entry["evolve"] = evolve
     return entry
@@ -78,7 +78,9 @@ def convert_skland(game: dict, maps) -> dict:
             continue
         name = info.get("charName") or operator_names.get(char_id, char_id)
         items = [equip_name(equip["equipId"], equipment_names) for equip in row.get("equips", []) if equip.get("equipId")]
-        golden = bool(info.get("goldenChessId")) and info.get("goldenChessId") != info.get("id")
+        chess_id = row.get("chessId") or info.get("id")
+        golden_id = info.get("goldenChessId")
+        golden = chess_id == golden_id if chess_id and golden_id else None
         squad.append(unit(char_id, name, items, golden, info.get("evolvePhase")))
         operators[char_id] = {"id": char_id, "name": name}
 
@@ -202,7 +204,7 @@ def main() -> None:
     out.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
     wins = sum(1 for record in ordered if record["result"] == "win")
-    elite = sum(1 for record in ordered for item in record["squad"] if item["elite"])
+    elite = sum(unit["elite"] is True for record in ordered for unit in record["squad"])
     print(f"已写入 {out}：{len(ordered)} 局（{wins} 胜，小黑盒补 {added} 局），精锐单位 {elite} 个")
 
 

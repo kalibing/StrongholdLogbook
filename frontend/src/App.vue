@@ -50,6 +50,7 @@ function measureNav() {
 }
 const titles = [
   { route: 'overview', title: '战绩总览' },
+  { route: 'yesterday', title: '昨日战报' },
   { route: 'matches', title: '对局记录' },
   { route: 'operators', title: '干员统计' },
   { route: 'achievements', title: '成就档案' },
@@ -177,7 +178,15 @@ provide(logbookKey, { filters, facets, revision, theme, toggleTheme, refresh })
           <h1>{{ route.meta.title }}</h1>
           <p class="heading-description">{{ route.meta.description }}</p>
         </div>
-        <div class="heading-art" aria-hidden="true"><i></i></div>
+        <div v-if="route.name === 'overview'" class="heading-signal" aria-hidden="true">
+          <div class="heading-signal-art">
+            <span class="heading-signal-layer heading-signal-layer--back"></span>
+            <span class="heading-signal-layer heading-signal-layer--middle"></span>
+            <span class="heading-signal-layer heading-signal-layer--front"></span>
+            <span class="heading-signal-mark"></span>
+          </div>
+        </div>
+        <div v-else class="heading-art" aria-hidden="true"><i></i></div>
       </div>
       <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
       <RouterView v-else v-slot="{ Component, route: pageRoute }">

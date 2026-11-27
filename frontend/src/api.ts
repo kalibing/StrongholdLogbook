@@ -13,9 +13,19 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     if (response.status === 401 && init?.method !== 'POST') window.dispatchEvent(new Event('logbook-logout'))
-    throw new ApiError(response.status, typeof body?.detail === 'string' ? body.detail : '请求失败，请检查输入或稍后重试。')
+    throw new ApiError(response.status, errorText(response.status, body))
   }
   return response.json()
+}
+
+/** 把非 2xx 的响应翻成一句人话：后端没起来、来源被拦、还是参数不合法。 */
+function errorText(status: number, body: any): string {
+  if (typeof body?.detail === 'string' && body.detail.trim()) return body.detail
+  if (status >= 500) return '后端暂时不可用，请稍后重试。'
+  if (status === 403) return '请求来源被拒绝，请用站点地址打开页面后重试。'
+  if (status === 429) return '请求太频繁，请稍后再试。'
+  if (status === 422) return '输入格式不正确，请检查后重试。'
+  return '请求没有成功，请检查输入或稍后重试。'
 }
 
 export function post(value: object): RequestInit {

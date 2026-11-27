@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const source = readFileSync(join(root, 'frontend/src/assets.ts'), 'utf8')
 const paths = [...source.matchAll(/"(\/art\/[^"]+)"/g)].map(match => match[1])
+const lightBondIcons = paths.filter(path => path.startsWith('/art/bond-')).map(path => path.replace('/art/', '/art/bond-light/'))
+paths.push(...lightBondIcons)
 const missing = paths.filter(path => !existsSync(join(root, 'frontend/public', path)))
 
 if (missing.length) {

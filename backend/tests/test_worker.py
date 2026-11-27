@@ -42,7 +42,7 @@ class Connection:
 
     def execute(self, sql, params=None):
         self.executed.append((" ".join(sql.split()), params))
-        if "SELECT id, user_id, payload, total" in sql:
+        if "SELECT job.id, job.user_id, job.payload, job.total" in sql:
             return Result(self.job)
         return Result(None)
 

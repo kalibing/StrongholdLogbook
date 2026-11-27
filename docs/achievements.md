@@ -76,31 +76,9 @@ GET  https://ak-webview.hypergryph.com/api/autoChess/act3autochess/playerSummary
 
 实现见 `backend/logbook/hypergryph.py`（`token_by_password` / `u8_token` / `player_summary` / `extract_code`）。
 
-### 2.3 网页登录（本站已实现，推荐）
+### 2.3 本机助手
 
-不碰账密：让用户在**鹰角官方登录页**上登录（人机验证由官方页面自己处理），服务端只取登录结果。
-
-```
-浏览器                    本站后端（反代）                 鹰角
-  │ 打开 /hg/user/login  →  /hg/user/* → user.hypergryph.com   ← HTML（改写 CDN / API 地址）
-  │ 页面 bundle          →  /hg/cdn/*  → web.hycdn.cn           ← JS（把 https://as.hypergryph.com 改写成 /hg/as）
-  │ 表单登录 POST        →  /hg/as/user/auth/v1/token_by_phone_password
-  │                          └─ 转发并读取响应里的 data.token（HG access token）
-  │ 轮询 /api/hg/capture ←  内存槽（按浏览器 nonce，10 分钟）
-  │ POST /api/achv/session {access_token}
-  │                          ├─ GET as/user/info/v1/basic?token=…      → data.hgId（channel uid）
-  │                          ├─ POST as/u8/user/v1/getToken {uid, access_token} → u8 token
-  │                          └─ GET …/playerSummary?code=<u8 token>    → 成就档案
-```
-
-为什么必须反代：HG 前端的 axios `baseURL` 是四个绝对域名（`as` / `u8` / `binding` / `web`），
-跨域直连会被 CORS 拦。反代后页面与 API 同源，浏览器的 `Set-Cookie` 也被改写成同源 cookie。
-
-实现：`backend/logbook/hgproxy.py`（`/hg/user`、`/hg/cdn`、`/hg/as`、`/hg/u8`、`/hg/binding`、`/hg/web`、`/api/hg/capture`）。
-请求体不落盘、不写日志；只有登录接口**成功响应**里的 `data.token` / `data.uid` 会进 10 分钟内存槽。
-
-配套改动：Vite 的 dev proxy 与 Caddyfile 都要把 `/hg` 转发到 API（已加）。
-`u8/oauth2/auth/v1/channel_token` 目前返回 404（官方前端里仍留着调用），所以这条只作为兜底候选。
+当前网页通过 [Windows 本机助手](../agent/README.md) 绑定。助手以用户自己的站点会话提交令牌。旧网页登录反代及其凭据捕获接口已下线。
 
 ### 2.4 WebView 授权（未实现）
 
@@ -157,7 +135,7 @@ CREATE TABLE achv_links (
 ```
 
 迁移：`backend/migrations/versions/0002_achievements.py`；SQLite 侧同步在 `sqlite_schema.py`。
-密码**不入库**，只在请求内存里走一次换取。
+密码只用于当次换取。用于刷新档案的 `u8_token` 以账号及用途绑定的密文入库，密钥配置见 [README](../README.md#凭据密钥)。
 
 ### 4.2 接口
 
@@ -175,7 +153,7 @@ CREATE TABLE achv_links (
 
 `frontend/src/views/Achievements.vue`（导航「成就档案」）：
 
-1. 绑定区：鹰角通行证（手机号+密码）/ 粘贴链接两个标签页；
+1. 绑定区：本机助手下载、使用说明及绑定状态；
 2. 头部：头像、昵称 `#编号`、Lv、UID、数据时间、刷新 / 解绑；
 3. 指标：已获奖杯 + 等级、已获赞、好友数、特殊标识精通数；
 4. 六维条形图，每维下面挂该维度的 3 个称号（特殊 / T1 / T2）与数值；
@@ -277,12 +255,7 @@ AES-128-CFB128，IV 取 `.crc` 偏移 12）。它能：查账号信息（`user/i
 
 ### 9.5 关于 Reqable「报告服务器」
 
-Reqable 部分版本（含本机 3.3.12）没有「报告服务器」入口，所以页面上的「从 Reqable 抓包导入」按钮已移除。
-后端 `/api/hg/report` 与 `/api/achv/import-capture` 仍保留（只认回环调用、HAR 整段正则捞 token），
-但不再作为主路径。现在推荐：
-
-1. 手动：游戏内打开成就页 → 复制链接 → 粘到页面「拿令牌」；
-2. 自动：`python tools\u8_watch.py --dir <导出目录> --api http://127.0.0.1:8000 --user <账号> --password <密码>`。
+站点已关闭 Reqable 上报和共享抓包导入接口。使用本机助手，或将属于自己的成就令牌通过已登录的 `POST /api/achv/session` 提交。
 
 ### 9.6 全自动链路（**已打通，推荐**）
 

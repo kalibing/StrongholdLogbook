@@ -84,8 +84,13 @@ def _device_ids() -> tuple[str, str, str]:
     return secrets.token_hex(16), "86" + "".join(secrets.choice("0123456789") for _ in range(13)), secrets.token_hex(16)
 
 
-def _error_text(payload: dict) -> str:
-    return str(payload.get("msg") or payload.get("message") or payload)[:300]
+def _error_text(payload: dict, *secrets: str) -> str:
+    message = str(payload.get("msg") or payload.get("message") or "未知错误")
+    for value in secrets:
+        if value:
+            for variant in {value, urllib.parse.quote(value, safe=""), urllib.parse.quote_plus(value)}:
+                message = message.replace(variant, "[已隐藏]")
+    return message[:300]
 
 
 def token_by_password(phone: str, password: str) -> tuple[str, str]:
@@ -98,7 +103,7 @@ def token_by_password(phone: str, password: str) -> tuple[str, str]:
         raise CredentialError("鹰角通行证返回了无法解析的内容", text[:300]) from None
     token = ((payload.get("data") or {}) if isinstance(payload.get("data"), dict) else {}).get("token")
     if not token:
-        raise CredentialError(f"鹰角通行证登录失败：{_error_text(payload)}", text[:300])
+        raise CredentialError(f"鹰角通行证登录失败：{_error_text(payload, phone, password)}", text[:300])
     data = payload.get("data") or {}
     uid = ""
     for key in ("uid", "userId", "hgUid", "accountId", "account"):
@@ -151,13 +156,13 @@ def u8_token(access_token: str, uid: str = "") -> tuple[str, str, list[str]]:
             try:
                 payload = json.loads(text)
             except json.JSONDecodeError:
-                last = text[:300]
+                last = "响应无法解析"
                 continue
             data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
             token = (data or {}).get("token")
             if token:
                 return str((data or {}).get("uid") or candidate_uid or ""), token, warnings
-            last = _error_text(payload)
+            last = _error_text(payload, access_token)
     raise CredentialError(
         f"鹰角拒绝了这次换取（{last or '未知错误'}）。请改用「拿令牌」：游戏内打开成就页，复制链接粘贴即可。",
         last,
@@ -187,7 +192,7 @@ def player_summary(code: str) -> dict:
     except json.JSONDecodeError:
         raise CredentialError("成就接口返回了无法解析的内容", text[:300]) from None
     if payload.get("status") or payload.get("code"):
-        raise CredentialError(f"成就接口拒绝：{_error_text(payload)}", text[:300])
+        raise CredentialError(f"成就接口拒绝：{_error_text(payload, code)}", text[:300])
     data = payload.get("data")
     if not isinstance(data, dict) or not data:
         raise CredentialError("成就接口没有返回数据", text[:300])
@@ -210,7 +215,7 @@ def account_info(access_token: str) -> dict:
     except json.JSONDecodeError:
         raise CredentialError("读取通行证账号信息失败", text[:300]) from None
     if payload.get("status") or payload.get("code"):
-        raise CredentialError(f"读取通行证账号信息失败：{_error_text(payload)}", text[:300])
+        raise CredentialError(f"读取通行证账号信息失败：{_error_text(payload, access_token)}", text[:300])
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     if not data:
         raise CredentialError("通行证没有返回账号信息", text[:300])

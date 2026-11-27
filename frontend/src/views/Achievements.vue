@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { NButton, NInput, useDialog, useMessage } from 'naive-ui'
-import { api, ApiError, message, post } from '../api'
+import { api, ApiError, message } from '../api'
 import AchievementRadar from '../components/AchievementRadar.vue'
 import AvatarImage from '../components/AvatarImage.vue'
+import TrophyIcon from '../components/TrophyIcon.vue'
 import type { AchvBadge, AchvBandTop, AchvEnvelope, AchvProfile, AchvState, AchvTitle } from '../models'
 
 const notify = useMessage()
@@ -14,18 +15,49 @@ const warning = ref('')
 const pending = ref(true)
 const busy = ref(false)
 const loadError = ref('')
-const mode = ref<'web' | 'hypergryph' | 'token'>('token')
-const bindingMethods = [
-  { value: 'token', label: '拿令牌（推荐）' },
-  { value: 'hypergryph', label: '账号密码' },
-  { value: 'web', label: '网页登录（实验）' },
-] as const
-const phone = ref('')
-const password = ref('')
-const token = ref('')
-const formError = ref('')
-const webState = ref<'idle' | 'waiting' | 'syncing' | 'done'>('idle')
-let pollTimer: number | undefined
+const agentOrigin = window.location.origin
+const agentExe = '/download/ArknightsAchvAgent.exe'
+const agentCommand = computed(() => `.\\ArknightsAchvAgent.exe --api ${agentOrigin} --origin ${agentOrigin}`)
+const agentSourceCommand = computed(() => `python agent\\achv_agent.py --api ${agentOrigin} --origin ${agentOrigin}`)
+const commandCopied = ref(false)
+let commandTimer: number | undefined
+let agentTimer: number | undefined
+const shanghaiDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', dateStyle: 'short' })
+
+async function copyAgentCommand() {
+  try {
+    await navigator.clipboard.writeText(agentCommand.value)
+    commandCopied.value = true
+  } catch {
+    commandCopied.value = false
+  }
+  window.clearTimeout(commandTimer)
+  commandTimer = window.setTimeout(() => { commandCopied.value = false }, 2400)
+}
+
+/** 助手是独立进程，绑定时本页轮询状态，连上就自动刷新。 */
+function stopAgentWatch() {
+  if (agentTimer !== undefined) {
+    window.clearInterval(agentTimer)
+    agentTimer = undefined
+  }
+}
+
+async function watchAgent() {
+  stopAgentWatch()
+  agentTimer = window.setInterval(async () => {
+    try {
+      const status = await api<AchvState>('/achv/status')
+      if (!status.connected) return
+      state.value = status
+      stopAgentWatch()
+      await load()
+      notify.success('本机助手已绑定成就数据')
+    } catch {
+      // 站点暂时不可达就等下一轮
+    }
+  }, 3000)
+}
 
 const fetched = computed(() => {
   const value = profile.value?.fetched_at
@@ -105,115 +137,67 @@ function badgeFallback(event: Event, badge: AchvBadge) {
   image.dataset.fallback = '1'
   image.src = badge.icon
 }
-const trophyIcon = computed(() => {
-  const level = profile.value?.trophy.level ?? 1
-  return level >= 8 ? '/art/trophy_level8_icon.png' : ''
-})
 // 已获赞的图：取自卫戍协议 H5 里 .GMDJVs .VMRzld 的点赞框图（base64 已落盘为 png）
 const likeIcon = '/art/like-box.png'
+
+function clearProfile() {
+  state.value = { connected: false, source: null, uid: null, nickname: null, fetched_at: null, stale: false, phone: null }
+  profile.value = null
+  warning.value = ''
+}
+
+function shouldRefresh(status: AchvState) {
+  if (!status.stale && profile.value) return false
+  const today = shanghaiDay.format(new Date())
+  const key = `achv-refresh:${status.uid}`
+  const attempt = `${today}:${status.fetched_at}`
+  try {
+    if (localStorage.getItem(key) === attempt) return false
+    localStorage.setItem(key, attempt)
+  } catch {
+    // A browser that blocks storage can still refresh the stored profile.
+  }
+  return true
+}
 
 async function load() {
   pending.value = true
   loadError.value = ''
-  formError.value = ''
+  let refreshDue = false
   try {
-    const status = await api<AchvState>('/achv/status')
-    state.value = status
-    if (!status.connected) {
-      profile.value = null
-      warning.value = ''
-      return
-    }
     const envelope = await api<AchvEnvelope>('/achv/summary')
     state.value = envelope.state
     profile.value = envelope.data?.player ? envelope.data : null
     warning.value = envelope.warning ?? ''
-    if (!profile.value) loadError.value = warning.value || '已绑定，暂时没有可显示的成就数据。'
+    refreshDue = shouldRefresh(envelope.state)
+    if (!profile.value && !refreshDue) loadError.value = '已绑定，暂时没有可显示的成就数据。'
   } catch (reason) {
-    loadError.value = message(reason)
+    if (reason instanceof ApiError && reason.status === 404) clearProfile()
+    else loadError.value = message(reason)
   } finally {
     pending.value = false
   }
+  if (refreshDue) void refresh(true)
 }
 
-function stopPolling() {
-  if (pollTimer !== undefined) {
-    window.clearInterval(pollTimer)
-    pollTimer = undefined
-  }
-}
-
-function openHgLogin() {
-  formError.value = ''
-  const popup = window.open('/hg/user/login', 'hg-login', 'width=520,height=760')
-  if (!popup) {
-    formError.value = '浏览器拦截了新窗口，请允许本站弹窗后重试'
-    return
-  }
-  webState.value = 'waiting'
-  stopPolling()
-  pollTimer = window.setInterval(() => { void checkCapture() }, 1500)
-}
-
-async function checkCapture() {
-  try {
-    const result = await api<{ ready: boolean; access_token?: string; uid?: string }>('/hg/capture')
-    if (!result.ready || !result.access_token) return
-    stopPolling()
-    webState.value = 'syncing'
-    const envelope = await api<AchvEnvelope>('/achv/session', post({
-      access_token: result.access_token,
-      uid: result.uid || undefined,
-    }))
-    void api('/hg/capture', { method: 'DELETE' }).catch(() => undefined)
-    state.value = envelope.state
-    profile.value = envelope.data
-    warning.value = (envelope.warnings ?? []).join('；')
-    webState.value = 'done'
-    notify.success('已用鹰角通行证完成绑定')
-  } catch (reason) {
-    stopPolling()
-    webState.value = 'idle'
-    formError.value = message(reason)
-  }
-}
-
-async function connect() {
-  formError.value = ''
+async function refresh(automatic = false) {
+  if (busy.value) return
   busy.value = true
-  try {
-    const body = mode.value === 'hypergryph'
-      ? { phone: phone.value.trim(), password: password.value }
-      : { token: token.value.trim() }
-    const envelope = await api<AchvEnvelope>('/achv/session', post(body))
-    state.value = envelope.state
-    profile.value = envelope.data
-    warning.value = (envelope.warnings ?? []).join('；')
-    password.value = ''
-    token.value = ''
-    notify.success('已绑定，成就档案已更新')
-  } catch (reason) {
-    formError.value = message(reason)
-  } finally {
-    busy.value = false
-  }
-}
-
-async function refresh() {
-  busy.value = true
-  formError.value = ''
   try {
     const envelope = await api<AchvEnvelope>('/achv/summary?refresh=true')
     state.value = envelope.state
     if (envelope.data?.player) profile.value = envelope.data
     warning.value = envelope.warning ?? ''
-    if (!warning.value && envelope.data?.player) notify.success('已刷新')
+    loadError.value = profile.value ? '' : warning.value || '已绑定，暂时没有可显示的成就数据。'
+    if (!automatic && !warning.value && envelope.data?.player) notify.success('已刷新')
   } catch (reason) {
     if (reason instanceof ApiError && reason.status === 404) {
-      await load()
-      if (state.value?.connected === false) notify.warning('绑定已失效，请重新连接')
+      clearProfile()
+      if (!automatic) notify.warning('绑定已失效，请重新连接')
     } else {
-      formError.value = message(reason)
+      if (profile.value && automatic) warning.value = '自动刷新失败，正在展示上次保存的成就档案。'
+      else if (!profile.value) loadError.value = message(reason)
+      else notify.error(message(reason))
     }
   } finally {
     busy.value = false
@@ -224,12 +208,10 @@ async function disconnect() {
   busy.value = true
   try {
     await api('/achv/session', { method: 'DELETE' })
-    state.value = { connected: false, source: null, uid: null, nickname: null, fetched_at: null, stale: false, phone: null }
-    profile.value = null
-    warning.value = ''
+    clearProfile()
     notify.success('已解除绑定')
   } catch (reason) {
-    formError.value = message(reason)
+    notify.error(message(reason))
   } finally {
     busy.value = false
   }
@@ -245,8 +227,14 @@ function confirmDisconnect() {
   })
 }
 
-onMounted(load)
-onBeforeUnmount(stopPolling)
+onMounted(async () => {
+  await load()
+  if (state.value?.connected === false) void watchAgent()
+})
+onBeforeUnmount(() => {
+  stopAgentWatch()
+  window.clearTimeout(commandTimer)
+})
 </script>
 
 <template>
@@ -254,7 +242,6 @@ onBeforeUnmount(stopPolling)
     <p v-if="pending" class="load-message" role="status">正在读取成就档案…</p>
 
     <template v-else>
-      <p v-if="formError" class="load-message" role="alert">{{ formError }}</p>
       <p v-if="loadError && profile" class="load-message" role="alert">
         {{ loadError }} <button type="button" @click="load">重试</button>
       </p>
@@ -268,66 +255,53 @@ onBeforeUnmount(stopPolling)
       <section v-else-if="state?.connected === false" class="panel connect">
         <header class="connect-head">
           <h2>绑定成就数据源</h2>
-          <p class="muted">成就统计来自卫戍协议 H5 的 <code>playerSummary</code> 接口，需要该接口的 <code>code</code> 令牌。</p>
+          <p class="muted">成就数据由<b>本机助手</b>读取本机登录态后推送到本站，三步搞定，不用把令牌贴进网页。</p>
         </header>
-        <fieldset class="binding-methods" aria-label="绑定方式" :disabled="busy || webState === 'syncing'">
-          <label v-for="method in bindingMethods" :key="method.value">
-            <input v-model="mode" type="radio" name="achievement-binding" :value="method.value">
-            {{ method.label }}
-          </label>
-        </fieldset>
 
-        <div v-if="mode === 'web'" class="connect-form">
-          <NButton type="primary" size="large" :loading="webState === 'syncing'" @click="openHgLogin">
-            {{ webState === 'waiting' ? '等待登录完成…（点此重开窗口）' : '打开鹰角通行证登录页' }}
-          </NButton>
-          <p class="hint">
-            {{ webState === 'waiting'
-              ? '在新窗口里登录；登录成功后本页会自动继续。'
-              : webState === 'done'
-                ? '已登录并完成绑定。'
-                : '实验功能：本站反代官方登录页，登录成功后自动取一次 access token。官方页面在这里白屏或登录不了时，请改用「拿令牌」。' }}
-          </p>
-        </div>
+        <ol class="import-steps" aria-label="绑定步骤">
+          <li class="import-step">
+            <span class="import-step-no" aria-hidden="true">1</span>
+            <div class="import-step-main">
+              <h3 class="import-step-title">确认这台机器登录过明日方舟 PC 端</h3>
+              <p class="muted">助手读的是本机客户端登录态（<code>%LocalAppData%\Low\Hypergryph</code>），不抓包、不启动游戏。</p>
+            </div>
+          </li>
 
-        <form v-if="mode === 'hypergryph'" class="connect-form" @submit.prevent="connect">
-          <label class="filter-field">手机号
-            <NInput v-model:value="phone" size="large" placeholder="鹰角通行证手机号" :input-props="{ autocomplete: 'username', maxlength: 32 }" />
-          </label>
-          <label class="filter-field">密码
-            <NInput v-model:value="password" type="password" size="large" show-password-on="click"
-              placeholder="鹰角通行证密码" :input-props="{ autocomplete: 'current-password', maxlength: 256 }" />
-          </label>
-          <NButton type="primary" size="large" attr-type="submit" :loading="busy">用通行证连接</NButton>
-          <p class="hint">服务端换取 u8 token，密码不入库。鹰角可能对直登做风控，失败请用「拿令牌」。</p>
-        </form>
+          <li class="import-step" data-state="next">
+            <span class="import-step-no" aria-hidden="true">2</span>
+            <div class="import-step-main">
+              <h3 class="import-step-title">下载并运行本机助手</h3>
+              <p class="muted">单文件 exe，双击或在命令行按下面这条跑，按提示输入本站账号密码。</p>
+              <pre class="agent-command"><code>{{ agentCommand }}</code></pre>
+              <p class="import-step-note">仓库不放二进制：克隆后先跑 <code>scripts\build-agent.ps1</code> 生成；源码 <code>agent/achv_agent.py</code>，spec <code>agent/ArknightsAchvAgent.spec</code>。</p>
+            </div>
+            <div class="import-step-action">
+              <NButton tag="a" type="primary" size="small" :href="agentExe" download="ArknightsAchvAgent.exe">下载助手</NButton>
+              <NButton size="small" secondary @click="copyAgentCommand">{{ commandCopied ? '已复制' : '复制命令' }}</NButton>
+            </div>
+          </li>
 
-        <form v-if="mode === 'token'" class="connect-form" @submit.prevent="connect">
-          <ol class="steps">
-            <li>手机/模拟器里打开游戏 → 进入「卫戍协议 · 成就」页面。</li>
-            <li>复制这一页的地址栏链接（形如 <code>…/autoChess/index?…&amp;u8_token=…</code>）。</li>
-            <li>粘贴到下面，点「用令牌连接」。链接里的 <code>u8_token</code> 就是接口的 <code>code</code>。</li>
-          </ol>
-          <label class="filter-field">成就页链接或 code
-            <NInput v-model:value="token" type="textarea" size="large" :autosize="{ minRows: 3, maxRows: 6 }"
-              placeholder="https://ak-webview.hypergryph.com/autoChess/index?…&u8_token=…　或　F8sCSjHpm…" />
-          </label>
-          <NButton type="primary" size="large" attr-type="submit" :loading="busy">用令牌连接</NButton>
-          <p class="hint">
-            抓过包的话，<code>playerSummary?code=</code> 后面那一串同样可用。
-          </p>
-          <aside class="risk-box" role="note">
-            <h4>风险提示 · 使用前必读</h4>
-            <ul>
-              <li><b>账号风险</b>：本页的自动取数属于非官方用法（解析本机客户端登录态换令牌），可能触发风控，最坏导致账号被限制或封禁，后果自负。</li>
-              <li><b>隐私</b>：令牌等同于只读凭证，请勿外传或贴到不可信的站点。</li>
-              <li><b>时效</b>：令牌只有小时级寿命，客户端常量随游戏版本变化，随时可能失效。</li>
-              <li><b>范围</b>：仅限自己的账号与机器、个人自用；禁止代跑他人账号、批量采集或对外提供服务。</li>
-              <li><b>归属</b>：本项目与鹰角网络无关联，游戏内容与商标归其所有。</li>
-            </ul>
+          <li class="import-step">
+            <span class="import-step-no" aria-hidden="true">3</span>
+            <div class="import-step-main">
+              <h3 class="import-step-title">等助手把数据推上来</h3>
+              <p class="muted">助手跑完会直接写入本站；本页每 3 秒检测一次，绑定成功会自动刷新成成就档案。</p>
+              <p class="import-step-note">助手在你自己的机器上运行：读本机登录态 → 换 u8 令牌 → 发到 {{ agentOrigin }}。</p>
+            </div>
+            <div class="import-step-action">
+              <NButton size="small" secondary :loading="busy" @click="load">跑完了，刷新</NButton>
+            </div>
+          </li>
+        </ol>
 
-          </aside>
-        </form>
+        <aside class="risk-box" role="note">
+          <h4>使用前必读</h4>
+          <ul>
+            <li><b>仅自己的机器</b>：助手会读本机注册表与游戏登录数据，只在本机内存解密、不上传原始数据；不要在不信任的机器上跑。</li>
+            <li><b>令牌即凭证</b>：换到的 u8 令牌等于只读凭据，小时级寿命，别外传。</li>
+            <li><b>非官方用法</b>：链路绕开官方开放接口，可能触发风控；游戏更新后常量可能失效。</li>
+          </ul>
+        </aside>
       </section>
 
       <template v-else-if="profile">
@@ -350,7 +324,7 @@ onBeforeUnmount(stopPolling)
             <div><dt>更新时间</dt><dd>{{ fetched }}</dd></div>
           </dl>
           <div class="strip-actions">
-            <NButton size="small" secondary :loading="busy" @click="refresh">刷新</NButton>
+            <NButton size="small" secondary :loading="busy" @click="refresh()">刷新</NButton>
             <NButton size="small" quaternary :disabled="busy" @click="confirmDisconnect">解绑</NButton>
           </div>
         </section>
@@ -390,7 +364,7 @@ onBeforeUnmount(stopPolling)
           <div class="social-grid">
             <div class="social-metrics">
               <article class="metric-card">
-                <img v-if="trophyIcon" :src="trophyIcon" alt="" class="metric-art" />
+                <TrophyIcon :badge="profile.trophy" :size="30" />
                 <div><span>已获奖杯</span><strong>{{ profile.trophy.total }}</strong></div>
               </article>
               <article class="metric-card">
@@ -479,6 +453,20 @@ onBeforeUnmount(stopPolling)
 .connect-form { display: grid; gap: .9rem; max-width: 36rem; }
 .hint { color: var(--muted); font-size: .8125rem; line-height: 1.6; }
 .steps { margin: 0; padding-left: 1.25rem; display: grid; gap: .35rem; color: var(--muted); font-size: .8125rem; line-height: 1.7; }
+.agent-download { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; }
+.agent-source summary { cursor: pointer; color: var(--muted); font-size: .8125rem; }
+.agent-source .agent-command { margin-top: .5rem; }
+/* 后三条是弃用路径，视觉上压暗，别再抢主流程 */
+.binding-methods label:not(:has(input[value="agent"])) { opacity: .62; }
+.binding-methods label:not(:has(input[value="agent"])):has(input:checked) { opacity: 1; }
+.agent-command {
+  margin: 0; padding: .6rem .7rem; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 4px; background: var(--inset); overflow-x: auto;
+}
+.agent-command code {
+  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; font-size: .8125rem;
+  line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text);
+}
 .row-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 .risk-box {
   border: 1px solid rgba(232, 161, 60, .45); border-radius: 6px;
@@ -507,7 +495,7 @@ onBeforeUnmount(stopPolling)
 }
 .namecard-art { position: absolute; z-index: -2; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .namecard:has(.namecard-art:not([hidden])) {
-  background: transparent; color: #f1f5fa; padding-bottom: calc(.45rem + 5.5%);
+  background: transparent; color: #f1f5fa; padding-bottom: calc(.45rem + 2.5%);
 }
 .namecard:has(.namecard-art:not([hidden]))::before {
   content: ''; position: absolute; z-index: -1; inset: 0 2.8% 16.5%; border-radius: 6px;
@@ -517,9 +505,10 @@ onBeforeUnmount(stopPolling)
 .namecard-avatar { border: 1px solid var(--line); }
 .namecard-copy { display: grid; min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
 .namecard-copy h2 { font-size: clamp(1rem, 1.6vw, 1.2rem); }
-.namecard-copy strong { font-size: .875rem; }
+.namecard-copy strong { font-size: 1rem; }
 .namecard-copy small { font-size: .75rem; }
 .namecard--player { max-width: 20rem; }
+.namecard--player:has(.namecard-art:not([hidden])) { padding-bottom: calc(.45rem + 5.5%); }
 .namecard--player .namecard-avatar { width: clamp(2.6rem, 5vw, 3.2rem); }
 .strip-meta { display: flex; flex-wrap: wrap; gap: .55rem clamp(.9rem, 2.4vw, 1.75rem); }
 .strip-meta dt { color: var(--muted); font-size: .75rem; }

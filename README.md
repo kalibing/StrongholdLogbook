@@ -4,9 +4,9 @@
 
 仓库包含一个可以直接部署的小型全栈应用：
 
-- **后端**：FastAPI + PostgreSQL + Alembic，负责登录、角色档案、战绩导入队列与统计查询。
-- **前端**：Vue 3 + TypeScript + Vite + Naive UI + ECharts，单页界面，三页数据视图加一页数据导入，支持日间 / 夜间切换。
-- **导入**：网页上传 JSON 快照，写入由独立 worker 进程异步完成，同一局按 `(角色, 协议, 对局 ID)` 幂等。
+- **后端**：FastAPI + PostgreSQL + Alembic，负责登录、战绩导入队列与统计查询。
+- **前端**：Vue 3 + TypeScript + Vite + Naive UI + ECharts，支持日间 / 夜间切换。
+- **导入**：网页同步森空岛，API 接受 JSON 快照。独立 worker 异步写入，按 `(站点账号, 协议, 对局 ID)` 去重。
 
 ```
 frontend (Vue 3)  ──/api/*──▶  FastAPI  ──▶  PostgreSQL
@@ -20,14 +20,17 @@ frontend (Vue 3)  ──/api/*──▶  FastAPI  ──▶  PostgreSQL
 | 页面 | 内容 |
 | --- | --- |
 | 战绩总览 | 胜率、最近十局、盟约总层数 / 单项最高层数 / 金币 / 击杀 / 回合趋势，可按近 10 局、全部对局或按日期聚合；常用干员与常用盟约。 |
+| 昨日战报 | 昨日胜负与对局明细、击破首领、盟约层数饼图、胜负对比与可选 AI 复盘。 |
 | 对局记录 | 按协议期、模拟方式、难度、开局日期、战果筛选并分页；点开单局战报查看回合、击杀、金币、奖杯、盟约结算、首领和最终阵容与装备。 |
 | 干员统计 | 出场局数、出场率、胜负与胜率，支持搜索和排序。 |
 | 成就档案 | 绑定鹰角通行证（或粘贴成就页链接）后直连卫戍协议 `playerSummary`：六维成就、18 个称号、社交与获赞、策略纪录与**两种特殊标识**。见 [docs/achievements.md](docs/achievements.md)。 |
-| 数据导入 | 上传战绩 JSON，查看导入任务进度与错误（一个账号一份数据，不再区分角色档案）。 |
+| 数据导入 | 同步森空岛战绩、复用已保存的鹰角 token，查看导入任务进度与错误。 |
 
 | 通用 | 顶部导航带滑动指示器；筛选区使用 Naive UI 的下拉与范围日期选择；图表为 ECharts；主题可切换日间/夜间。 |
 
 统一口径：疑似直接退出（0 回合、0 金币、0 击杀）默认排除，可在筛选里勾选纳入；日期一律按中国标准时间（UTC+8）归档。
+
+昨日战报的饼图按盟约累计层数计算占比，胜负对比使用有对应数值的对局。需要启用 AI 分析时，在 API 进程环境（Compose 部署在 `.env`）设置 `LOGBOOK_AI_ENDPOINT`（兼容 Chat Completions 的完整 URL）、`LOGBOOK_AI_MODEL`，以及服务所需的 `LOGBOOK_AI_API_KEY`，再重启 API。点击「生成 AI 分析」才会发送战绩摘要。
 
 ## 目录结构
 
@@ -122,6 +125,7 @@ $env:POSTGRES_USER = 'logbook'
 $env:POSTGRES_DB   = 'logbook'
 $env:POSTGRES_PASSWORD = '<数据库密码>'
 $env:PUBLIC_ORIGIN = 'http://localhost:5173'
+$env:LOGBOOK_CREDENTIAL_KEY = '<已生成并保存的凭据密钥>'
 
 cd backend
 python -m alembic upgrade head
@@ -144,7 +148,7 @@ npm run dev        # http://localhost:5173，/api 自动代理到 127.0.0.1:8000
 ### 3. Docker Compose（PostgreSQL，可选）
 
 ```powershell
-Copy-Item .env.example .env       # 填写 POSTGRES_PASSWORD
+Copy-Item .env.example .env       # 填写 POSTGRES_PASSWORD 和 LOGBOOK_CREDENTIAL_KEY
 docker compose up -d --build      # http://localhost:8080
 docker compose exec api python -m logbook.admin create-user alice
 ```
@@ -160,22 +164,17 @@ Compose 会先跑 `alembic upgrade head`（`migrate` 服务），再启动 API �
 - **社交**：已获赞、好友数、特别关注、最常共同游玩的队友与胜场
 - **策略与分队纪录**：TOP3 分队 + **两种特殊标识**（`master` 精通角标 / `base` 基础标识）
 
-绑定方式三选一：
-
-1. **网页登录（推荐）**：点「打开鹰角通行证登录页」，在官方页面上用手机号 / 短信 / 扫码登录，
-   本站反代只读取登录成功后的 access token，自动换取成就数据；密码不经过任何存储。
-2. 游戏内打开「卫戍协议 · 成就」→ 复制地址栏链接 → 粘到页面「粘贴链接 / 令牌」；
-3. 填手机号 + 密码走 `token_by_phone_password` → `u8/getToken`（服务端直连，可能被风控挡住）。
+网页通过 [Windows 本机助手](agent/README.md) 绑定成就档案。已登录的账号也可以用游戏内成就链接或令牌调用 `POST /api/achv/session`。
 
 链路、字段字典、两种标识的判定依据与已知限制见 [docs/achievements.md](docs/achievements.md)。
 令牌按天失效，过期后页面继续展示上次快照并提示。
 
 ## 导入战绩
 
-在「档案管理」页选择 JSON 文件即可，也支持直接调用接口：
+在「数据导入」页同步森空岛，或通过 API 补录 JSON 快照：
 
 ```powershell
-curl.exe -X POST "http://localhost:8000/api/roles/$ROLE_ID/imports" `
+curl.exe -X POST "http://localhost:8000/api/imports" `
   -H "Content-Type: application/json" `
   -H "Origin: http://localhost:5173" `
   -b cookies.txt --data-binary "@fixtures/sample-snapshot.json"
@@ -208,8 +207,8 @@ curl.exe -X POST "http://localhost:8000/api/roles/$ROLE_ID/imports" `
 
 - 也接受顶层就是数组的写法，或旧版中文键（`时间 / 方式 / 模式 / 结果 / 回合 / 击杀 / 金币 / 盟约 / 干员 / 阵容 / 首领`），旧格式会按「时间 + 方式 + 模式」生成稳定 ID 用于去重。
 - 省略 `suspected_exit` 时按 0 回合、0 击杀、0 金币推断；省略 `operators` 时由 `squad` 派生。
-- 单文件不超过 8 MB、1–5000 局；同一角色同时最多 3 个待处理导入任务。
-- 重复导入同一局不会新增记录，只会覆盖该局的字段。
+- 单文件不超过 8 MB、1–5000 局；同一账号同时最多 3 个待处理导入任务。
+- 重复导入会更新同一局。新增数据中缺失的字段保留已有值，明确上报的零值和空列表会更新。
 
 ## 接口一览
 
@@ -217,14 +216,15 @@ curl.exe -X POST "http://localhost:8000/api/roles/$ROLE_ID/imports" `
 | --- | --- | --- |
 | GET | `/api/health` | 存活与数据库连通性 |
 | GET / POST / DELETE | `/api/session` | 读取当前登录、登录、退出 |
-| GET / POST | `/api/roles` | 角色档案列表 / 新建（上限 20 个） |
-| PATCH / DELETE | `/api/roles/{role_id}` | 重命名 / 删除档案（级联删除战绩） |
-| GET | `/api/roles/{role_id}/facets` | 可用协议期、方式、难度 |
-| GET | `/api/roles/{role_id}/overview` | 总览与趋势，`scope=recent\|all\|day` |
-| GET | `/api/roles/{role_id}/matches` | 分页对局列表，`result=win\|loss`、`page`、`limit` |
-| GET | `/api/roles/{role_id}/matches/{match_id}` | 单局战报 |
-| GET | `/api/roles/{role_id}/operators` | 干员统计，`sort=count\|win\|name`、`q` |
-| GET / POST | `/api/roles/{role_id}/imports` | 导入任务列表 / 上传快照 |
+| GET | `/api/facets` | 可用协议期、方式、难度 |
+| GET | `/api/overview` | 总览与趋势，`scope=recent\|all\|day` |
+| GET | `/api/distribution` | 按模拟方式和难度汇总对局 |
+| GET | `/api/matches` | 分页对局列表，`result=win\|loss`、`page`、`limit` |
+| GET | `/api/matches/{match_id}` | 单局战报 |
+| GET | `/api/operators` | 干员统计，`sort=count\|win\|name`、`q` |
+| GET / POST | `/api/imports` | 导入任务列表 / 上传快照 |
+| POST | `/api/imports/skland` | 同步森空岛 |
+| GET / DELETE | `/api/imports/skland/token` | 查询当前账号是否已保存令牌 / 清除令牌 |
 
 筛选参数在总览、对局、干员三处通用：`protocol`、`play`、`difficulty`、`start`、`end`、`include_exits`。
 
@@ -248,7 +248,6 @@ cd frontend; npm run build                    # 生产构建
 | `GET /overview?scope=all` | `matches=5 wins=3 excluded=1 max_layers=11 total_coins=451` |
 | `GET /matches?limit=4` | `total=5 pages=2`，分队、盟约层数、时间正确 |
 | `GET /operators` | `with_squad=5`，出场排序正确 |
-| `PATCH / DELETE /api/roles/{id}` | 200 / 204，级联清理后列表为空 |
 | `http://localhost:5173/api/health` | Vite 代理转发正常
 
 ## 数据来源说明
@@ -260,7 +259,19 @@ cd frontend; npm run build                    # 生产构建
 - 密码用 Argon2 哈希，会话令牌只存 SHA-256 摘要；Cookie 为 `HttpOnly` + `SameSite=Strict`，HTTPS 下自动加 `__Host-` 前缀与 `Secure`。
 - 同一账号连续 8 次密码错误锁定 15 分钟；登录失败分支仍会执行一次哈希校验以避免时序泄露。
 - 所有写请求校验 `Origin`，所有响应带 `Cache-Control: no-store`，Caddy 追加 CSP、`X-Frame-Options` 等头。
-- 上传体积、局数、待处理任务数和档案数量都有上限；导入在独立进程写库，接口不阻塞。
+- 上传体积、局数和待处理任务数都有上限。导入由独立进程写库。
+
+### 凭据密钥
+
+森空岛复用令牌和成就令牌分别按站点账号及用途用 AES-256-GCM 加密入库。已有明文行会在 API 首次启动时自动转换，原有战报和成就快照保留。升级时一同更新 API 与 worker。
+
+PostgreSQL 部署应生成一次随机密钥并通过受限的 `LOGBOOK_CREDENTIAL_KEY` 环境变量交给 API。Compose 可从本机的 `.env` 读取该值。
+
+```powershell
+python -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+```
+
+密钥应与数据库备份分开保管，恢复时使用原密钥。本地 SQLite 在未配置环境变量时会用数据库旁的 `<数据库文件名>.credentials.key`，首次启动自动生成。将密钥文件和数据库一起限制为运行账号可读，分别备份。升级前的备份或存储快照可能含原始令牌，按敏感数据保管。怀疑令牌泄露时应撤销上游授权并重新绑定。
 
 ## 界面设计
 

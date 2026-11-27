@@ -48,6 +48,10 @@ class SklandError(Exception):
     """森空岛链路失败；message 面向用户。"""
 
 
+class AccessTokenRejected(SklandError):
+    """鹰角拒绝了用 access token 换取授权的请求。"""
+
+
 def _request(method: str, url: str, headers: dict | None = None, body: dict | None = None) -> tuple[int, str]:
     data = json.dumps(body, ensure_ascii=False).encode() if body is not None else None
     request = urllib.request.Request(url, data=data, method=method)
@@ -64,7 +68,7 @@ def _request(method: str, url: str, headers: dict | None = None, body: dict | No
     except urllib.error.HTTPError as error:
         raw, status = error.read(), error.code
     except OSError as error:
-        raise SklandError(f"连接森空岛失败：{error}") from error
+        raise SklandError("连接森空岛失败，请稍后重试") from error
     if raw[:2] == b"\x1f\x8b":
         raw = gzip.decompress(raw)
     return status, raw.decode("utf-8", "replace")
@@ -82,12 +86,17 @@ def cred_from_token(access_token: str) -> tuple[str, str]:
     """鹰角 token → (cred, sign_token)。access_token 用森空岛 appCode 换 oauth code。"""
     status, text = _request("POST", "https://as.hypergryph.com/user/oauth2/v2/grant",
                             body={"appCode": SKLAND_APP_CODE, "token": access_token, "type": 0})
-    try:
-        code = (json.loads(text).get("data") or {}).get("code")
-    except ValueError:
-        code = None
-    if status != 200 or not code:
+    if status in (401, 403):
+        raise AccessTokenRejected("鹰角未接受此 token，请重新获取后再试。")
+    if status != 200:
         raise SklandError(f"换取森空岛 oauth code 失败（HTTP {status}）")
+    try:
+        payload = json.loads(text)
+        code = (payload.get("data") or {}).get("code")
+    except (ValueError, AttributeError):
+        raise SklandError(f"换取森空岛 oauth code 失败（HTTP {status}）")
+    if not code:
+        raise AccessTokenRejected("鹰角未接受此 token，请重新获取后再试。")
     status, text = _request("POST", f"{API_BASE}/web/v1/user/auth/generate_cred_by_code",
                             body={"code": code, "kind": 1})
     try:
@@ -95,7 +104,7 @@ def cred_from_token(access_token: str) -> tuple[str, str]:
     except ValueError:
         data = {}
     if status != 200 or not data.get("cred") or not data.get("token"):
-        raise SklandError(f"换取森空岛 cred 失败（HTTP {status}）：{text[:120]}")
+        raise SklandError(f"换取森空岛 cred 失败（HTTP {status}）")
     return str(data["cred"]), str(data["token"])
 
 
@@ -117,9 +126,9 @@ def api_get(cred: str, sign_token: str, path: str, query: str = "", role: str = 
     try:
         payload = json.loads(text)
     except ValueError:
-        raise SklandError(f"森空岛返回非 JSON（HTTP {status}）：{text[:120]}") from None
+        raise SklandError(f"森空岛返回无法解析的内容（HTTP {status}）") from None
     if payload.get("code") not in (0, None):
-        raise SklandError(f"森空岛拒绝：{payload.get('message') or payload.get('code')}")
+        raise SklandError(f"森空岛拒绝请求，请检查凭据或稍后重试（HTTP {status}）")
     return payload
 
 
@@ -155,6 +164,8 @@ def to_snapshot(records: list[dict]) -> dict:
             info = chess.get("chessInfo") or {}
             char_id = info.get("charId") or ""
             char_name = info.get("charName") or char_id
+            chess_id = chess.get("chessId") or info.get("id")
+            golden_id = info.get("goldenChessId")
             if char_id:
                 operators[char_id] = {"name": char_name}
             items = []
@@ -163,12 +174,15 @@ def to_snapshot(records: list[dict]) -> dict:
                 if equip_id:
                     items.append(equip_id)
                     equipment.setdefault(equip_id, {"name": equip_id})
-            squad.append({
+            unit = {
                 "id": char_id,
                 "name": char_name,
-                "items": items,
+                "elite": chess_id == golden_id if chess_id and golden_id else None,
                 "evolve": info.get("evolvePhase"),
-            })
+            }
+            if isinstance(chess.get("equips"), list):
+                unit["items"] = items
+            squad.append(unit)
         bonds = [
             {"name": BOND_NAMES.get(bond.get("bondId") or "", bond.get("bondId") or ""),
              "layers": int(bond.get("layer") or 0)}
@@ -178,11 +192,13 @@ def to_snapshot(records: list[dict]) -> dict:
         bosses = [b.get("bossId") for b in record.get("acBossInfo") or [] if b.get("isKilled")]
         started = int(record.get("gameStartTs") or 0)
         ended = int(record.get("gameEndTs") or 0)
-        matches.append({
+        before, after = record.get("trophyBefore"), record.get("trophyAfter")
+        mode = (record.get("modeType") or "").upper()
+        match = {
             "external_id": record.get("id"),
             "played_at": datetime.fromtimestamp(started, CHINA).isoformat() if started else None,
             "protocol": record.get("versionId") or "V3_1",
-            "play": "联合模拟" if (record.get("modeType") or "").upper() == "MULTI" else "独立模拟",
+            "play": ("联合模拟" if mode == "MULTI" else "独立模拟") if mode else "未知",
             "difficulty": record.get("mode") or record.get("modeDifficulty") or "未知",
             "result": "win" if int(record.get("completeState") or 0) == 1 else "loss",
             "strategy": BAND_NAMES.get(record.get("bandId") or "", record.get("bandId") or None),
@@ -190,12 +206,16 @@ def to_snapshot(records: list[dict]) -> dict:
             "kills": record.get("killCnt"),
             "coins": record.get("coinCost"),
             "sync_count": record.get("syncCnt"),
-            "trophies": int(record.get("trophyAfter") or 0) - int(record.get("trophyBefore") or 0),
+            "trophies": int(after) - int(before) if before not in (None, "") and after not in (None, "") else None,
             "duration_seconds": (ended - started) if started and ended > started else None,
-            "bonds": bonds,
-            "squad": squad,
-            "bosses": [b for b in bosses if b],
-        })
+        }
+        if isinstance(record.get("bondInfo"), list):
+            match["bonds"] = bonds
+        if isinstance(record.get("chessSquad"), list):
+            match["squad"] = squad
+        if isinstance(record.get("acBossInfo"), list):
+            match["bosses"] = [b for b in bosses if b]
+        matches.append(match)
     matches = [m for m in matches if m["external_id"] and m["played_at"]]
     # 旧 → 新，方便导入后趋势图从左到右
     matches.sort(key=lambda item: item["played_at"])

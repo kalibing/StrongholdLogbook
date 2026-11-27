@@ -31,6 +31,7 @@ __pycache__/
 /.local/
 *.sqlite3
 *.sqlite3-*
+*.credentials.key
 
 .local/
 
@@ -42,6 +43,7 @@ __pycache__/
 /build/
 /dist/
 *.spec
+!agent/*.spec
 
 # 抓包与导出数据（含令牌，禁止入库）
 /reports/
@@ -56,3 +58,5 @@ __pycache__/
 !/tools/auto_achv.py
 !/tools/u8_watch.py
 !/tools/extract_title_icons.py
+# 本机助手 exe 由源码构建（scripts/build-agent.ps1），二进制不入库
+/frontend/public/download/*.exe

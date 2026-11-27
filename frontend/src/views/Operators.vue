@@ -8,8 +8,11 @@ import { portrait } from '../icons'
 import type { Operator } from '../models'
 import AvatarImage from '../components/AvatarImage.vue'
 import FiltersBar from '../components/FiltersBar.vue'
+import ListPagination from '../components/ListPagination.vue'
 
 const { filters, revision } = logbook()
+const page = ref(1)
+const pageSize = ref(10)
 const sort = ref<'count' | 'win' | 'name'>('count')
 const q = ref('')
 const search = ref('')
@@ -30,7 +33,22 @@ watch(q, (value, _, onCleanup) => {
 })
 
 const url = computed(() => '/operators' + query(filters, { sort: sort.value, q: search.value }))
-const { data, pending, error, refresh } = useResource<{ with_squad: number; operators: Operator[] }>(url, revision, true)
+const { data, pending, error, resolvedUrl, refresh } = useResource<{ with_squad: number; operators: Operator[] }>(url, revision, true)
+const operatorCount = computed(() => data.value?.operators.length ?? 0)
+const pageCount = computed(() => Math.ceil(operatorCount.value / pageSize.value))
+const currentPage = computed(() => Math.min(page.value, Math.max(1, pageCount.value)))
+const displayedOperators = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return data.value?.operators.slice(start, start + pageSize.value) ?? []
+})
+
+function changePageSize(size: number) {
+  pageSize.value = size
+  page.value = 1
+}
+
+watch(resolvedUrl, () => { page.value = 1 }, { flush: 'sync' })
+watch(pageCount, () => { page.value = currentPage.value })
 </script>
 
 <template>
@@ -55,24 +73,37 @@ const { data, pending, error, refresh } = useResource<{ with_squad: number; oper
     </p>
     <div v-if="data" class="scroll" :aria-busy="pending">
       <table class="operator-table">
+        <colgroup>
+          <col class="operator-name-col">
+          <col class="operator-usage-col" span="2">
+          <col class="operator-result-col" span="2">
+          <col>
+        </colgroup>
         <thead>
           <tr>
             <th scope="col">干员</th>
-            <th scope="col">出场局数</th>
+            <th scope="col">出场<wbr>局数</th>
             <th scope="col">出场率</th>
             <th scope="col">胜</th>
             <th scope="col">负</th>
-            <th scope="col">出场胜率</th>
+            <th scope="col">出场<wbr>胜率</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in data?.operators ?? []" :key="row.id">
-            <td><span class="with-avatar"><AvatarImage :src="portrait(row.id)" :name="row.name" />{{ row.name }}</span></td>
+          <tr v-for="row in displayedOperators" :key="row.id">
+            <th scope="row">
+              <span class="with-avatar"><AvatarImage :src="portrait(row.id)" :name="row.name" /><span>{{ row.name }}</span></span>
+            </th>
             <td>{{ row.count }}</td>
             <td>{{ percent(row.usage_rate) }}</td>
-            <td>{{ row.wins }}</td>
-            <td>{{ row.losses }}</td>
-            <td>{{ percent(row.win_rate) }}</td>
+            <td class="operator-wins">{{ row.wins }}</td>
+            <td class="operator-losses">{{ row.losses }}</td>
+            <td>
+              <span class="operator-win-rate">
+                <span>{{ percent(row.win_rate) }}</span>
+                <span class="operator-win-bar" aria-hidden="true"><i :style="{ width: row.win_rate * 100 + '%' }"></i></span>
+              </span>
+            </td>
           </tr>
           <tr v-if="!pending && !error && !data.operators.length">
             <td class="empty-cell" colspan="6">{{ search ? '没有找到匹配的干员。' : '当前筛选范围内没有阵容明细。' }}</td>
@@ -80,5 +111,7 @@ const { data, pending, error, refresh } = useResource<{ with_squad: number; oper
         </tbody>
       </table>
     </div>
+    <ListPagination v-if="operatorCount" :page="currentPage" :page-size="pageSize" :total="operatorCount"
+      :disabled="pending" @update:page="page = $event" @update:page-size="changePageSize" />
   </section>
 </template>

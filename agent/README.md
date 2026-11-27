@@ -1,6 +1,6 @@
-> **已弃用（deprecated）**：本工具依赖「本机安装并登录过明日方舟 PC 端」。
-> 换到别人的机器上通常不可用，因此站点已下线该 exe 的下载入口，此处仅作研究存档。
-> 需要给别人用的方式请走「粘贴令牌」或在导入页显式填凭据。
+> **状态**：本机助手是站点「成就档案 → 绑定」面板的**推荐入口**，exe 直接在该面板下载（`/download/ArknightsAchvAgent.exe`）。
+> 前提是这台机器用明日方舟 PC 端登录过；换到别人的机器上不可用。
+> 手动粘贴令牌 / 账号密码 / 网页登录这三条是**已弃用的旧路径**，面板里仍保留但只作兜底。
 >
 # 本机助手（Arknights 成就档案）
 
@@ -9,8 +9,7 @@
 
 ## 下载
 
-站点「成就档案 → 拿令牌」面板底部有 **本机助手** 下载入口，或直接取
-`frontend/public/download/ArknightsAchvAgent.exe`（自行打包见下）。
+站点「成就档案 → 绑定成就数据源 → 本机助手」面板顶部有下载按钮，对应 `frontend/public/download/ArknightsAchvAgent.exe`（自行打包见下）。
 
 ## 用法
 
@@ -76,7 +75,13 @@ POST <站点>/api/session → POST <站点>/api/achv/session  {token:"code=<u8 t
 ## 自行打包
 
 ```powershell
-python -m pip install pyinstaller pycryptodome
-pyinstaller --onefile --name ArknightsAchvAgent agent/achv_agent.py
-# 产物：dist/ArknightsAchvAgent.exe
+# 一条命令：装依赖 → 打包 → 把 exe 放到站点静态目录（面板下载按钮直接可用）
+pwsh -File scripts\build-agent.ps1
+
+# 依赖已装好时跳过 pip
+pwsh -File scripts\build-agent.ps1 -SkipInstall
 ```
+
+产物：`frontend/public/download/ArknightsAchvAgent.exe`（约 9 MB，**不入库**，`.gitignore` 已排除）。
+构建定义在 `agent/ArknightsAchvAgent.spec`，源码在 `agent/achv_agent.py`，两者都随仓库走；
+也可以直接 `pyinstaller agent/ArknightsAchvAgent.spec`，产物落在 `dist/`。
