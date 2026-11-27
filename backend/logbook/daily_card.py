@@ -37,6 +37,7 @@ FONT_CANDIDATES = {
     False: [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",  # RHEL / OpenCloudOS / Fedora
         "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
         "C:/Windows/Fonts/msyh.ttc",
         "/System/Library/Fonts/PingFang.ttc",
@@ -44,6 +45,7 @@ FONT_CANDIDATES = {
     True: [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc",  # RHEL / OpenCloudOS / Fedora
         "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
         "C:/Windows/Fonts/msyhbd.ttc",
         "/System/Library/Fonts/PingFang.ttc",
