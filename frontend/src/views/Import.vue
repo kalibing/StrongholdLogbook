@@ -520,7 +520,7 @@ onBeforeUnmount(() => {
               <p id="import-cred-help" class="muted">把上一步复制的字典整段粘贴到下面，识别成功会自动拉取；中文引号、全角逗号、换行会自动纠正。</p>
               <NInput ref="credInput" :value="credText" type="textarea" :autosize="{ minRows: 2, maxRows: 5 }"
                 placeholder='{"cred":"…","sign_token":"…"}' :disabled="pulling"
-                :input-props="{ id: 'import-cred', autocomplete: 'off', spellcheck: 'false', style: 'font-family: ui-monospace, Consolas, monospace; font-size: .8rem', 'aria-describedby': 'import-cred-help' }"
+                :input-props="{ id: 'import-cred', autocomplete: 'off', spellcheck: 'false', style: 'font-family: ui-monospace, Consolas, monospace; font-size: .875rem', 'aria-describedby': 'import-cred-help' }"
                 @update:value="updateCredentials" />
               <p v-if="credHint" class="import-step-status" :data-state="credReady ? 'ready' : 'warn'" role="status">{{ credHint }}</p>
               <p class="import-step-note">凭据只在本次请求里使用；提交时会发送给本站后端，请仅在自己控制的实例中回填。</p>
@@ -622,7 +622,7 @@ onBeforeUnmount(() => {
 .import-badge {
   padding: .1rem .5rem; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--accent); font-size: .7rem; font-weight: 700; letter-spacing: .06em;
+  color: var(--accent); font-size: .75rem; font-weight: 700; letter-spacing: .06em;
 }
 .import-form, .current-import { display: grid; gap: .9rem; }
 .wizard-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; font-size: 1rem; }
@@ -634,7 +634,7 @@ onBeforeUnmount(() => {
 }
 .import-methods label {
   position: relative; display: grid; place-items: center; min-height: 34px; padding: 0 1.1rem;
-  background: var(--panel); color: var(--muted); cursor: pointer; font-size: .8125rem; letter-spacing: .04em; white-space: nowrap;
+  background: var(--panel); color: var(--muted); cursor: pointer; font-size: .875rem; letter-spacing: .04em; white-space: nowrap;
   transition: color .15s, background-color .15s;
 }
 .import-methods label:hover { background: var(--raised); color: var(--text); }
@@ -649,13 +649,13 @@ onBeforeUnmount(() => {
 .import-cmd figcaption {
   padding: .3rem .6rem; border-bottom: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
   background: color-mix(in srgb, var(--accent) 8%, transparent);
-  color: var(--accent); font-size: .68rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--accent); font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
 }
 /* 命令只是拿来复制的（旁边有复制按钮），单行横向滚动，不再折成好几行把向导撑高。 */
 .import-cmd pre { margin: 0; padding: .55rem .6rem; overflow-x: auto; scrollbar-width: thin; }
 .import-cmd code {
   color: var(--text); font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
-  font-size: .75rem; line-height: 1.65; white-space: pre;
+  font-size: .8125rem; line-height: 1.65; white-space: pre;
 }
 /* 两种凭据方式的内容叠在同一格里，只显示当前方式：在第一步切换方式时，向导高度和底部按钮都不动。 */
 .mode-stack { display: grid; }
@@ -668,7 +668,7 @@ onBeforeUnmount(() => {
   border-radius: var(--radius);
   background: linear-gradient(100deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 72%);
 }
-.import-submit .muted { font-size: .8125rem; }
+.import-submit .muted { font-size: .875rem; }
 .import-submit .load-message { margin: 0; }
 .saved-token h3 { margin-bottom: .25rem; }
 .saved-token .load-message { flex-basis: 100%; }
@@ -683,7 +683,7 @@ onBeforeUnmount(() => {
 .import-status[data-status='done'] { color: var(--win); }
 .import-status[data-status='failed'], .current-import .job-error { color: var(--loss); }
 .job progress, .current-import progress { width: 100%; height: .45rem; accent-color: var(--accent); }
-.job-stale { color: var(--loss); font-size: .75rem; }
+.job-stale { color: var(--loss); font-size: .8125rem; }
 .import-history { padding: 0; overflow: hidden; }
 .import-history .history-card {
   display: grid; gap: .85rem; width: 100%; min-height: 0; padding: clamp(.9rem, 2.5vw, 1.4rem);
@@ -694,21 +694,21 @@ onBeforeUnmount(() => {
 .import-history .history-card:focus-visible { outline-offset: -3px; }
 .history-card-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
 .history-card-title { font-size: 1.125rem; font-weight: 700; }
-.history-card-more { display: inline-flex; align-items: center; gap: .15rem; color: var(--muted); font-size: .8125rem; transition: color .16s ease; }
+.history-card-more { display: inline-flex; align-items: center; gap: .15rem; color: var(--muted); font-size: .875rem; transition: color .16s ease; }
 .history-card-more .n-icon { transition: transform .16s ease; }
 .history-card:hover .history-card-more { color: var(--accent); }
 .history-card:hover .history-card-more .n-icon { transform: translateX(2px); }
 .history-facts { display: grid; gap: 1px; border: 1px solid var(--line); background: var(--line); }
 .history-fact { display: grid; gap: .3rem; padding: .7rem .85rem; background: var(--inset); }
-.history-fact-label { color: var(--muted); font-size: .8rem; }
+.history-fact-label { color: var(--muted); font-size: .875rem; }
 .history-fact-value { display: flex; align-items: baseline; gap: .3rem; }
 .history-fact-value b { color: var(--text); font: 700 1.6rem/1 var(--numbers); }
-.history-fact-value small { color: var(--muted); font-size: .8rem; }
+.history-fact-value small { color: var(--muted); font-size: .875rem; }
 .history-latest { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .2rem .6rem; font-size: .875rem; }
-.history-latest time { color: var(--muted); font: .8125rem var(--numbers); }
-.history-note { color: var(--muted); font-size: .78rem; line-height: 1.5; }
+.history-latest time { color: var(--muted); font: .875rem var(--numbers); }
+.history-note { color: var(--muted); font-size: .875rem; line-height: 1.5; }
 .history-error { margin: 0 1.4rem 1.2rem; }
-.history-modal-note { margin: 0 0 .75rem; font-size: .8125rem; }
+.history-modal-note { margin: 0 0 .75rem; font-size: .875rem; }
 .history-modal-note strong { color: var(--accent); font-variant-numeric: tabular-nums; }
 /* 记录多时在对话框里滚动，不把对话框撑出屏幕 */
 .history-list { max-height: min(60vh, 32rem); overflow-y: auto; overscroll-behavior: contain; }

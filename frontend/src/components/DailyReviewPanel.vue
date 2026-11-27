@@ -103,30 +103,30 @@ async function generate() {
 .review-heading { flex-wrap: wrap; }
 .review-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; margin-block: .7rem; }
 .review-metrics > div { padding: .55rem .7rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset); }
-.review-metrics dt { display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .8rem; }
+.review-metrics dt { display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .875rem; }
 .review-metrics dt i { color: var(--accent); }
 .review-metrics dd { margin-top: .3rem; font: 650 1.25rem/1.15 var(--numbers); overflow-wrap: anywhere; }
-.review-metrics small, .review-bosses small { font-size: .72rem; font-weight: 400; }
+.review-metrics small, .review-bosses small { font-size: .75rem; font-weight: 400; }
 .review-bosses { margin-top: .65rem; border-top: 1px solid var(--line); }
-.review-bosses summary { cursor: pointer; padding-block: .45rem; font-size: .81rem; }
+.review-bosses summary { cursor: pointer; padding-block: .45rem; font-size: .875rem; }
 .review-bosses summary > span { float: inline-end; display: inline-flex; gap: .55rem; color: var(--muted); }
 .review-bosses summary > span span { display: inline-flex; align-items: center; gap: .15rem; }
 .review-bosses img { object-fit: contain; }
 .review-bosses ul { list-style: none; margin: 0; padding: 0; max-height: 12rem; overflow-y: auto; }
-.review-bosses li { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding-block: .23rem; border-top: 1px solid var(--line); font-size: .84rem; }
+.review-bosses li { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding-block: .23rem; border-top: 1px solid var(--line); font-size: .875rem; }
 .review-bosses li b { flex: none; font-family: var(--numbers); }
 .review-matches { display: grid; gap: .38rem; }
-.review-matches h3 { color: var(--muted); font-size: .8rem; }
+.review-matches h3 { color: var(--muted); font-size: .875rem; }
 .review-match {
   display: flex; align-items: center; gap: .55rem; min-width: 0; width: 100%;
   padding: .42rem .6rem; text-align: left; white-space: normal; background: var(--inset);
 }
 .review-match-copy { display: grid; gap: .1rem; flex: 1; }
-.review-match-copy strong { font-size: .86rem; }
-.review-match-copy span { color: var(--muted); font-size: .78rem; }
+.review-match-copy strong { font-size: .875rem; }
+.review-match-copy span { color: var(--muted); font-size: .875rem; }
 .review-match b { color: var(--accent); text-align: right; font: 650 .92rem var(--numbers); }
 .review-match > i { flex: none; }
-.review-service, .review-error { margin-top: .6rem; font-size: .8rem; }
+.review-service, .review-error { margin-top: .6rem; font-size: .875rem; }
 .review-error { color: var(--loss); }
 .review-analysis { padding-top: .7rem; margin-top: .75rem; border-top: 1px solid var(--line); }
 .review-analysis p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: .35rem; }

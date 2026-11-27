@@ -199,8 +199,8 @@ watch(highlighted, (indices, previous) => {
 <style scoped>
 .bond-share { padding: 1.2rem clamp(1rem, 2.5vw, 1.65rem); container-type: inline-size; }
 .bond-share header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .5rem 1rem; }
-.share-note { font-size: .85rem; margin-top: .2rem; }
-.share-toggle { display: inline-flex; align-items: center; gap: .45rem; color: var(--muted); font-size: .8rem; cursor: pointer; white-space: nowrap; padding-top: .2rem; }
+.share-note { font-size: .875rem; margin-top: .2rem; }
+.share-toggle { display: inline-flex; align-items: center; gap: .45rem; color: var(--muted); font-size: .875rem; cursor: pointer; white-space: nowrap; padding-top: .2rem; }
 .share-body { display: grid; grid-template-columns: minmax(90px, .85fr) minmax(0, 1.15fr); gap: clamp(.6rem, 2vw, 1.6rem); align-items: center; max-width: 52rem; margin: .75rem auto 0; }
 .share-graphic {
   position: relative; width: 100%; max-width: 224px; aspect-ratio: 1; justify-self: center; isolation: isolate;
@@ -208,12 +208,12 @@ watch(highlighted, (indices, previous) => {
 .share-pie { position: relative; width: 100%; height: 100%; z-index: 1; }
 .share-total { display: grid; justify-items: center; align-content: center; position: absolute; inset: 24%; pointer-events: none; }
 .share-total b { color: var(--text); font: 700 clamp(1.35rem, 2.7vw, 2.4rem)/1 var(--numbers); letter-spacing: -.035em; }
-.share-total span { color: var(--muted); font-size: .8rem; margin-top: .32rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.share-active-percent { color: var(--text); font: 600 .75rem var(--numbers); margin-top: .2rem; }
+.share-total span { color: var(--muted); font-size: .875rem; margin-top: .32rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-active-percent { color: var(--text); font: 600 .8125rem var(--numbers); margin-top: .2rem; }
 .share-active-percent::before { content: ''; display: inline-block; width: .4rem; height: .4rem; margin-inline-end: .25rem; border-radius: 2px; background: var(--slice-color); vertical-align: .1rem; }
 .share-key { --share-columns: minmax(0, 1fr) 3.8rem 3.4rem; }
 .share-key-head, .share-row { display: grid; grid-template-columns: var(--share-columns); align-items: center; gap: .5rem; padding-inline: .5rem; text-align: right; }
-.share-key-head { color: var(--muted); font-size: .74rem; padding-block: .35rem; border-bottom: 1px solid var(--line); }
+.share-key-head { color: var(--muted); font-size: .75rem; padding-block: .35rem; border-bottom: 1px solid var(--line); }
 .share-key-head span:first-child { text-align: left; }
 .share-legend { list-style: none; margin: .2rem 0 0; padding: 0; }
 /* 展开后 20 多行，限高滚动，免得把整张卡片撑得很长 */
@@ -221,7 +221,7 @@ watch(highlighted, (indices, previous) => {
 .share-row { width: 100%; min-height: 2.15rem; border: 0; background: transparent; color: var(--text); padding-block: .25rem; font-size: .875rem; cursor: pointer; transition: background-color .16s ease; }
 .share-row.active, .share-row:hover { background: color-mix(in srgb, var(--text) 6%, var(--panel)); color: var(--text); }
 .share-row--group { position: sticky; top: 0; z-index: 1; background: var(--panel); border-bottom: 1px solid var(--line); }
-.share-row--sub { min-height: 1.95rem; font-size: .8125rem; }
+.share-row--sub { min-height: 1.95rem; font-size: .875rem; }
 .share-row--sub .share-name { padding-left: .85rem; }
 .share-row--sub .share-name i { width: .4rem; height: .4rem; }
 .share-name { display: grid; grid-template-columns: .5rem 16px minmax(0, 1fr); align-items: center; gap: .3rem; text-align: left; white-space: normal; overflow-wrap: anywhere; }

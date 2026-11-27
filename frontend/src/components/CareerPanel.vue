@@ -182,15 +182,15 @@ const heatSummary = computed(() => {
 .career-boxes--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .career-boxes--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .career-boxes > div { min-width: 0; padding: .75rem .9rem; border: 1px solid var(--line); border-radius: 2px; background: var(--inset); }
-.career-boxes dt { overflow: hidden; margin-bottom: .35rem; color: var(--muted); font-size: .8rem; white-space: nowrap; text-overflow: ellipsis; }
+.career-boxes dt { overflow: hidden; margin-bottom: .35rem; color: var(--muted); font-size: .875rem; white-space: nowrap; text-overflow: ellipsis; }
 .career-boxes dd { font-weight: 700; font-size: 1.05rem; }
 .career-number { font: 700 1.2rem var(--numbers) !important; }
 
 .career-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
 .career-tile { display: grid; align-content: start; gap: .3rem; padding: .9rem 1rem; }
-.career-tile-label { color: var(--muted); font-size: .8rem; }
+.career-tile-label { color: var(--muted); font-size: .875rem; }
 .career-tile strong { font: 700 1.45rem/1.15 var(--numbers); white-space: nowrap; }
-.career-tile small { font-size: .74rem; }
+.career-tile small { font-size: .75rem; }
 .career-loss { color: var(--loss); }
 
 /* —— 活跃热力图：近 20 周，固定格子大小；右侧是这段时间的小结 —— */
@@ -205,7 +205,7 @@ const heatSummary = computed(() => {
 .career-activity { display: flex; align-items: stretch; gap: clamp(1rem, 3vw, 2rem); margin-top: 1rem; }
 .career-heat-wrap { display: flex; flex: none; gap: .5rem; max-width: 100%; overflow-x: auto; }
 .career-heat-days, .career-heat { margin: 0; padding: 0; list-style: none; display: grid; grid-template-rows: repeat(7, 22px); gap: 4px; }
-.career-heat-days { flex: none; color: var(--muted); font-size: .7rem; line-height: 22px; }
+.career-heat-days { flex: none; color: var(--muted); font-size: .75rem; line-height: 22px; }
 .career-heat-body { flex: none; }
 .career-heat { grid-auto-flow: column; grid-template-columns: repeat(var(--weeks), 22px); }
 .career-heat li { border-radius: 2px; }
@@ -216,28 +216,28 @@ const heatSummary = computed(() => {
   position: fixed; z-index: 3000; transform: translate(-50%, calc(-100% - 8px)); pointer-events: none;
   display: grid; gap: .1rem; padding: .45rem .7rem; white-space: nowrap;
   border: 1px solid var(--line-strong); border-radius: 2px; background: var(--raised); color: var(--text);
-  box-shadow: 0 8px 24px rgb(0 0 0 / .35); font-size: .75rem; line-height: 1.4;
+  box-shadow: 0 8px 24px rgb(0 0 0 / .35); font-size: .8125rem; line-height: 1.4;
 }
 .career-heat-tip-day { color: var(--muted); font-family: var(--numbers); }
 .career-heat-tip strong { font: 700 1rem/1.2 var(--numbers); }
-.career-heat-tip small { color: var(--muted); font-size: .7rem; }
+.career-heat-tip small { color: var(--muted); font-size: .75rem; }
 .career-heat-foot { display: grid; gap: .5rem; margin-top: .45rem; }
 .career-heat-months {
   display: grid; grid-template-columns: repeat(var(--weeks), 22px); gap: 4px;
-  margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: .72rem;
+  margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: .75rem;
 }
 .career-heat-months li { white-space: nowrap; }
-.career-heat-legend { display: flex; justify-self: end; align-items: center; gap: 4px; margin: 0; color: var(--muted); font-size: .74rem; }
+.career-heat-legend { display: flex; justify-self: end; align-items: center; gap: 4px; margin: 0; color: var(--muted); font-size: .75rem; }
 .career-heat-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
 .career-heat-summary {
   display: grid; flex: 1; grid-template-rows: repeat(3, 1fr); gap: 1px; min-width: 12rem; margin: 0;
   border: 1px solid var(--line); background: var(--line);
 }
 .career-heat-summary div { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: .6rem 1rem; background: var(--inset); }
-.career-heat-summary dt { color: var(--muted); font-size: .8rem; }
-.career-heat-summary dd { display: flex; align-items: baseline; gap: .25rem; margin: 0; color: var(--muted); font-size: .8rem; }
+.career-heat-summary dt { color: var(--muted); font-size: .875rem; }
+.career-heat-summary dd { display: flex; align-items: baseline; gap: .25rem; margin: 0; color: var(--muted); font-size: .875rem; }
 .career-heat-summary b { color: var(--text); font: 700 1.7rem/1 var(--numbers); }
-.career-heat-summary small { order: -1; margin-right: .5rem; font-size: .75rem; }
+.career-heat-summary small { order: -1; margin-right: .5rem; font-size: .8125rem; }
 .heat-0 { background: var(--heat-0); outline: 1px solid color-mix(in srgb, var(--line) 80%, transparent); outline-offset: -1px; }
 .heat-1 { background: var(--heat-1); }
 .heat-2 { background: var(--heat-2); }

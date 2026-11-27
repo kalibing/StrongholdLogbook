@@ -143,8 +143,8 @@ function changePlay(value: string) {
     min-height: 2.25rem; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left;
   }
   .filters-toggle span { font-weight: 650; }
-  .filters-toggle small { flex: 1; min-width: 0; color: var(--muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .filters-toggle i { font-style: normal; color: var(--accent); font-size: .8rem; }
+  .filters-toggle small { flex: 1; min-width: 0; color: var(--muted); font-size: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .filters-toggle i { font-style: normal; color: var(--accent); font-size: .875rem; }
   .filters:not(.filters--open) > :not(.filters-toggle) { display: none; }
 }
 </style>

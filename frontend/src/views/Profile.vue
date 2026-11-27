@@ -215,12 +215,12 @@ async function removeAvatar() {
 }
 .profile-emblem-hint {
   position: absolute; inset: 3px; display: grid; place-items: center;
-  clip-path: inherit; background: #0a0f0cb3; color: #f3f4f6; font-size: .85rem; font-style: normal;
+  clip-path: inherit; background: #0a0f0cb3; color: #f3f4f6; font-size: .875rem; font-style: normal;
   opacity: 0; transition: opacity .18s ease;
 }
 .profile-emblem:is(:hover, :focus-visible) .profile-emblem-hint, .profile-emblem--busy .profile-emblem-hint { opacity: 1; }
 .profile-emblem:focus-visible { outline: none; filter: drop-shadow(0 0 3px var(--accent)); }
-.profile-link { padding: 0; border: 0; background: none; color: var(--muted); font-size: .75rem; cursor: pointer; }
+.profile-link { padding: 0; border: 0; background: none; color: var(--muted); font-size: .8125rem; cursor: pointer; }
 .profile-link:hover { color: var(--loss); }
 
 .profile-who { display: grid; gap: .55rem; min-width: 0; }
@@ -233,15 +233,15 @@ async function removeAvatar() {
 .profile-edit:hover, .profile-edit:focus-visible { color: var(--accent); border-color: var(--line); }
 .profile-name-form { display: flex; align-items: center; gap: .5rem; max-width: 26rem; min-height: 2.6rem; }
 .profile-name-form .n-input { flex: 1; }
-.profile-error { color: var(--loss); font-size: .85rem; }
+.profile-error { color: var(--loss); font-size: .875rem; }
 
 .profile-facts { display: grid; gap: .4rem; margin: 0; }
 .profile-facts > div { display: grid; grid-template-columns: 4rem minmax(0, 1fr); align-items: baseline; gap: .75rem; }
-.profile-facts dt { color: var(--muted); font-size: .85rem; }
+.profile-facts dt { color: var(--muted); font-size: .875rem; }
 .profile-facts dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; margin: 0; font-weight: 600; }
-.profile-facts small { font-weight: 400; font-size: .78rem; }
+.profile-facts small { font-weight: 400; font-size: .875rem; }
 .profile-bind a, .profile-tip a { color: var(--accent); margin: 0 .15rem; }
-.profile-tip { margin-top: .75rem; font-size: .8rem; }
+.profile-tip { margin-top: .75rem; font-size: .875rem; }
 
 @media (max-width: 560px) {
   .profile-id { grid-template-columns: 1fr; justify-items: start; padding: 1.25rem; }

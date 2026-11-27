@@ -196,7 +196,7 @@ onMounted(async () => {
 .report-title { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
 .report-title h2 { font-size: 1.2rem; }
 .report-title .chip:hover { transform: none; }
-.report-meta { display: flex; flex-wrap: wrap; gap: .1rem .6rem; margin-top: .3rem; color: var(--muted); font-size: .8125rem; }
+.report-meta { display: flex; flex-wrap: wrap; gap: .1rem .6rem; margin-top: .3rem; color: var(--muted); font-size: .875rem; }
 .report-meta span { white-space: nowrap; }
 .report-heading button, .report-error button { min-height: 2.25rem; padding-block: .25rem; }
 .report-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding-block: 1rem 1.2rem; }
@@ -208,12 +208,12 @@ onMounted(async () => {
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--line);
 }
 .report-stats > div { min-width: 0; border: 0; border-radius: 0; padding: .55rem .65rem; background: var(--inset); }
-.report-stats dt, .report-setup dt { color: var(--muted); font-size: .75rem; }
+.report-stats dt, .report-setup dt { color: var(--muted); font-size: .8125rem; }
 .report-stats dd { font: 700 1.04rem/1.4 var(--numbers); overflow-wrap: anywhere; }
 #detail .report-stats dd.report-gain { color: var(--win); }
 .report-setup { display: flex; flex-wrap: wrap; gap: .45rem 1.4rem; padding: .5rem .75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--inset); }
 .report-setup > div, .report-setup dd { display: flex; gap: .4rem; align-items: center; }
-.report-setup dt { font-size: .82rem; }
+.report-setup dt { font-size: .875rem; }
 .report-setup dd { font-size: 1rem; font-weight: 700; }
 .report-setup img { object-fit: contain; }
 
@@ -229,7 +229,7 @@ onMounted(async () => {
 .report-bond-bar { height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text) 8%, transparent); overflow: hidden; }
 .report-bond-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
 .report-bonds b { min-width: 2.6rem; color: var(--text); font: 700 1.05rem/1 var(--numbers); text-align: right; white-space: nowrap; }
-.report-bonds b small { margin-left: .15rem; color: var(--muted); font: 400 .75rem system-ui, sans-serif; }
+.report-bonds b small { margin-left: .15rem; color: var(--muted); font: 400 .8125rem system-ui, sans-serif; }
 .report-bosses li { font-weight: 650; }
 .report-section .squad {
   --unit-portrait-size: clamp(2.65rem, 3.75vw, 3.25rem);
@@ -254,10 +254,10 @@ onMounted(async () => {
 .squad-card .equipment-list { display: grid; gap: .3rem; }
 .report-section .equipment-chip {
   gap: .28rem; padding: 0; background: transparent;
-  color: color-mix(in srgb, var(--text) 78%, var(--muted)); font-size: .75rem; line-height: 1.22;
+  color: color-mix(in srgb, var(--text) 78%, var(--muted)); font-size: .8125rem; line-height: 1.22;
 }
 .report-section .equipment-chip img { width: 17px; height: 17px; flex: none; object-fit: contain; border-radius: 2px; background: var(--chart-label); }
-.equipment-count { flex: none; margin-inline-start: auto; font: 650 .75rem var(--numbers); color: var(--muted); }
+.equipment-count { flex: none; margin-inline-start: auto; font: 650 .8125rem var(--numbers); color: var(--muted); }
 .report-section .equipment-chip--advanced img { outline: 1.5px solid #e1a744; outline-offset: 1px; }
 .report-avatar-fallback {
   display: inline-grid; place-items: center; flex: none; width: 36px; aspect-ratio: 1;

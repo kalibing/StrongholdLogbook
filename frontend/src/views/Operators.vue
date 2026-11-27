@@ -193,5 +193,5 @@ watch(pageCount, () => { page.value = currentPage.value })
 .ranking-title { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
 .ranking-title + .muted { margin-top: .55rem; }
 .ranking-strategy-icon { width: 30px; height: 30px; }
-.ranking-hint { display: block; color: var(--muted); font-size: .75rem; font-weight: 400; }
+.ranking-hint { display: block; color: var(--muted); font-size: .8125rem; font-weight: 400; }
 </style>
