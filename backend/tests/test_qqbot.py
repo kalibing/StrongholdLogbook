@@ -303,15 +303,3 @@ def test_missing_credentials_fail_at_startup(monkeypatch):
     monkeypatch.delenv("QQBOT_APP_SECRET", raising=False)
     with pytest.raises(RuntimeError):
         qqbot.BotConfig.from_env()
-
-
-def test_id_diagnostic_logs_fingerprints_not_openids(bot, caplog):
-    client, _ = bot
-    caplog.set_level("INFO", logger="logbook.qqbot")
-    post(client, c2c(content="你好"))
-    post(client, group_at("你好", "g-diag", member=OPENID))
-    lines = [record.getMessage() for record in caplog.records if "id diagnostic" in record.getMessage()]
-    assert len(lines) == 2
-    assert all(OPENID not in line for line in lines)
-    fingerprint = qqbot.id_fingerprint(CONFIG, OPENID)
-    assert f"user_openid={fingerprint}" in lines[0] and f"member_openid={fingerprint}" in lines[1]

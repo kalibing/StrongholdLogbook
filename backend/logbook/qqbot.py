@@ -23,8 +23,6 @@ import base64
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import hashlib
-import hmac
 import json
 import logging
 import os
@@ -254,36 +252,9 @@ def binding_reply(config, openid, code):
     return "请发送网站绑定码或群里的验证请求码。"
 
 
-# ---- 临时诊断（确认群成员与私聊用户能否直接对应后删除）----
-# 只记字段名、用 Bot Secret 做 HMAC 后截短的指纹（同一个 ID 两边指纹相同，但还原不出原值），
-# 以及 ID 能否在已绑定的私聊身份里查到；不记 openid 原值。
-ID_FIELDS = ("id", "user_openid", "member_openid", "union_openid")
-
-
-def id_fingerprint(config: BotConfig, value) -> str:
-    if not isinstance(value, str) or not value:
-        return "-"
-    return hmac.new(config.secret.encode(), value.encode(), hashlib.sha256).hexdigest()[:8]
-
-
-def diagnose_ids(config: BotConfig, kind: str, author: dict) -> None:
-    try:
-        known = {}
-        with connect() as database:
-            for field in ("member_openid", "union_openid") if kind == "group" else ("union_openid",):
-                value = author.get(field)
-                if isinstance(value, str) and accounts.OPENID_PATTERN.fullmatch(value):
-                    known[field] = accounts.find_qq_account(database, config.app_id, value) is not None
-    except StorageUnavailable:
-        known = {"lookup": "unavailable"}
-    fingerprints = " ".join(f"{field}={id_fingerprint(config, author.get(field))}" for field in ID_FIELDS)
-    LOGGER.info("QQ id diagnostic %s: fields=%s %s bound=%s", kind, sorted(author), fingerprints, known)
-
-
 def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
     author = data.get("author")
     author = author if isinstance(author, dict) else {}
-    diagnose_ids(config, "c2c", author)
     user_openid = author.get("user_openid")
     openid = user_openid or author.get("id")
     msg_id = data.get("id")
@@ -461,7 +432,6 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
         return
     author = data.get("author")
     member_openid = author.get("member_openid") if isinstance(author, dict) else None
-    diagnose_ids(config, "group", author if isinstance(author, dict) else {})
     try:
         with connect() as database:
             feeds.observe_group(database, config.app_id, group_openid)
