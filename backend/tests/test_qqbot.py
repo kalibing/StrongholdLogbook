@@ -380,3 +380,14 @@ def test_api_errors_carry_platform_code(monkeypatch):
     with pytest.raises(qqbot.QQApiError) as raised:
         client.reply_c2c("member", "msg", "hi")
     assert raised.value.code == 400 and raised.value.err_code == qqbot.NOT_FRIEND
+
+
+def test_group_link_failures_are_logged_with_platform_code(bot, caplog):
+    client, fake = bot
+    caplog.set_level("INFO", logger="logbook.qqbot")
+    fake.c2c_error = qqbot.QQApiError(400, 11255, "invalid request")
+    assert post(client, group_at("日报", "logged-failure")).status_code == 200
+    text = caplog.text
+    assert "Group @ event: 日报" in text and "unlinked, sending link" in text
+    assert "QQApiError 400 11255 invalid request" in text
+    assert "qq-member" not in text and "qq-group" not in text

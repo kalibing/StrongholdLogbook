@@ -128,10 +128,20 @@ class SeenEvents:
 class QQApiError(RuntimeError):
     """QQ OpenAPI 返回非 2xx：code 是 HTTP 状态（与 HTTPError 一致，供日志使用），err_code 是平台错误码。"""
 
-    def __init__(self, code: int, err_code: int | None):
+    def __init__(self, code: int, err_code: int | None, detail: str = ""):
         super().__init__(f"QQ API error {code} {err_code}")
         self.code = code
         self.err_code = err_code
+        # 平台返回的错误说明（如「请求参数无效」），不含消息正文和 openid，可以记日志。
+        self.detail = detail
+
+
+def describe(error: Exception) -> str:
+    """日志里描述发送失败：类型、HTTP 状态，QQ 接口错误再加平台错误码和说明。"""
+    parts = [type(error).__name__, str(getattr(error, "code", ""))]
+    if isinstance(error, QQApiError):
+        parts += [str(error.err_code), error.detail]
+    return " ".join(part for part in parts if part)
 
 
 # 「群消息私聊回复」要求用户与机器人是好友，否则返回这个错误码（见「发送单聊消息」接口文档）。
@@ -175,8 +185,11 @@ class QQClient:
                 detail = json.loads(error.read() or b"{}")
             except ValueError:
                 detail = {}
-            err_code = detail.get("code") if isinstance(detail, dict) else None
-            raise QQApiError(error.code, err_code if isinstance(err_code, int) else None) from None
+            detail = detail if isinstance(detail, dict) else {}
+            err_code = detail.get("code", detail.get("err_code"))
+            text = detail.get("message")
+            raise QQApiError(error.code, err_code if isinstance(err_code, int) else None,
+                             text[:200] if isinstance(text, str) else "") from None
         try:
             data = json.loads(body) if body else {}
         except ValueError:
@@ -309,7 +322,7 @@ def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
         client.reply_c2c(openid, msg_id, login_reply(link, user["username"]))
     except (HTTPError, URLError, RuntimeError, ValueError) as error:
         # 只记录类型和状态码，不记录消息内容和令牌。
-        LOGGER.warning("QQ reply failed: %s %s", type(error).__name__, getattr(error, "code", ""))
+        LOGGER.warning("QQ reply failed: %s", describe(error))
 
 
 BILI_COMMANDS = {"b站", "b站状态", "b站登录", "登录b站", "bilibili", "哔哩哔哩"}
@@ -374,7 +387,7 @@ def handle_bili(client: QQClient, config: BotConfig, target_type: str, openid: s
             client.reply_image(target_type, openid, msg_id, png,
                                f"{state}，请用 B 站 App 扫码并确认登录（3 分钟内有效）。", seq=1)
         except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError) as error:
-            LOGGER.warning("QQ image reply failed: %s %s", type(error).__name__, getattr(error, "code", ""))
+            LOGGER.warning("QQ image reply failed: %s", describe(error))
             say(f"{state}，但二维码图片发送失败（机器人可能没有发图权限）。")
             return
         try:
@@ -422,6 +435,7 @@ def send_group_link(client, config, group_openid, member_openid, msg_id, nicknam
     """
     key = f"{group_openid}:{member_openid}"
     if not group_link_quota.take(key):
+        LOGGER.info("Group link not sent: hourly quota for this member used up")
         return
     try:
         with connect() as database:
@@ -433,10 +447,13 @@ def send_group_link(client, config, group_openid, member_openid, msg_id, nicknam
     try:
         client.reply_c2c(member_openid, msg_id, group_link_reply(f"{settings.public_origin}/#qq-group={token}"))
     except QQApiError as error:
+        LOGGER.warning("Group link private reply failed: %s", describe(error))
         if error.err_code != NOT_FRIEND:
-            raise
+            return
         # 只有这种情况在群里提示，否则用户会以为机器人没反应。
         client.reply_group(group_openid, msg_id, "请先添加我为 QQ 好友，再 @我 查看昨日战报。")
+        return
+    LOGGER.info("Group link sent by private reply")
 
 
 def group_report(client, config, group_openid, member_openid, msg_id, nickname=""):
@@ -453,6 +470,7 @@ def group_report(client, config, group_openid, member_openid, msg_id, nickname="
                     card = daily_card.load(database, user, day, group=True)
                 else:
                     reply = "查询日报太频繁，请稍后再试。"
+        LOGGER.info("Group report: member %s", "unlinked, sending link" if user is None else "linked")
         if user is None:
             send_group_link(client, config, group_openid, member_openid, msg_id, nickname)
         elif reply:
@@ -499,6 +517,9 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
         LOGGER.warning("Could not record a QQ group event")
     try:
         command, _ = command_parts(content)
+        # 只记录识别出的指令名，不记消息原文。
+        known = {settings.qq_report_command, *UNBIND_COMMANDS}
+        LOGGER.info("Group @ event: %s", "bili" if is_bili_command(content) else command if command in known else "other")
         if is_bili_command(content):
             handle_bili(client, config, "group", group_openid, msg_id, member_openid)
         elif command == settings.qq_report_command:
@@ -510,7 +531,7 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
         else:
             client.reply_group(group_openid, msg_id, f"@我发送「{settings.qq_report_command}」查看自己的昨日战报。")
     except (HTTPError, URLError, RuntimeError, ValueError) as error:
-        LOGGER.warning("QQ group reply failed: %s %s", type(error).__name__, getattr(error, "code", ""))
+        LOGGER.warning("QQ group reply failed: %s", describe(error))
 
 
 def create_app(config: BotConfig | None = None, client: QQClient | None = None) -> FastAPI:
