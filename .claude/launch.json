@@ -1,0 +1,104 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "C:\\kali\\StrongholdLogbook\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "logbook.api:app",
+        "--app-dir",
+        "C:\\kali\\StrongholdLogbook\\backend",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "env": {
+        "LOGBOOK_DB": "sqlite",
+        "LOGBOOK_SQLITE": "C:\\kali\\StrongholdLogbook\\.local\\logbook.sqlite3",
+        "PUBLIC_ORIGIN": "http://localhost:5173"
+      },
+      "port": 8000
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "C:\\kali\\StrongholdLogbook\\frontend",
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "api-register-test",
+      "runtimeExecutable": "C:\\kali\\StrongholdLogbook\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "logbook.api:app",
+        "--app-dir",
+        "C:\\kali\\StrongholdLogbook\\backend",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8011"
+      ],
+      "env": {
+        "LOGBOOK_DB": "sqlite",
+        "LOGBOOK_SQLITE": "C:\\Users\\Magic\\AppData\\Local\\Temp\\claude\\5e100a53bf10d82d\\53945c92-2517-48a4-a515-2ae2ea23e8cb\\scratchpad\\register-test2.sqlite3",
+        "PUBLIC_ORIGIN": "http://localhost:5181",
+        "LOGBOOK_REGISTRATION": "open"
+      },
+      "port": 8011,
+      "autoPort": false
+    },
+    {
+      "name": "web-register-test",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "C:\\kali\\StrongholdLogbook\\frontend",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5181",
+        "--strictPort"
+      ],
+      "env": {
+        "LOGBOOK_API_TARGET": "http://127.0.0.1:8011"
+      },
+      "port": 5181,
+      "autoPort": false
+    },
+    {
+      "name": "qqbot-test",
+      "runtimeExecutable": "C:\\kali\\StrongholdLogbook\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "logbook.qqbot:app",
+        "--app-dir",
+        "C:\\kali\\StrongholdLogbook\\backend",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8021"
+      ],
+      "env": {
+        "LOGBOOK_DB": "sqlite",
+        "LOGBOOK_SQLITE": "C:\\Users\\Magic\\AppData\\Local\\Temp\\claude\\5e100a53bf10d82d\\53945c92-2517-48a4-a515-2ae2ea23e8cb\\scratchpad\\register-test2.sqlite3",
+        "PUBLIC_ORIGIN": "http://localhost:5181",
+        "LOGBOOK_REGISTRATION": "open",
+        "QQBOT_APP_ID": "102000001",
+        "QQBOT_APP_SECRET": "smoke-secret"
+      },
+      "port": 8021,
+      "autoPort": false
+    }
+  ]
+}
