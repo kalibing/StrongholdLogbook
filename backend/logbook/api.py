@@ -64,7 +64,7 @@ DAY = 24 * 60 * 60
 user_quotas = {
     "ai": (FailureThrottle(limit=2, window=DAY), "AI 复盘每天最多 2 次"),
     "card": (FailureThrottle(limit=2, window=DAY), "战报图片每天最多生成 2 次"),
-    "skland": (FailureThrottle(limit=2, window=DAY), "森空岛同步每天最多 2 次"),
+    "skland": (FailureThrottle(limit=50, window=DAY), "森空岛同步每天最多 50 次"),
     "achv": (FailureThrottle(limit=20, window=60 * 60), "成就绑定尝试太频繁，请稍后再试"),
     "qq_bind": (FailureThrottle(limit=10, window=60 * 60), "获取 QQ 绑定码太频繁，请稍后再试"),
 }
