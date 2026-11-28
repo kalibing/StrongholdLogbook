@@ -30,12 +30,19 @@ MUTED = "#8d9996"
 ACCENT = "#e1ea8f"
 WIN = "#b9e8b4"
 LOSS = "#ffb3ba"
-CHART_GRID = "#2b313b"
 CHART_AVERAGE = "#7bc9f1"
 RADIUS = 2
 HUD = "#43d8bc"
 TARGET = "#f2a046"
 PALETTE = ["#628ef5", "#36bda3", "#a486ef", "#f5b552", "#45a9d1", "#eb7f9c", "#8593ae"]
+# QQ 缩略图需要更亮的面板和文字，保留网页主题的强调色与胜负色。
+RECORD_BG = "#172025"
+RECORD_PANEL = "#27363b"
+RECORD_RAISED = "#33474d"
+RECORD_INSET = "#1e2b30"
+RECORD_LINE = "#566c72"
+RECORD_MUTED = "#c2d0cf"
+RECORD_GAP = 26
 WEEKDAYS = "一二三四五六日"
 MAX_ROWS = 12
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -301,11 +308,11 @@ def paste_icon(image, filename, x, y, size):
     return size + 8
 
 
-def ring(image, center, diameter, segments):
+def ring(image, center, diameter, segments, *, background=PANEL):
     segments = [(value, color) for value, color in segments if value > 0]
     total = sum(value for value, _ in segments)
     pixels = diameter * 3
-    canvas = Image.new("RGB", (pixels, pixels), PANEL)
+    canvas = Image.new("RGB", (pixels, pixels), background)
     draw = ImageDraw.Draw(canvas)
     outer = (0, 0, pixels - 1, pixels - 1)
     width = round(pixels * (1 - 68 / 88) / 2)
@@ -334,6 +341,17 @@ def panel(draw, top, height, title=None, note=None):
             face = font(18)
             draw.text((WIDTH - PAD - 24 - draw.textlength(note, font=face), top + 27), note, font=face, fill=MUTED)
     return top + (66 if title else 0)
+
+
+def record_panel(draw, top, height, title=None, note=None, *, left=PAD, right=WIDTH - PAD, fill=RECORD_PANEL):
+    draw.rounded_rectangle((left, top, right, top + height), radius=RADIUS, fill=fill, outline=RECORD_LINE, width=2)
+    if title:
+        draw.rectangle((left + 24, top + 25, left + 28, top + 49), fill=ACCENT)
+        draw.text((left + 40, top + 37), title, font=font(29, True), fill=TEXT, anchor="lm")
+        if note:
+            draw.text((right - 24, top + 37), note, font=font(20), fill=RECORD_MUTED, anchor="rm")
+        draw.line((left + 24, top + 62, right - 24, top + 62), fill=RECORD_LINE)
+    return top + 74
 
 
 def chip(draw, x, y, win):
@@ -376,19 +394,14 @@ def header(draw, top, card):
 
 def recent_header(draw, top, card):
     height = 142
-    left, right = PAD + 32, WIDTH - PAD - 32
-    panel(draw, top, height)
-    draw.rectangle((PAD + 14, top + 24, PAD + 17, top + height - 24), fill=ACCENT)
+    left = PAD + 36
+    record_panel(draw, top, height, fill=RECORD_RAISED)
+    draw.rectangle((PAD + 16, top + 26, PAD + 20, top + height - 26), fill=ACCENT)
     face = font(22, True)
-    heading = ellipsize(draw, f"卫戍协议  /  {card.username}", 600, face)
-    draw.text((left, top + 36), heading, font=face, fill=ACCENT, anchor="lm")
-    draw.text((left, top + 93), card.title, font=font(54, True), fill=TEXT, anchor="lm")
-    if card.matches:
-        first, last = stats.day_key(card.matches[-1]), stats.day_key(card.matches[0])
-        period = first if first == last else f"{first} 至 {last}"
-        draw.text((right, top + 63), "对局日期", font=font(18), fill=MUTED, anchor="rm")
-        draw.text((right, top + 100), period, font=font(23, True), fill=TEXT, anchor="rm")
-    return top + height + GAP
+    heading = ellipsize(draw, f"卫戍协议  /  {card.username}", WIDTH - 2 * PAD - 64, face)
+    draw.text((left, top + 37), heading, font=face, fill=ACCENT, anchor="lm")
+    draw.text((left, top + 92), card.title, font=font(51, True), fill=TEXT, anchor="lm")
+    return top + height + RECORD_GAP
 
 
 def score(image, draw, top, card):
@@ -433,7 +446,10 @@ def highlights(image, draw, top, card):
         ("最长连胜", f"{fmt(recap.get('longest_win_streak'))} 局", "", None),
         ("游玩时长", duration, "", None),
     ]
-    row_height = 102 if card.title else 92
+    if card.title:
+        return recent_highlights(image, draw, top, cells)
+
+    row_height = 92
     height = 66 + 2 * row_height + 10
     body = panel(draw, top, height, f"{card.day_word}亮点")
     cell_width = (WIDTH - 2 * PAD - 48) / 3
@@ -442,21 +458,6 @@ def highlights(image, draw, top, card):
         x = PAD + 24 + (index % 3) * cell_width
         y = body + (index // 3) * row_height
         draw.line((x, y, x + cell_width - 20, y), fill=LINE)
-        if card.title:
-            center = x + (cell_width - 20) / 2
-            draw.text((center, y + 21), label, font=label_face, fill=MUTED, anchor="mm")
-            icon_size = 28
-            offset = icon_size + 8 if icon(filename, icon_size) is not None else 0
-            value = ellipsize(draw, value, cell_width - 32 - offset, value_face)
-            left = center - (offset + draw.textlength(value, font=value_face)) / 2
-            value_y = y + 53
-            if offset:
-                paste_icon(image, filename, left, value_y - icon_size // 2, icon_size)
-            draw.text((left + offset, value_y), value, font=value_face, fill=TEXT, anchor="lm")
-            if sub:
-                sub = ellipsize(draw, sub, cell_width - 32, label_face)
-                draw.text((center, y + 82), sub, font=label_face, fill=MUTED, anchor="mm")
-            continue
         draw.text((x, y + 10), label, font=label_face, fill=MUTED)
         offset = paste_icon(image, filename, x, y + 42, 28)
         value = ellipsize(draw, value, cell_width - 24 - offset, value_face)
@@ -469,6 +470,32 @@ def highlights(image, draw, top, card):
     return top + height + GAP
 
 
+def recent_highlights(image, draw, top, cells):
+    height, row_height = 314, 112
+    body = record_panel(draw, top, height, "近期亮点")
+    cell_width = (WIDTH - 2 * (PAD + 24) - 2 * 14) / 3
+    label_face, value_face = font(20), font(32, True)
+    for index, (label, value, sub, filename) in enumerate(cells):
+        x = PAD + 24 + (index % 3) * (cell_width + 14)
+        y = body + (index // 3) * row_height
+        center = x + cell_width / 2
+        draw.rounded_rectangle((x, y, x + cell_width, y + row_height - 10), radius=RADIUS,
+                               fill=RECORD_RAISED, outline=RECORD_LINE)
+        draw.text((center, y + 23), label, font=label_face, fill=RECORD_MUTED, anchor="mm")
+        icon_size = 28
+        offset = icon_size + 8 if icon(filename, icon_size) is not None else 0
+        value = ellipsize(draw, value, cell_width - 28 - offset, value_face)
+        left = center - (offset + draw.textlength(value, font=value_face)) / 2
+        value_y = y + 58
+        if offset:
+            paste_icon(image, filename, left, value_y - icon_size // 2, icon_size)
+        draw.text((left + offset, value_y), value, font=value_face, fill=TEXT, anchor="lm")
+        if sub:
+            sub = ellipsize(draw, sub, cell_width - 28, label_face)
+            draw.text((center, y + 86), sub, font=label_face, fill=RECORD_MUTED, anchor="mm")
+    return top + height + RECORD_GAP
+
+
 def shown_bonds(layers):
     if len(layers) <= len(PALETTE):
         return layers
@@ -479,17 +506,19 @@ def shown_bonds(layers):
 
 def bond_distribution(image, draw, shown, center, diameter, legend_x, row_height, *, legend_header=False):
     total = sum(item["layers"] for item in shown)
-    ring(image, center, diameter, ((item["layers"], color) for item, color in zip(shown, PALETTE)))
+    background, muted = (RECORD_PANEL, RECORD_MUTED) if legend_header else (PANEL, MUTED)
+    ring(image, center, diameter, ((item["layers"], color) for item, color in zip(shown, PALETTE)),
+         background=background)
     cx, cy = center
     draw.text((cx, cy - 12), compact_number(total), font=font(36, True), fill=TEXT, anchor="mm")
-    draw.text((cx, cy + 19), "累计层数", font=font(18), fill=MUTED, anchor="mm")
-    name_face, count_face, share_face = font(20), font(20, True), font(18)
+    draw.text((cx, cy + 23), "累计层数", font=font(19), fill=muted, anchor="mm")
+    name_face, count_face, share_face = font(21), font(21, True), font(19)
     layers_x, share_x = WIDTH - PAD - 120, WIDTH - PAD - 28
     if legend_header:
         header_y = cy - len(shown) * row_height / 2 - 14
         for x, label, anchor in ((legend_x, "盟约", "lm"), (layers_x, "层数", "rm"), (share_x, "占比", "rm")):
-            draw.text((x, header_y), label, font=font(16), fill=MUTED, anchor=anchor)
-        draw.line((legend_x, header_y + 12, share_x, header_y + 12), fill=LINE)
+            draw.text((x, header_y), label, font=font(18), fill=muted, anchor=anchor)
+        draw.line((legend_x, header_y + 14, share_x, header_y + 14), fill=RECORD_LINE)
     name_x = legend_x + 60
     for index, (item, color) in enumerate(zip(shown, PALETTE)):
         y = cy + (index - (len(shown) - 1) / 2) * row_height
@@ -500,7 +529,7 @@ def bond_distribution(image, draw, shown, center, diameter, legend_x, row_height
         draw.text((layers_x, y), f"{compact_number(item['layers'])} 层", font=count_face, fill=TEXT, anchor="rm")
         share = item["layers"] / total * 100
         draw.text((share_x, y), "<0.1%" if share < 0.1 else f"{share:.1f}%",
-                  font=share_face, fill=MUTED, anchor="rm")
+                  font=share_face, fill=muted, anchor="rm")
 
 
 def bonds(image, draw, top, card):
@@ -517,44 +546,44 @@ def bonds(image, draw, top, card):
 
 
 def recent_score(image, draw, top, card):
-    height = 346
-    body = panel(draw, top, height, "作战表现")
-    left, divider = PAD + 24, PAD + 366
-    draw.line((divider, top + 20, divider, top + height - 20), fill=LINE)
-    section_title(draw, divider + 24, top + 20, "盟约层数分布")
+    height = 382
+    score_right, bonds_left = PAD + 360, PAD + 386
+    body = record_panel(draw, top, height, "作战表现", right=score_right)
+    record_panel(draw, top, height, "盟约层数分布", left=bonds_left)
 
     total, wins = len(card.matches), card.wins
     losses = total - wins
-    cx, cy = (left + divider - 24) // 2, body + 120
+    cx, cy = (PAD + score_right) // 2, body + 142
     diameter = 180
-    ring(image, (cx, cy), diameter, ((wins, WIN), (losses, LOSS)))
+    ring(image, (cx, cy), diameter, ((wins, WIN), (losses, LOSS)), background=RECORD_PANEL)
     draw.text((cx, cy - 13), f"{wins / total:.1%}", font=font(35, True), fill=TEXT, anchor="mm")
-    draw.text((cx, cy + 22), "胜率", font=font(19), fill=MUTED, anchor="mm")
+    draw.text((cx, cy + 23), "胜率", font=font(20), fill=RECORD_MUTED, anchor="mm")
 
     columns = [("总局数", total, TEXT, None), ("胜场", wins, WIN, None), ("负场", losses, LOSS, None)]
     if card.trophy_change is not None:
         columns.append(("获得奖杯", card.trophy_change, ACCENT, card.trophy_icon))
-    col_width = (divider - 24 - left) / len(columns)
-    value_face = font(24, True)
+    left = PAD + 16
+    col_width = (score_right - 16 - left) / len(columns)
+    value_face = font(25, True)
     for index, (label, value, color, filename) in enumerate(columns):
         x = left + (index + 0.5) * col_width
-        draw.text((x, body + 229), label, font=font(17), fill=MUTED, anchor="mm")
+        draw.text((x, body + 252), label, font=font(18), fill=RECORD_MUTED, anchor="mm")
         size = 18
         offset = size + 8 if icon(filename, size) is not None else 0
         value = ellipsize(draw, compact_number(value), col_width - 4 - offset, value_face)
         start = x - (draw.textlength(value, font=value_face) + offset) / 2
         if offset:
-            paste_icon(image, filename, start, body + 250, size)
-        draw.text((start + offset, body + 259), value, font=value_face, fill=color, anchor="lm")
+            paste_icon(image, filename, start, body + 276, size)
+        draw.text((start + offset, body + 285), value, font=value_face, fill=color, anchor="lm")
 
     shown = shown_bonds(card.recap["bonds"])
     if shown:
-        bond_distribution(image, draw, shown, (divider + 122, cy), diameter, divider + 235,
-                          row_height=31, legend_header=True)
+        bond_distribution(image, draw, shown, (bonds_left + 112, cy), diameter, bonds_left + 225,
+                          row_height=34, legend_header=True)
     else:
-        draw.text(((divider + WIDTH - PAD) // 2, cy), "暂无盟约层数记录", font=font(20),
-                  fill=MUTED, anchor="mm")
-    return top + height + GAP
+        draw.text(((bonds_left + WIDTH - PAD) // 2, cy), "暂无盟约层数记录", font=font(20),
+                  fill=RECORD_MUTED, anchor="mm")
+    return top + height + RECORD_GAP
 
 
 def key_matches(draw, top, card):
@@ -593,28 +622,30 @@ def trend(image, draw, top, card):
     points = list(stats.chart_points(card.matches[::-1], "recent"))
     layers = [point["peak"]["layers"] for point in points if point["peak"]]
     if not layers:
-        height = 116
-        body = panel(draw, top, height, "对局趋势")
-        draw.text((PAD + 24, body), "暂无盟约层数记录", font=font(20), fill=MUTED)
-        return top + height + GAP
+        height = 126
+        body = record_panel(draw, top, height, "对局趋势")
+        draw.text((PAD + 24, body + 14), "暂无盟约层数记录", font=font(20), fill=RECORD_MUTED, anchor="lm")
+        return top + height + RECORD_GAP
 
     average = sum(layers) / len(layers)
-    height = 338
-    body = panel(draw, top, height, "对局趋势", f"场均 {compact_number(average)} 层")
-    draw.text((PAD + 24, body), "单项最高盟约层数", font=font(20, True), fill=TEXT)
-    draw.text((PAD + 204, body + 3), "由早到晚", font=font(16), fill=MUTED)
+    height = 390
+    body = record_panel(draw, top, height, "对局趋势", f"场均 {compact_number(average)} 层")
+    draw.text((PAD + 24, body + 13), "单项最高盟约层数", font=font(22, True), fill=TEXT, anchor="lm")
+    draw.text((PAD + 225, body + 13), "由早到晚", font=font(18), fill=RECORD_MUTED, anchor="lm")
     for label, color, x in (("胜", WIN, WIDTH - PAD - 122), ("负", LOSS, WIDTH - PAD - 66)):
-        draw.text((x, body + 4), f"◆ {label}", font=font(17), fill=color)
+        draw.text((x, body + 13), f"◆ {label}", font=font(18), fill=color, anchor="lm")
 
-    left, right = PAD + 100, WIDTH - PAD - 24
-    base_y, plot_height = body + 181, 130
+    draw.rounded_rectangle((PAD + 24, body + 37, WIDTH - PAD - 24, top + height - 18),
+                           radius=RADIUS, fill=RECORD_INSET, outline=RECORD_LINE)
+    left, right = PAD + 106, WIDTH - PAD - 39
+    base_y, plot_height = body + 207, 140
     step = (max(layers) + 3) // 4
     max_layers = step * 4
-    axis_face, point_face = font(16), font(18, True)
+    axis_face, point_face = font(18), font(20, True)
     for value in range(0, max_layers + 1, step):
         y = base_y - plot_height * value / max_layers
-        draw.line((left, y, right, y), fill=CHART_GRID)
-        draw.text((left - 12, y), compact_number(value), font=axis_face, fill=MUTED, anchor="rm")
+        draw.line((left, y, right, y), fill=RECORD_LINE)
+        draw.text((left - 12, y), compact_number(value), font=axis_face, fill=RECORD_MUTED, anchor="rm")
     average_y = base_y - plot_height * average / max_layers
     for x in range(left, right, 13):
         draw.line((x, average_y, min(x + 6, right), average_y), fill=CHART_AVERAGE)
@@ -627,65 +658,81 @@ def trend(image, draw, top, card):
         if y1 is not None and y2 is not None:
             draw.line((x1, y1, x2, y2), fill=ACCENT, width=3)
     for index, (point, x, y) in enumerate(zip(points, xs, ys), 1):
-        draw.text((x, base_y + 17), str(index), font=axis_face, fill=MUTED, anchor="mm")
+        draw.text((x, base_y + 19), str(index), font=axis_face, fill=RECORD_MUTED, anchor="mm")
         if y is None:
-            draw.text((x, base_y + 56), "—", font=axis_face, fill=MUTED, anchor="mm")
+            draw.text((x, base_y + 58), "—", font=axis_face, fill=RECORD_MUTED, anchor="mm")
             continue
         color = WIN if point["result"] == "win" else LOSS
-        draw.polygon(((x, y - 7), (x + 7, y), (x, y + 7), (x - 7, y)), fill=color, outline=PANEL)
+        draw.polygon(((x, y - 7), (x + 7, y), (x, y + 7), (x - 7, y)), fill=color, outline=RECORD_INSET)
         peak = point["peak"]
         draw.text((x, y - 15), compact_number(peak["layers"]), font=point_face, fill=TEXT, anchor="mb",
-                  stroke_width=2, stroke_fill=PANEL)
+                  stroke_width=2, stroke_fill=RECORD_INSET)
         name = peak["names"][0]
-        paste_icon(image, BOND_ICONS.get(name), x - 10, base_y + 30, 20)
+        paste_icon(image, BOND_ICONS.get(name), x - 10, base_y + 33, 20)
         name = ellipsize(draw, name, col_width - 8, axis_face)
-        draw.text((x, base_y + 65), name, font=axis_face, fill=TEXT, anchor="mm")
+        draw.text((x, base_y + 71), name, font=axis_face, fill=TEXT, anchor="mm")
 
-    return top + height + GAP
+    return top + height + RECORD_GAP
 
 
 def match_list(image, draw, top, card):
     rows = card.matches[:MAX_ROWS]
     extra = len(card.matches) - len(rows)
-    height = 66 + 40 + len(rows) * 50 + (40 if extra else 0) + 8
-    body = panel(draw, top, height, f"{card.day_word}对局", f"{len(card.matches)} 局")
-    columns = [("时间", 24), ("战果", 116), ("难度 / 等级", 186), ("策略", 410), ("回合", 690), ("击杀", 790), ("盟约层数", 890)]
+    recent = bool(card.title)
+    panel_fn, gap = (record_panel, RECORD_GAP) if recent else (panel, GAP)
+    title_height, header_height, row_height = (74, 44, 55) if recent else (66, 40, 50)
+    height = title_height + header_height + len(rows) * row_height + (40 if extra else 0) + 12
+    body = panel_fn(draw, top, height, f"{card.day_word}对局", f"{len(card.matches)} 局")
+    left, right = PAD + 24, WIDTH - PAD - 24
+    columns = (("时间", 36), ("战果", 136), ("难度 / 等级", 208), ("策略", 432),
+               ("回合", 685), ("击杀", 782), ("盟约层数", 879))
+    if recent:
+        draw.rectangle((left, body, right, body + header_height - 1), fill=RECORD_RAISED)
     for label, x in columns:
-        draw.text((PAD + x, body), label, font=font(17), fill=MUTED)
-    draw.line((PAD + 24, body + 32, WIDTH - PAD - 24, body + 32), fill=LINE)
+        draw.text((PAD + x, body + header_height // 2), label, font=font(19 if recent else 17),
+                  fill=RECORD_MUTED if recent else MUTED, anchor="lm")
+    draw.line((left, body + header_height, right, body + header_height), fill=RECORD_LINE if recent else LINE)
+    data_face = font(21 if recent else 20)
     for index, row in enumerate(rows):
-        y = body + 40 + index * 50
+        top_y = body + header_height + index * row_height
+        y = top_y + row_height // 2
+        if recent and index % 2 == 0:
+            draw.rectangle((left, top_y + 1, right, top_y + row_height - 1), fill=RECORD_INSET)
         played = row["played_at"].astimezone(CHINA).strftime("%H:%M")
-        draw.text((PAD + 24, y + 10), played, font=font(21, True), fill=TEXT)
-        chip(draw, PAD + 116, y + 6, row["result"] == "win")
-        draw.text((PAD + 186, y + 10), ellipsize(draw, row["difficulty"], 210, font(20)), font=font(20), fill=TEXT)
+        draw.text((PAD + 36, y), played, font=font(21, True), fill=TEXT, anchor="lm")
+        chip(draw, PAD + 136, y - 15, row["result"] == "win")
+        draw.text((PAD + 208, y), ellipsize(draw, row["difficulty"], 204, data_face),
+                  font=data_face, fill=TEXT, anchor="lm")
         band = row.get("strategy")
         _, strategy = bands.resolve(band)
         band_id = bands.band_id(band)
-        offset = paste_icon(image, f"strategy-{band_id}.png" if band_id else None, PAD + 410, y + 4, 34)
-        draw.text((PAD + 410 + offset, y + 10), ellipsize(draw, strategy or "—", 260 - offset, font(20)), font=font(20), fill=TEXT)
-        draw.text((PAD + 690, y + 10), fmt(row["rounds"]), font=font(20), fill=TEXT)
-        draw.text((PAD + 790, y + 10), fmt(row["kills"]), font=font(20), fill=TEXT)
-        draw.text((PAD + 890, y + 10), fmt(stats.bond_total(row)), font=font(20), fill=TEXT)
+        offset = paste_icon(image, f"strategy-{band_id}.png" if band_id else None, PAD + 432, y - 17, 34)
+        draw.text((PAD + 432 + offset, y), ellipsize(draw, strategy or "—", 230 - offset, data_face),
+                  font=data_face, fill=TEXT, anchor="lm")
+        for x, value in ((685, row["rounds"]), (782, row["kills"]), (879, stats.bond_total(row))):
+            label = compact_number(value) if value is not None else "—"
+            draw.text((PAD + x, y), label, font=data_face, fill=TEXT, anchor="lm")
         if index < len(rows) - 1:
-            draw.line((PAD + 24, y + 46, WIDTH - PAD - 24, y + 46), fill=LINE)
+            draw.line((left, top_y + row_height, right, top_y + row_height), fill=RECORD_LINE if recent else LINE)
     if extra:
-        draw.text((PAD + 24, body + 40 + len(rows) * 50 + 8), f"另有 {extra} 局，完整列表请在网页查看", font=font(18), fill=MUTED)
-    return top + height + GAP
+        draw.text((left, body + header_height + len(rows) * row_height + 8),
+                  f"另有 {extra} 局，完整列表请在网页查看", font=font(18), fill=RECORD_MUTED if recent else MUTED)
+    return top + height + gap
 
 
 def empty(draw, top, card):
     height = 180
-    panel(draw, top, height)
+    (record_panel if card.title else panel)(draw, top, height)
     draw.text((WIDTH / 2, top + 70), f"{card.day_word}暂无可统计对局", font=font(30, True), fill=TEXT, anchor="mm")
     note = f"{card.excluded} 局被标记为疑似直接退出" if card.excluded else "导入或同步战绩后再来查看"
-    draw.text((WIDTH / 2, top + 116), note, font=font(20), fill=MUTED, anchor="mm")
-    return top + height + GAP
+    draw.text((WIDTH / 2, top + 116), note, font=font(20),
+              fill=RECORD_MUTED if card.title else MUTED, anchor="mm")
+    return top + height + (RECORD_GAP if card.title else GAP)
 
 
 def render(card):
     """先在足够高的画布上排版，再裁到实际高度。"""
-    image = Image.new("RGB", (WIDTH, 4000), BG)
+    image = Image.new("RGB", (WIDTH, 4000), RECORD_BG if card.title else BG)
     draw = ImageDraw.Draw(image)
     y = header(draw, PAD, card)
     if card.matches:
@@ -700,7 +747,8 @@ def render(card):
     else:
         y = empty(draw, y, card)
     stamp = datetime.now(CHINA).strftime("%Y-%m-%d %H:%M")
-    draw.text((PAD, y + 4), f"卫戍协议 · 作战档案　生成于 {stamp}（北京时间）", font=font(16), fill=MUTED)
+    draw.text((PAD, y + 4), f"卫戍协议 · 作战档案　生成于 {stamp}（北京时间）",
+              font=font(17 if card.title else 16), fill=RECORD_MUTED if card.title else MUTED)
     output = io.BytesIO()
     # 保持 PNG 无损，避开 optimize=True 带来的额外编码耗时。
     image.crop((0, 0, WIDTH, y + 40)).save(output, format="PNG")

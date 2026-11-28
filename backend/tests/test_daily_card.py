@@ -50,8 +50,7 @@ def test_card_palette_matches_website_dark_theme():
     style = Path(__file__).resolve().parents[2] / "frontend" / "src" / "style.css"
     dark_theme = style.read_text(encoding="utf-8").split(":root {", 1)[1].split("}", 1)[0]
     variables = dict(re.findall(r"^\s*--([\w-]+):\s*([^;]+);", dark_theme, re.MULTILINE))
-    for name in ("bg", "panel", "inset", "line", "text", "muted", "accent", "win", "loss",
-                 "chart-grid", "chart-average"):
+    for name in ("bg", "panel", "inset", "line", "text", "muted", "accent", "win", "loss", "chart-average"):
         assert getattr(daily_card, name.replace("-", "_").upper()) == variables[name]
     assert variables["radius"] == f"{daily_card.RADIUS}px"
 
