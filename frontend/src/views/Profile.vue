@@ -216,7 +216,7 @@ async function removeAvatar() {
                 <NButton size="small" text @click="refresh">我已发送，刷新状态</NButton>
               </div>
             </template>
-            <small class="muted profile-qq-group">在群里 @机器人 发「{{ qq.report_command }}」查询昨日战报、发「{{ qq.record_command }}」查询最近 10 局战绩：第一次会私聊你一个关联链接，打开并确认即可，不需要先绑定 QQ。</small>
+            <small class="muted profile-qq-group">在群里 @机器人 发「{{ qq.report_command }}」查询昨日战报、发「{{ qq.record_command }}」查询最近 10 局战绩、发「{{ qq.winrate_command }}」查询全部策略胜率：第一次会私聊你一个关联链接，打开并确认即可，不需要先绑定 QQ。</small>
           </dd>
         </div>
       </dl>

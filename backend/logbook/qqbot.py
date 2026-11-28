@@ -1,10 +1,10 @@
 """QQ 官方机器人 Webhook 接入：单聊里发「登录」，机器人回一个一次性免密登录链接；
-群里 @机器人发「日报」查询自己的昨日战报（发「战绩」查最近 10 局）：群成员第一次查询时，机器人用「群消息私聊回复」
+群里 @机器人发「日报」查询自己的昨日战报（发「战绩」查最近 10 局，发「胜率」查全部时间的策略胜率）：群成员第一次查询时，机器人用「群消息私聊回复」
 把一次性关联链接私聊发给他，在网页登录并确认后生效；群里 @机器人发「解绑」解除本群关联。
 
 独立进程运行（uvicorn logbook.qqbot:app），与网页 API 分开：
 - 网页 API 的写请求要校验 Origin，回调请求没有 Origin；分开后两边的防护各自保持严格。
-- 「战绩」只读取发指令的群成员已关联账号的档案，并用该账号已保存的凭据尝试同步森空岛。
+- 「战绩」「胜率」只读取发指令的群成员已关联账号的档案，并用该账号已保存的凭据尝试同步森空岛。
 
 协议要点（QQ 机器人 API v2 文档）：
 - 回调地址校验 op=13：对 event_ts + plain_token 做 Ed25519 签名，回 {"plain_token", "signature"}。
@@ -62,7 +62,7 @@ LOGIN_COMMANDS = {"登录", "登陆", "注册", "login", "/登录", "/login"}
 HELP_TEXT = (
     "发送「登录」获取作战档案的一次性登录链接（10 分钟内有效，只能用一次）。\n"
     "第一次使用会自动为你创建账号，登录后可以设置密码、修改一次账号名。\n"
-    "在群里 @我发送「日报」查看昨日战报、发送「战绩」查看最近 10 局战绩，第一次会私聊你一个关联链接。"
+    "在群里 @我发送「日报」查看昨日战报、发送「战绩」查看最近 10 局战绩、发送「胜率」查看全部策略胜率，第一次会私聊你一个关联链接。"
 )
 
 
@@ -254,6 +254,7 @@ def login_reply(link: str, username: str) -> str:
 link_quota = FailureThrottle(limit=5, window=60 * 60)
 report_quota = FailureThrottle(limit=3, window=60)
 record_quota = FailureThrottle(limit=3, window=60)
+winrate_quota = FailureThrottle(limit=3, window=60)
 record_sync_quota = FailureThrottle(limit=50, window=24 * 60 * 60)
 record_sync_lock = Lock()
 record_sync_active = set()
@@ -527,27 +528,34 @@ def sync_group_record(config, group_openid, member_openid, user_id, sealed_token
             record_sync_active.discard(key)
 
 
-def load_group_record(config, group_openid, member_openid):
+def load_group_record(config, group_openid, member_openid, *, load=None, quota=None, command=None):
+    """先用保存的森空岛凭据同步，再用 load(database, user) 读结果；返回 (user, 结果, 提示)。
+
+    默认读最近 10 局卡片（「战绩」），「胜率」传入自己的 load / quota / command。
+    """
+    load = load or (lambda database, user: daily_card.load_recent(database, user, group=True))
+    quota = quota or record_quota
+    command = command or settings.qq_record_command
     with connect() as database:
         user = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
         if user is None:
             return None, None, ""
         user_id = user["id"]
-        if not record_quota.take(str(user_id)):
-            return user, None, "查询战绩太频繁，请稍后再试。"
+        if not quota.take(str(user_id)):
+            return user, None, f"查询{command}太频繁，请稍后再试。"
         saved = database.execute(
             "SELECT access_token FROM skland_import_tokens WHERE user_id = %s", (user_id,),
         ).fetchone()
         if not saved:
-            return user, daily_card.load_recent(database, user, group=True), ""
+            return user, load(database, user), ""
 
     synced = sync_group_record(config, group_openid, member_openid, user_id, saved["access_token"])
     with connect() as database:
         current = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
         if not current or current["id"] != user_id:
-            return user, None, "群关联已更新，请重新发送「战绩」。"
+            return user, None, f"群关联已更新，请重新发送「{command}」。"
         note = "" if synced else "本次未完成森空岛同步，显示已保存战绩。"
-        return current, daily_card.load_recent(database, current, group=True), note
+        return current, load(database, current), note
 
 
 def group_record(client, config, group_openid, member_openid, msg_id, nickname=""):
@@ -579,6 +587,29 @@ def group_record(client, config, group_openid, member_openid, msg_id, nickname="
             client.reply_group(group_openid, msg_id, f"{note}\n{text}" if note else text)
             return
         client.reply_image("group", group_openid, msg_id, png, content=note)
+
+
+def group_winrate(client, config, group_openid, member_openid, msg_id, nickname=""):
+    """「胜率」：全部时间有效对局按开局策略统计的胜率，文字回复。"""
+    if not isinstance(member_openid, str) or not accounts.OPENID_PATTERN.fullmatch(member_openid):
+        client.reply_group(group_openid, msg_id, "暂时无法确认请求者的 QQ 身份。")
+        return
+    try:
+        user, text, note = load_group_record(
+            config, group_openid, member_openid, load=daily_card.strategy_text,
+            quota=winrate_quota, command=settings.qq_winrate_command,
+        )
+    except StorageUnavailable:
+        LOGGER.warning("Could not load QQ group strategy win rates")
+        client.reply_group(group_openid, msg_id, "暂时无法查询胜率，请稍后再试。")
+        return
+    LOGGER.info("Group winrate: member %s", "unlinked, sending link" if user is None else "linked")
+    if user is None:
+        send_group_link(client, config, group_openid, member_openid, msg_id, nickname)
+    elif text is None:
+        client.reply_group(group_openid, msg_id, note)
+    else:
+        client.reply_group(group_openid, msg_id, f"{note}\n{text}" if note else text)
 
 
 def group_unbind(client, config, group_openid, member_openid, msg_id) -> None:
@@ -614,7 +645,8 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
     try:
         command, _ = command_parts(content)
         # 只记录识别出的指令名，不记消息原文。
-        known = {settings.qq_report_command, settings.qq_record_command, *UNBIND_COMMANDS}
+        known = {settings.qq_report_command, settings.qq_record_command, settings.qq_winrate_command,
+                 *UNBIND_COMMANDS}
         LOGGER.info("Group @ event: %s", "bili" if is_bili_command(content) else command if command in known else "other")
         if is_bili_command(content):
             handle_bili(client, config, "group", group_openid, msg_id, member_openid)
@@ -622,6 +654,8 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
             group_report(client, config, group_openid, member_openid, msg_id, author.get("member_nickname"))
         elif command == settings.qq_record_command:
             group_record(client, config, group_openid, member_openid, msg_id, author.get("member_nickname"))
+        elif command == settings.qq_winrate_command:
+            group_winrate(client, config, group_openid, member_openid, msg_id, author.get("member_nickname"))
         elif command in UNBIND_COMMANDS:
             group_unbind(client, config, group_openid, member_openid, msg_id)
         elif command == settings.qq_bind_command:
@@ -631,6 +665,7 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
             client.reply_group(group_openid, msg_id,
                                f"@我发送「{settings.qq_report_command}」查看自己的昨日战报；"
                                f"发送「{settings.qq_record_command}」查看最近 10 局战绩（图片）；"
+                               f"发送「{settings.qq_winrate_command}」查看全部时间的策略胜率；"
                                f"发送「解绑」解除本群与作战档案账号的关联；"
                                "「B站状态」仅站点管理员可用。")
     except (HTTPError, URLError, RuntimeError, ValueError) as error:

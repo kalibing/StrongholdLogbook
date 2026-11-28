@@ -243,6 +243,36 @@ def record_text(database, user) -> str:
     return "\n".join(lines)
 
 
+def strategy_text(database, user) -> str:
+    """群里「胜率」指令的文字回复：全部时间有效对局（排除疑似直接退出）按开局策略统计的胜率。
+
+    记录里的 strategy 可能是 band id、分队干员名或策略名，先统一换成策略名再合并统计。
+    """
+    user_id = user["id"]
+    rows = database.execute(
+        "SELECT result, strategy FROM matches WHERE user_id = %s AND NOT suspected_exit", (user_id,),
+    ).fetchall()
+    profile = database.execute("SELECT nickname FROM skland_profiles WHERE user_id = %s", (user_id,)).fetchone()
+    name = (profile["nickname"] if profile else None) or "你"
+    resolved = [{"result": row["result"], "strategy": bands.resolve(row["strategy"])[1]} for row in rows]
+    entries = stats.strategy_stats(resolved)
+    if not entries:
+        return f"{name}还没有记录了开局策略的有效对局。"
+    counted = sum(entry["count"] for entry in entries)
+    wins = sum(entry["wins"] for entry in entries)
+    lines = [
+        f"{name} · 全部策略胜率",
+        f"共 {counted} 局，{wins} 胜 {counted - wins} 负，总胜率 {wins / counted:.0%}",
+    ]
+    lines += [
+        f"{entry['name']}：{entry['win_rate']:.0%}（{entry['wins']} 胜 {entry['count'] - entry['wins']} 负）"
+        for entry in entries
+    ]
+    if len(rows) > counted:
+        lines.append(f"另有 {len(rows) - counted} 局未记录策略，未计入。")
+    return "\n".join(lines)
+
+
 def trophy_summary(database, user_id) -> dict:
     """奖杯总数取最新返回的数据：成就档案快照与最近一局的「对局后奖杯」谁更新用谁，都没有再累加对局增减。"""
     link = database.execute("SELECT payload, fetched_at FROM achv_links WHERE user_id = %s", (user_id,)).fetchone()

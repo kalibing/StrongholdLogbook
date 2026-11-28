@@ -277,9 +277,11 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 
 群里 @机器人 发「战绩」会回复最近 10 局有效对局的图片，包含胜负比例、盟约分布、单项最高盟约趋势和对局列表，疑似直接退出的对局会被排除。账号在网页「数据导入」保存过森空岛同步凭据时，机器人会先尝试拉取并导入最新战绩。没有保存凭据或同步未完成时，会使用已保存战绩。群发图片需要 QQ 富媒体权限。
 
+群里 @机器人 发「胜率」会用文字回复全部时间有效对局按开局策略统计的胜率（按局数排序，疑似直接退出的对局不计入），同步规则与「战绩」相同。
+
 官方文档没写群事件里哪个字段对应私聊接口路径中的 `user_openid`，当前用 `author.member_openid`；如果私聊收不到链接，查看机器人日志里的 QQ 返回状态码。
 
-机器人指令可在环境中设置 `QQBOT_BIND_COMMAND`（默认 `绑定`）和 `QQBOT_REPORT_COMMAND`（默认 `日报`）、`QQBOT_RECORD_COMMAND`（默认 `战绩`）。改名时选用与现有指令不同的单个词，并一起重启 API 和机器人。
+机器人指令可在环境中设置 `QQBOT_BIND_COMMAND`（默认 `绑定`）和 `QQBOT_REPORT_COMMAND`（默认 `日报`）、`QQBOT_RECORD_COMMAND`（默认 `战绩`）、`QQBOT_WINRATE_COMMAND`（默认 `胜率`）。改名时选用与现有指令不同的单个词，并一起重启 API 和机器人。
 
 ### 公告与动态推送
 

@@ -45,6 +45,7 @@ def bot(tmp_path, monkeypatch):
     qqbot.link_quota._failures.clear()
     qqbot.report_quota._failures.clear()
     qqbot.record_quota._failures.clear()
+    qqbot.winrate_quota._failures.clear()
     qqbot.record_sync_quota._failures.clear()
     qqbot.group_link_quota._failures.clear()
     client = FakeClient()
@@ -454,3 +455,43 @@ def test_group_link_failures_are_logged_with_platform_code(bot, caplog):
     assert "Group @ event: 日报" in text and "unlinked, sending link" in text
     assert "QQApiError 400 11255 invalid request" in text
     assert "qq-member" not in text and "qq-group" not in text
+
+
+def test_group_winrate_merges_strategy_aliases_over_all_time(bot):
+    client, fake = bot
+    played = datetime(2026, 1, 1, 12, tzinfo=CHINA)
+
+    def entry(index, strategy, result, **extra):
+        return {"external_id": f"winrate-{index}", "played_at": (played + timedelta(days=index * 30)).isoformat(),
+                "play": "联合模拟", "difficulty": "绝境模拟", "result": result, "strategy": strategy,
+                "rounds": 10, "kills": 50, "coins": 40, **extra}
+
+    snapshot = {"matches": [
+        entry(0, "band_mech", "win"), entry(1, "森蚺", "loss"), entry(2, "暴躁铁皮", "win"),
+        entry(3, "但书", "win"), entry(4, None, "loss"),
+        entry(5, "但书", "loss", rounds=0, kills=0, coins=0),  # 疑似直接退出，不计入
+    ]}
+    with TestClient(api.app), storage.connect() as db:
+        user = accounts.create_with_password(db, "winrate-player", "web-user-password")
+        token = qq_binding.issue_group_link(db, CONFIG.app_id, "qq-group", "qq-member")
+        qq_binding.confirm_group_link(db, CONFIG.app_id, token, user["id"])
+        worker.upsert_matches(db, user["id"], [record.import_payload() for record in qqbot.read_snapshot(snapshot)])
+
+    assert post(client, group_at("胜率", "winrate-1")).status_code == 200
+    assert fake.group_replies[-1][2].splitlines() == [
+        "你 · 全部策略胜率",
+        "共 4 局，3 胜 1 负，总胜率 75%",
+        "暴躁铁皮：67%（2 胜 1 负）",
+        "条文修正：100%（1 胜 0 负）",
+        "另有 1 局未记录策略，未计入。",
+    ]
+    for index in range(3):
+        post(client, group_at("胜率", f"winrate-quota-{index}"))
+    assert fake.group_replies[-1][2] == "查询胜率太频繁，请稍后再试。"
+
+
+def test_group_winrate_unlinked_member_gets_link(bot):
+    client, fake = bot
+    assert post(client, group_at("胜率", "winrate-unlinked")).status_code == 200
+    assert "#qq-group=" in fake.replies[-1]["content"]
+    assert fake.group_replies == []
