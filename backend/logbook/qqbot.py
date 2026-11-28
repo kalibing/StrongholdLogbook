@@ -590,13 +590,14 @@ def group_record(client, config, group_openid, member_openid, msg_id, nickname="
 
 
 def group_winrate(client, config, group_openid, member_openid, msg_id, nickname=""):
-    """「胜率」：全部时间有效对局按开局策略统计的胜率，文字回复。"""
+    """「胜率」：全部时间有效对局按开局策略统计的胜率，回复图片卡片。"""
     if not isinstance(member_openid, str) or not accounts.OPENID_PATTERN.fullmatch(member_openid):
         client.reply_group(group_openid, msg_id, "暂时无法确认请求者的 QQ 身份。")
         return
     try:
-        user, text, note = load_group_record(
-            config, group_openid, member_openid, load=daily_card.strategy_text,
+        user, card, note = load_group_record(
+            config, group_openid, member_openid,
+            load=lambda database, user: daily_card.load_strategies(database, user, group=True),
             quota=winrate_quota, command=settings.qq_winrate_command,
         )
     except StorageUnavailable:
@@ -606,10 +607,19 @@ def group_winrate(client, config, group_openid, member_openid, msg_id, nickname=
     LOGGER.info("Group winrate: member %s", "unlinked, sending link" if user is None else "linked")
     if user is None:
         send_group_link(client, config, group_openid, member_openid, msg_id, nickname)
-    elif text is None:
+    elif card is None:
         client.reply_group(group_openid, msg_id, note)
+    elif not card.entries:
+        client.reply_group(group_openid, msg_id, "还没有记录了开局策略的有效对局。请在网页「数据导入」同步森空岛战绩。")
     else:
-        client.reply_group(group_openid, msg_id, f"{note}\n{text}" if note else text)
+        try:
+            png = daily_card.render(card)
+        except daily_card.CardFontError:
+            LOGGER.warning("Card font missing; falling back to text win rates")
+            text = daily_card.strategy_text(card)
+            client.reply_group(group_openid, msg_id, f"{note}\n{text}" if note else text)
+            return
+        client.reply_image("group", group_openid, msg_id, png, content=note)
 
 
 def group_unbind(client, config, group_openid, member_openid, msg_id) -> None:
@@ -665,7 +675,7 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
             client.reply_group(group_openid, msg_id,
                                f"@我发送「{settings.qq_report_command}」查看自己的昨日战报；"
                                f"发送「{settings.qq_record_command}」查看最近 10 局战绩（图片）；"
-                               f"发送「{settings.qq_winrate_command}」查看全部时间的策略胜率；"
+                               f"发送「{settings.qq_winrate_command}」查看全部时间的策略胜率（图片）；"
                                f"发送「解绑」解除本群与作战档案账号的关联；"
                                "「B站状态」仅站点管理员可用。")
     except (HTTPError, URLError, RuntimeError, ValueError) as error:

@@ -457,8 +457,10 @@ def test_group_link_failures_are_logged_with_platform_code(bot, caplog):
     assert "qq-member" not in text and "qq-group" not in text
 
 
-def test_group_winrate_merges_strategy_aliases_over_all_time(bot):
+def test_group_winrate_merges_strategy_aliases_over_all_time(bot, monkeypatch):
     client, fake = bot
+    rendered = []
+    monkeypatch.setattr(qqbot.daily_card, "render", lambda card: rendered.append(card) or b"winrate-png")
     played = datetime(2026, 1, 1, 12, tzinfo=CHINA)
 
     def entry(index, strategy, result, **extra):
@@ -478,13 +480,12 @@ def test_group_winrate_merges_strategy_aliases_over_all_time(bot):
         worker.upsert_matches(db, user["id"], [record.import_payload() for record in qqbot.read_snapshot(snapshot)])
 
     assert post(client, group_at("胜率", "winrate-1")).status_code == 200
-    assert fake.group_replies[-1][2].splitlines() == [
-        "你 · 全部策略胜率",
-        "共 4 局，3 胜 1 负，总胜率 75%",
-        "暴躁铁皮：67%（2 胜 1 负）",
-        "条文修正：100%（1 胜 0 负）",
-        "另有 1 局未记录策略，未计入。",
+    card = rendered[-1]
+    assert (card.matches, card.wins, card.missing) == (4, 3, 1)
+    assert [(entry["name"], entry["count"], entry["wins"]) for entry in card.entries] == [
+        ("暴躁铁皮", 3, 2), ("条文修正", 1, 1),
     ]
+    assert fake.images[-1][3] == b"winrate-png"
     for index in range(3):
         post(client, group_at("胜率", f"winrate-quota-{index}"))
     assert fake.group_replies[-1][2] == "查询胜率太频繁，请稍后再试。"

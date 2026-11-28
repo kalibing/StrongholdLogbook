@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from logbook import bands, daily_card
+from logbook import bands, daily_card, stats
 from logbook.records import CHINA
 
 
@@ -53,7 +53,8 @@ def test_recent_highlights_show_one_name_for_tied_peak(monkeypatch):
     card = daily_card.build(rows, excluded=0, day=date(2026, 11, 26), username="tester")
     card.title = "最近 1 局战绩"
     rendered = []
-    monkeypatch.setattr(daily_card, "recent_highlights", lambda image, draw, top, cells: rendered.extend(cells))
+    monkeypatch.setattr(daily_card, "highlight_grid",
+                        lambda image, draw, top, title, cells: rendered.extend(cells))
 
     daily_card.highlights(None, None, 0, card)
 
@@ -98,6 +99,19 @@ def test_render_returns_png_with_content_height():
     assert image.format == "PNG"
     assert image.width == daily_card.WIDTH
     assert 1200 < image.height < 4000
+
+
+def test_render_strategy_card_and_text_fallback():
+    games = ([{"result": "win", "strategy": "条文修正"}] * 3 + [{"result": "loss", "strategy": "条文修正"}]
+             + [{"result": "loss", "strategy": "自定义策略"}])
+    card = daily_card.StrategyCard("tester", stats.strategy_stats(games), missing=2)
+    assert daily_card.strategy_text(card).splitlines() == [
+        "tester · 全部策略胜率", "共 5 局，3 胜 2 负，总胜率 60%",
+        "条文修正：75%（3 胜 1 负）", "自定义策略：0%（0 胜 1 负）", "另有 2 局未记录策略，未计入。",
+    ]
+    if has_font():
+        image = Image.open(io.BytesIO(daily_card.render(card)))
+        assert image.width == daily_card.WIDTH and 700 < image.height < 1400
 
 
 @needs_font

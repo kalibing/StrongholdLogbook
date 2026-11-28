@@ -21,9 +21,8 @@ from .records import CHINA, Filters
 
 WIDTH = 1080
 PAD = 40
-GAP = 20
 
-# 与 frontend/src/style.css 的默认深色主题保持一致。
+# 与 frontend/src/style.css 的默认深色主题保持一致（卡片主要用下面的 RECORD_* 配色）。
 BG = "#080b0c"
 PANEL = "#0f1415"
 INSET = "#0b0f10"
@@ -35,16 +34,15 @@ WIN = "#b9e8b4"
 LOSS = "#ffb3ba"
 CHART_AVERAGE = "#7bc9f1"
 RADIUS = 2
-HUD = "#43d8bc"
-TARGET = "#f2a046"
 PALETTE = ["#628ef5", "#36bda3", "#a486ef", "#f5b552", "#45a9d1", "#eb7f9c", "#8593ae"]
-# QQ 缩略图需要更亮的面板和文字，保留网页主题的强调色与胜负色。
+# 所有战绩卡片统一使用：QQ 缩略图需要更亮的面板和文字，保留网页主题的强调色与胜负色。
 RECORD_BG = "#172025"
 RECORD_PANEL = "#27363b"
 RECORD_RAISED = "#33474d"
 RECORD_INSET = "#1e2b30"
 RECORD_LINE = "#566c72"
 RECORD_MUTED = "#c2d0cf"
+RECORD_LOSS_BAR = "#8a5560"  # 胜率条的负场部分：比 LOSS 暗，避免整列红色抢眼
 RECORD_GAP = 26
 RECORD_PNG_CACHE_SIZE = 24
 _record_pngs: OrderedDict[bytes, bytes] = OrderedDict()
@@ -243,33 +241,49 @@ def record_text(database, user) -> str:
     return "\n".join(lines)
 
 
-def strategy_text(database, user) -> str:
-    """群里「胜率」指令的文字回复：全部时间有效对局（排除疑似直接退出）按开局策略统计的胜率。
+@dataclass
+class StrategyCard:
+    """「胜率」卡片：全部时间有效对局按开局策略统计。entries 来自 stats.strategy_stats。"""
+    username: str
+    entries: list
+    missing: int = 0  # 没记录策略的有效对局数，不计入统计
 
-    记录里的 strategy 可能是 band id、分队干员名或策略名，先统一换成策略名再合并统计。
-    """
+    @property
+    def matches(self):
+        return sum(entry["count"] for entry in self.entries)
+
+    @property
+    def wins(self):
+        return sum(entry["wins"] for entry in self.entries)
+
+
+def load_strategies(database, user, *, group: bool = False) -> StrategyCard:
+    """记录里的 strategy 可能是 band id、分队干员名或策略名，先统一换成策略名再合并统计；排除疑似直接退出。"""
     user_id = user["id"]
     rows = database.execute(
         "SELECT result, strategy FROM matches WHERE user_id = %s AND NOT suspected_exit", (user_id,),
     ).fetchall()
     profile = database.execute("SELECT nickname FROM skland_profiles WHERE user_id = %s", (user_id,)).fetchone()
-    name = (profile["nickname"] if profile else None) or "你"
+    nickname = profile["nickname"] if profile else None
     resolved = [{"result": row["result"], "strategy": bands.resolve(row["strategy"])[1]} for row in rows]
     entries = stats.strategy_stats(resolved)
-    if not entries:
-        return f"{name}还没有记录了开局策略的有效对局。"
     counted = sum(entry["count"] for entry in entries)
-    wins = sum(entry["wins"] for entry in entries)
+    return StrategyCard(nickname or ("QQ 群成员" if group else user["username"]), entries, len(rows) - counted)
+
+
+def strategy_text(card: StrategyCard) -> str:
+    """「胜率」卡片的文字版：服务器缺中文字体画不了图时使用。"""
+    matches, wins = card.matches, card.wins
     lines = [
-        f"{name} · 全部策略胜率",
-        f"共 {counted} 局，{wins} 胜 {counted - wins} 负，总胜率 {wins / counted:.0%}",
+        f"{card.username} · 全部策略胜率",
+        f"共 {matches} 局，{wins} 胜 {matches - wins} 负，总胜率 {wins / matches:.0%}",
     ]
     lines += [
         f"{entry['name']}：{entry['win_rate']:.0%}（{entry['wins']} 胜 {entry['count'] - entry['wins']} 负）"
-        for entry in entries
+        for entry in card.entries
     ]
-    if len(rows) > counted:
-        lines.append(f"另有 {len(rows) - counted} 局未记录策略，未计入。")
+    if card.missing:
+        lines.append(f"另有 {card.missing} 局未记录策略，未计入。")
     return "\n".join(lines)
 
 
@@ -370,7 +384,7 @@ def draw_icon_value(image, draw, center, value, face, color, width, filename, ic
               font=face, fill=color, anchor="lt")
 
 
-def ring(image, center, diameter, segments, *, background=PANEL):
+def ring(image, center, diameter, segments, *, background=RECORD_PANEL):
     segments = [(value, color) for value, color in segments if value > 0]
     total = sum(value for value, _ in segments)
     pixels = diameter * 3
@@ -390,21 +404,6 @@ def ring(image, center, diameter, segments, *, background=PANEL):
                 (x - diameter // 2, y - diameter // 2))
 
 
-def section_title(draw, left, top, text):
-    draw.rectangle((left, top + 5, left + 3, top + 28), fill=ACCENT)
-    draw.text((left + 14, top), text, font=font(26, True), fill=TEXT)
-
-
-def panel(draw, top, height, title=None, note=None):
-    draw.rounded_rectangle((PAD, top, WIDTH - PAD, top + height), radius=RADIUS, fill=PANEL, outline=LINE)
-    if title:
-        section_title(draw, PAD + 24, top + 20, title)
-        if note:
-            face = font(18)
-            draw.text((WIDTH - PAD - 24 - draw.textlength(note, font=face), top + 27), note, font=face, fill=MUTED)
-    return top + (66 if title else 0)
-
-
 def record_panel(draw, top, height, title=None, note=None, *, left=PAD, right=WIDTH - PAD, fill=RECORD_PANEL):
     draw.rounded_rectangle((left, top, right, top + height), radius=RADIUS, fill=fill, outline=RECORD_LINE, width=2)
     if title:
@@ -422,73 +421,27 @@ def chip(draw, x, y, win):
     draw.text((x + 18, y + 15), "胜" if win else "负", font=font(18, True), fill=color, anchor="mm")
 
 
-def radar(draw, cx, cy):
-    """页头右侧的雷达靶环，呼应网页页头的动效。"""
-    for radius, color, width in ((88, "#3d2c17", 1), (62, "#6b4a22", 1), (40, TARGET, 2), (20, TARGET, 2)):
-        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), outline=color, width=width)
-    draw.ellipse((cx - 5, cy - 5, cx + 5, cy + 5), fill=TARGET)
-    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        reach = 100 if dx else 72  # 纵向不超出页头面板
-        draw.line((cx + dx * 28, cy + dy * 28, cx + dx * reach, cy + dy * reach), fill="#5a4120", width=1)
-    for sx, sy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
-        x, y = cx + sx * 120, cy + sy * 70
-        draw.line((x, y, x, y - sy * 16), fill=HUD, width=2)
-        draw.line((x, y, x - sx * 20, y), fill=HUD, width=2)
-
-
 # ---------------------------------------------------------------- 各区块
 
 def header(draw, top, card):
-    if card.title:
-        return recent_header(draw, top, card)
-    height = 170
-    draw.rounded_rectangle((PAD, top, WIDTH - PAD, top + height), radius=6, fill="#0f1a1d", outline="#21353a")
-    draw.rectangle((PAD, top, PAD + 90, top + 3), fill=ACCENT)
-    radar(draw, WIDTH - PAD - 190, top + height // 2)
-    heading = ellipsize(draw, f"卫戍协议  /  {card.username}", 650, font(20, True))
-    draw.text((PAD + 32, top + 28), heading, font=font(20, True), fill=ACCENT)
-    draw.text((PAD + 30, top + 58), "昨日战报" if card.is_yesterday else "每日战报",
-              font=font(56, True), fill=TEXT)
-    weekday = WEEKDAYS[card.day.weekday()]
-    draw.text((PAD + 32, top + 128), f"{card.day.isoformat()}  星期{weekday}", font=font(22), fill=MUTED)
-    return top + height + GAP
-
-
-def recent_header(draw, top, card):
-    height = 142
+    """页头：账号名与标题；日报卡多一行日期（有疑似直接退出时一并说明）。"""
+    subtitle = None
+    if not card.title:
+        subtitle = f"{card.day.isoformat()}  星期{WEEKDAYS[card.day.weekday()]}"
+        if card.excluded and card.matches:
+            subtitle += f"　·　已排除 {card.excluded} 局疑似直接退出"
+    height = 142 + (38 if subtitle else 0)
     left = PAD + 36
     record_panel(draw, top, height, fill=RECORD_RAISED)
     draw.rectangle((PAD + 16, top + 26, PAD + 20, top + height - 26), fill=ACCENT)
     face = font(22, True)
     heading = ellipsize(draw, f"卫戍协议  /  {card.username}", WIDTH - 2 * PAD - 64, face)
     draw.text((left, top + 37), heading, font=face, fill=ACCENT, anchor="lm")
-    draw.text((left, top + 92), card.title, font=font(51, True), fill=TEXT, anchor="lm")
+    title = card.title or ("昨日战报" if card.is_yesterday else "每日战报")
+    draw.text((left, top + 92), title, font=font(51, True), fill=TEXT, anchor="lm")
+    if subtitle:
+        draw.text((left, top + 140), subtitle, font=font(22), fill=RECORD_MUTED, anchor="lm")
     return top + height + RECORD_GAP
-
-
-def score(image, draw, top, card):
-    total, wins = len(card.matches), card.wins
-    rate = wins / total if total else 0
-    body = panel(draw, top, 200, "作战表现", f"已排除 {card.excluded} 局疑似直接退出" if card.excluded else None)
-    draw.text((PAD + 24, body + 4), "胜率", font=font(18), fill=MUTED)
-    draw.text((PAD + 20, body + 26), f"{rate * 100:.1f}%", font=font(64, True), fill=ACCENT)
-    columns = [("总对局", fmt(total), TEXT, None), ("胜场", fmt(wins), WIN, None),
-               ("负场", fmt(total - wins), LOSS, None)]
-    if card.trophy_change is not None:
-        # 奖杯只在联合模拟通关时获得、不会扣减：显示当天获得数，不带正负号。
-        columns.append(("获得奖杯", fmt(card.trophy_change), ACCENT, card.trophy_icon))
-    x = PAD + 330
-    for label, value, color, filename in columns:
-        draw.text((x, body + 10), label, font=font(18), fill=MUTED)
-        offset = paste_icon(image, filename, x, body + 43, 34)
-        face = font(38, True)
-        width = min(144, WIDTH - PAD - 24 - x) - offset
-        draw.text((x + offset, body + 36), ellipsize(draw, value, width, face), font=face, fill=color)
-        x += 160
-    bar_top, left, right = body + 108, PAD + 24, WIDTH - PAD - 24
-    draw.rectangle((left, bar_top, right, bar_top + 6), fill="#4a2e35")
-    draw.rectangle((left, bar_top, left + int((right - left) * rate), bar_top + 6), fill=WIN)
-    return top + 200 + GAP
 
 
 def highlights(image, draw, top, card):
@@ -509,44 +462,25 @@ def highlights(image, draw, top, card):
         ("最长连胜", f"{fmt(recap.get('longest_win_streak'))} 局", "", None),
         ("游玩时长", duration, "", None),
     ]
-    if card.title:
-        return recent_highlights(image, draw, top, cells)
-
-    row_height = 92
-    height = 66 + 2 * row_height + 10
-    body = panel(draw, top, height, f"{card.day_word}亮点")
-    cell_width = (WIDTH - 2 * PAD - 48) / 3
-    label_face, value_face = font(18), font(30, True)
-    for index, (label, value, sub, filename) in enumerate(cells):
-        x = PAD + 24 + (index % 3) * cell_width
-        y = body + (index // 3) * row_height
-        draw.line((x, y, x + cell_width - 20, y), fill=LINE)
-        draw.text((x, y + 10), label, font=label_face, fill=MUTED)
-        offset = paste_icon(image, filename, x, y + 42, 28)
-        value = ellipsize(draw, value, cell_width - 24 - offset, value_face)
-        draw.text((x + offset, y + 38), value, font=value_face, fill=TEXT)
-        if sub:
-            left = x + offset + draw.textlength(value, font=value_face) + 12
-            remaining = x + cell_width - 24 - left
-            if remaining >= 24:
-                draw.text((left, y + 48), ellipsize(draw, sub, remaining, label_face), font=label_face, fill=MUTED)
-    return top + height + GAP
+    return highlight_grid(image, draw, top, f"{card.day_word}亮点", cells)
 
 
-def recent_highlights(image, draw, top, cells):
-    height, row_height = 314, 112
-    body = record_panel(draw, top, height, "近期亮点")
-    cell_width = (WIDTH - 2 * (PAD + 24) - 2 * 14) / 3
+def highlight_grid(image, draw, top, title, cells, columns=3):
+    """带边框的数据格：cells 为 (标签, 数值, 副标题, 图标[, 数值颜色])。"""
+    row_height = 112
+    height = 74 + -(-len(cells) // columns) * row_height + 16
+    body = record_panel(draw, top, height, title)
+    cell_width = (WIDTH - 2 * (PAD + 24) - (columns - 1) * 14) / columns
     label_face, value_face = font(20), font(32, True)
-    for index, (label, value, sub, filename) in enumerate(cells):
-        x = PAD + 24 + (index % 3) * (cell_width + 14)
-        y = body + (index // 3) * row_height
+    for index, (label, value, sub, filename, *color) in enumerate(cells):
+        x = PAD + 24 + (index % columns) * (cell_width + 14)
+        y = body + (index // columns) * row_height
         center = x + cell_width / 2
         draw.rounded_rectangle((x, y, x + cell_width, y + row_height - 10), radius=RADIUS,
                                fill=RECORD_RAISED, outline=RECORD_LINE)
         draw.text((center, y + 23), label, font=label_face, fill=RECORD_MUTED, anchor="mm")
-        draw_icon_value(image, draw, (center, y + 57), value, value_face, TEXT,
-                        cell_width - 28, filename, 28)
+        draw_icon_value(image, draw, (center, y + 57 if sub else y + 62), value, value_face,
+                        color[0] if color else TEXT, cell_width - 28, filename, 28)
         if sub:
             sub = ellipsize(draw, sub, cell_width - 28, label_face)
             draw.text((center, y + 86), sub, font=label_face, fill=RECORD_MUTED, anchor="mm")
@@ -561,21 +495,20 @@ def shown_bonds(layers):
     return [*shown, {"name": f"其他 {len(rest)} 种", "layers": sum(item["layers"] for item in rest)}]
 
 
-def bond_distribution(image, draw, shown, center, diameter, legend_x, row_height, *, legend_header=False):
+def bond_distribution(image, draw, shown, center, diameter, legend_x, row_height):
     total = sum(item["layers"] for item in shown)
-    background, muted = (RECORD_PANEL, RECORD_MUTED) if legend_header else (PANEL, MUTED)
+    muted = RECORD_MUTED
     ring(image, center, diameter, ((item["layers"], color) for item, color in zip(shown, PALETTE)),
-         background=background)
+         background=RECORD_PANEL)
     cx, cy = center
     draw.text((cx, cy - 12), compact_number(total), font=font(36, True), fill=TEXT, anchor="mm")
     draw.text((cx, cy + 23), "累计层数", font=font(19), fill=muted, anchor="mm")
     name_face, count_face, share_face = font(21), font(21, True), font(19)
     layers_x, share_x = WIDTH - PAD - 120, WIDTH - PAD - 28
-    if legend_header:
-        header_y = cy - len(shown) * row_height / 2 - 14
-        for x, label, anchor in ((legend_x, "盟约", "lm"), (layers_x, "层数", "rm"), (share_x, "占比", "rm")):
-            draw.text((x, header_y), label, font=font(18), fill=muted, anchor=anchor)
-        draw.line((legend_x, header_y + 14, share_x, header_y + 14), fill=RECORD_LINE)
+    header_y = cy - len(shown) * row_height / 2 - 14
+    for x, label, anchor in ((legend_x, "盟约", "lm"), (layers_x, "层数", "rm"), (share_x, "占比", "rm")):
+        draw.text((x, header_y), label, font=font(18), fill=muted, anchor=anchor)
+    draw.line((legend_x, header_y + 14, share_x, header_y + 14), fill=RECORD_LINE)
     name_x = legend_x + 60
     for index, (item, color) in enumerate(zip(shown, PALETTE)):
         y = cy + (index - (len(shown) - 1) / 2) * row_height
@@ -589,20 +522,8 @@ def bond_distribution(image, draw, shown, center, diameter, legend_x, row_height
                   font=share_face, fill=muted, anchor="rm")
 
 
-def bonds(image, draw, top, card):
-    shown = shown_bonds(card.recap["bonds"])
-    if not shown:
-        return top
-    diameter, row_height = 224, 38
-    content_height = max(diameter, len(shown) * row_height)
-    height = 66 + content_height + 22
-    body = panel(draw, top, height, "盟约层数分布")
-    center = (PAD + 180, body + content_height // 2)
-    bond_distribution(image, draw, shown, center, diameter, PAD + 346, row_height)
-    return top + height + GAP
-
-
-def recent_score(image, draw, top, card):
+def score(image, draw, top, card):
+    """左：胜率环与胜负 / 奖杯；右：盟约层数分布。"""
     height = 382
     score_right, bonds_left = PAD + 360, PAD + 386
     body = record_panel(draw, top, height, "作战表现", right=score_right)
@@ -634,7 +555,7 @@ def recent_score(image, draw, top, card):
     shown = shown_bonds(card.recap["bonds"])
     if shown:
         bond_distribution(image, draw, shown, (bonds_left + 112, cy), diameter, bonds_left + 225,
-                          row_height=34, legend_header=True)
+                          row_height=34)
     else:
         draw.text(((bonds_left + WIDTH - PAD) // 2, cy), "暂无盟约层数记录", font=font(20),
                   fill=RECORD_MUTED, anchor="mm")
@@ -657,20 +578,27 @@ def key_matches(draw, top, card):
         boss_line = f"首领击破：普通 {recap.get('normal_matches', 0)} 局 · 隐藏 {recap.get('hidden_matches', 0)} 局"
     if not merged and not boss_line:
         return top
-    height = 66 + len(merged) * 64 + (44 if boss_line else 0) + 8
-    body = panel(draw, top, height, "关键对局")
+    row_height = 78
+    height = 74 + len(merged) * row_height + (48 if boss_line else 0) + 14
+    body = record_panel(draw, top, height, "关键对局")
+    left, right = PAD + 24, WIDTH - PAD - 24
+    value_face = font(23, True)
     for index, entry in enumerate(merged.values()):
-        y = body + index * 64
+        y = body + index * row_height
         match = entry["match"]
-        draw.rounded_rectangle((PAD + 24, y, WIDTH - PAD - 24, y + 54), radius=4, fill=INSET, outline=LINE)
-        draw.text((PAD + 40, y + 4), " · ".join(entry["labels"]), font=font(20, True), fill=TEXT)
+        draw.rounded_rectangle((left, y, right, y + row_height - 12), radius=RADIUS,
+                               fill=RECORD_RAISED, outline=RECORD_LINE)
+        draw.rectangle((left, y, left + 4, y + row_height - 12), fill=ACCENT)
+        draw.text((left + 24, y + 21), " · ".join(entry["labels"]), font=font(22, True), fill=TEXT, anchor="lm")
         played = datetime.fromisoformat(match["played_at"]).astimezone(CHINA).strftime("%H:%M")
-        draw.text((PAD + 40, y + 31), f"{played} · {match['difficulty']}", font=font(16), fill=MUTED)
-        value = " · ".join(entry["values"])
-        draw.text((WIDTH - PAD - 44 - draw.textlength(value, font=font(21, True)), y + 15), value, font=font(21, True), fill=ACCENT)
+        draw.text((left + 24, y + 48), f"{played} · {match['difficulty']}", font=font(18),
+                  fill=RECORD_MUTED, anchor="lm")
+        value = ellipsize(draw, " · ".join(entry["values"]), 460, value_face)
+        draw.text((right - 20, y + (row_height - 12) / 2), value, font=value_face, fill=ACCENT, anchor="rm")
     if boss_line:
-        draw.text((PAD + 24, body + len(merged) * 64 + 8), boss_line, font=font(19), fill=MUTED)
-    return top + height + GAP
+        draw.text((left, body + len(merged) * row_height + 18), boss_line, font=font(20),
+                  fill=RECORD_MUTED, anchor="lm")
+    return top + height + RECORD_GAP
 
 
 def chart_dashes(draw, left, right, y, color, *, dash=5, gap=4):
@@ -765,25 +693,21 @@ def trend(image, draw, top, card):
 def match_list(image, draw, top, card):
     rows = card.matches[:MAX_ROWS]
     extra = len(card.matches) - len(rows)
-    recent = bool(card.title)
-    panel_fn, gap = (record_panel, RECORD_GAP) if recent else (panel, GAP)
-    title_height, header_height, row_height = (74, 44, 55) if recent else (66, 40, 50)
-    height = title_height + header_height + len(rows) * row_height + (40 if extra else 0) + 12
-    body = panel_fn(draw, top, height, f"{card.day_word}对局", f"{len(card.matches)} 局")
+    header_height, row_height = 44, 55
+    height = 74 + header_height + len(rows) * row_height + (40 if extra else 0) + 12
+    body = record_panel(draw, top, height, f"{card.day_word}对局", f"{len(card.matches)} 局")
     left, right = PAD + 24, WIDTH - PAD - 24
     columns = (("时间", 36), ("战果", 136), ("难度 / 等级", 208), ("策略", 432),
                ("回合", 685), ("击杀", 782), ("盟约层数", 879))
-    if recent:
-        draw.rectangle((left, body, right, body + header_height - 1), fill=RECORD_RAISED)
+    draw.rectangle((left, body, right, body + header_height - 1), fill=RECORD_RAISED)
     for label, x in columns:
-        draw.text((PAD + x, body + header_height // 2), label, font=font(19 if recent else 17),
-                  fill=RECORD_MUTED if recent else MUTED, anchor="lm")
-    draw.line((left, body + header_height, right, body + header_height), fill=RECORD_LINE if recent else LINE)
-    data_face = font(21 if recent else 20)
+        draw.text((PAD + x, body + header_height // 2), label, font=font(19), fill=RECORD_MUTED, anchor="lm")
+    draw.line((left, body + header_height, right, body + header_height), fill=RECORD_LINE)
+    data_face = font(21)
     for index, row in enumerate(rows):
         top_y = body + header_height + index * row_height
         y = top_y + row_height // 2
-        if recent and index % 2 == 0:
+        if index % 2 == 0:
             draw.rectangle((left, top_y + 1, right, top_y + row_height - 1), fill=RECORD_INSET)
         played = row["played_at"].astimezone(CHINA).strftime("%H:%M")
         draw.text((PAD + 36, y), played, font=font(21, True), fill=TEXT, anchor="lm")
@@ -800,28 +724,98 @@ def match_list(image, draw, top, card):
             label = compact_number(value) if value is not None else "—"
             draw.text((PAD + x, y), label, font=data_face, fill=TEXT, anchor="lm")
         if index < len(rows) - 1:
-            draw.line((left, top_y + row_height, right, top_y + row_height), fill=RECORD_LINE if recent else LINE)
+            draw.line((left, top_y + row_height, right, top_y + row_height), fill=RECORD_LINE)
     if extra:
         draw.text((left, body + header_height + len(rows) * row_height + 8),
-                  f"另有 {extra} 局，完整列表请在网页查看", font=font(18), fill=RECORD_MUTED if recent else MUTED)
-    return top + height + gap
+                  f"另有 {extra} 局，完整列表请在网页查看", font=font(18), fill=RECORD_MUTED)
+    return top + height + RECORD_GAP
 
 
 def empty(draw, top, card):
     height = 180
-    (record_panel if card.title else panel)(draw, top, height)
+    record_panel(draw, top, height)
     draw.text((WIDTH / 2, top + 70), f"{card.day_word}暂无可统计对局", font=font(30, True), fill=TEXT, anchor="mm")
     note = f"{card.excluded} 局被标记为疑似直接退出" if card.excluded else "导入或同步战绩后再来查看"
-    draw.text((WIDTH / 2, top + 116), note, font=font(20),
-              fill=RECORD_MUTED if card.title else MUTED, anchor="mm")
-    return top + height + (RECORD_GAP if card.title else GAP)
+    draw.text((WIDTH / 2, top + 116), note, font=font(20), fill=RECORD_MUTED, anchor="mm")
+    return top + height + RECORD_GAP
+
+
+def strategy_header(draw, top, card):
+    height = 180
+    left = PAD + 36
+    record_panel(draw, top, height, fill=RECORD_RAISED)
+    draw.rectangle((PAD + 16, top + 26, PAD + 20, top + height - 26), fill=ACCENT)
+    face = font(22, True)
+    heading = ellipsize(draw, f"卫戍协议  /  {card.username}", WIDTH - 2 * PAD - 64, face)
+    draw.text((left, top + 37), heading, font=face, fill=ACCENT, anchor="lm")
+    draw.text((left, top + 92), "策略胜率", font=font(51, True), fill=TEXT, anchor="lm")
+    note = f"全部时间　·　{len(card.entries)} 种开局策略　·　疑似直接退出不计入"
+    draw.text((left, top + 140), note, font=font(22), fill=RECORD_MUTED, anchor="lm")
+    return top + height + RECORD_GAP
+
+
+def strategy_overview(image, draw, top, card):
+    matches, wins = card.matches, card.wins
+    favorite = card.entries[0]  # strategy_stats 已按局数排序
+    cells = [
+        ("总局数", compact_number(matches), "", None),
+        ("胜 / 负", f"{compact_number(wins)} / {compact_number(matches - wins)}", "", None),
+        ("总胜率", f"{wins / matches:.1%}", "", None, ACCENT),
+        ("最常用", favorite["name"], f"{favorite['count']} 局", strategy_icon(favorite["name"])),
+    ]
+    return highlight_grid(image, draw, top, "总览", cells, columns=4)
+
+
+def strategy_icon(name):
+    band = bands.band_id(name)
+    return f"strategy-{band}.png" if band else None
+
+
+def strategy_list(image, draw, top, card):
+    header_height, row_height = 44, 58
+    height = 74 + header_height + len(card.entries) * row_height + (44 if card.missing else 0) + 12
+    body = record_panel(draw, top, height, "各策略胜率", "按局数排序")
+    left, right = PAD + 24, WIDTH - PAD - 24
+    rank_x, name_x, count_x = left + 22, left + 64, left + 420
+    bar_left, bar_right, rate_x = left + 448, left + 720, left + 820
+    draw.rectangle((left, body, right, body + header_height - 1), fill=RECORD_RAISED)
+    label_face = font(19)
+    for x, label, anchor in ((rank_x, "#", "mm"), (name_x, "策略", "lm"), (count_x, "局数", "rm"),
+                             (bar_left, "胜负占比", "lm"), (rate_x, "胜率", "rm"), (right - 16, "胜 / 负", "rm")):
+        draw.text((x, body + header_height // 2), label, font=label_face, fill=RECORD_MUTED, anchor=anchor)
+    draw.line((left, body + header_height, right, body + header_height), fill=RECORD_LINE)
+    data_face, rate_face = font(21), font(23, True)
+    for index, entry in enumerate(card.entries):
+        top_y = body + header_height + index * row_height
+        y = top_y + row_height // 2
+        if index % 2 == 0:
+            draw.rectangle((left, top_y + 1, right, top_y + row_height - 1), fill=RECORD_INSET)
+        draw.text((rank_x, y), str(index + 1), font=font(19, True),
+                  fill=ACCENT if index < 3 else RECORD_MUTED, anchor="mm")
+        paste_icon(image, strategy_icon(entry["name"]), name_x, y - 17, 34)
+        offset = 42  # 自定义策略没有图标，名字也保持同一列
+        name = ellipsize(draw, entry["name"], count_x - 70 - name_x - offset, data_face)
+        draw.text((name_x + offset, y), name, font=data_face, fill=TEXT, anchor="lm")
+        draw.text((count_x, y), compact_number(entry["count"]), font=data_face, fill=TEXT, anchor="rm")
+        rate = entry["win_rate"]
+        split = bar_left + round((bar_right - bar_left) * rate)
+        draw.rounded_rectangle((bar_left, y - 7, bar_right, y + 7), radius=RADIUS, fill=RECORD_LOSS_BAR)
+        if split > bar_left:
+            draw.rounded_rectangle((bar_left, y - 7, split, y + 7), radius=RADIUS, fill=WIN)
+        draw.text((rate_x, y), f"{rate:.1%}", font=rate_face, fill=WIN if rate >= 0.5 else LOSS, anchor="rm")
+        losses = entry["count"] - entry["wins"]
+        draw.text((right - 16, y), f"{compact_number(entry['wins'])} / {compact_number(losses)}",
+                  font=data_face, fill=RECORD_MUTED, anchor="rm")
+        if index < len(card.entries) - 1:
+            draw.line((left, top_y + row_height, right, top_y + row_height), fill=RECORD_LINE)
+    if card.missing:
+        draw.text((left, body + header_height + len(card.entries) * row_height + 24),
+                  f"另有 {card.missing} 局未记录开局策略，未计入统计", font=font(19), fill=RECORD_MUTED, anchor="lm")
+    return top + height + RECORD_GAP
 
 
 def render(card):
     stamp = datetime.now(CHINA).strftime("%Y-%m-%d %H:%M")
-    if not card.title:
-        return _render_png(card, stamp)
-
     # 查询和同步先完成。以整张卡的数据及页脚分钟区分内容，战绩更新时自然重新绘制。
     key = sha256(repr((stamp, card)).encode("utf-8")).digest()
     with _record_png_lock:
@@ -840,23 +834,25 @@ def render(card):
 
 def _render_png(card, stamp):
     """先在足够高的画布上排版，再裁到实际高度。"""
-    image = Image.new("RGB", (WIDTH, 4000), RECORD_BG if card.title else BG)
+    canvas = 4000
+    if isinstance(card, StrategyCard):
+        canvas = max(canvas, 800 + len(card.entries) * 60)
+    image = Image.new("RGB", (WIDTH, canvas), RECORD_BG)
     draw = ImageDraw.Draw(image)
-    y = header(draw, PAD, card)
-    if card.matches:
-        y = recent_score(image, draw, y, card) if card.title else score(image, draw, y, card)
+    if isinstance(card, StrategyCard):
+        y = strategy_header(draw, PAD, card)
+        y = strategy_overview(image, draw, y, card)
+        y = strategy_list(image, draw, y, card)
+    elif card.matches:
+        y = score(image, draw, header(draw, PAD, card), card)
         y = highlights(image, draw, y, card)
-        if card.title:
-            y = trend(image, draw, y, card)
-        else:
-            y = bonds(image, draw, y, card)
-            y = key_matches(draw, y, card)
+        # 最近 N 局看走势；单日对局多，折线挤不下，改列关键对局。
+        y = trend(image, draw, y, card) if card.title else key_matches(draw, y, card)
         y = match_list(image, draw, y, card)
     else:
-        y = empty(draw, y, card)
-    draw.text((PAD, y + 4), f"卫戍协议 · 作战档案　生成于 {stamp}（北京时间）",
-              font=font(17 if card.title else 16), fill=RECORD_MUTED if card.title else MUTED)
+        y = empty(draw, header(draw, PAD, card), card)
+    draw.text((PAD, y + 4), f"卫戍协议 · 作战档案　生成于 {stamp}（北京时间）", font=font(17), fill=RECORD_MUTED)
     output = io.BytesIO()
     # QQ 图片用较快的无损压缩，避免额外编码耗时且保持上传体积接近原图。
-    image.crop((0, 0, WIDTH, y + 40)).save(output, format="PNG", compress_level=3 if card.title else 6)
+    image.crop((0, 0, WIDTH, y + 40)).save(output, format="PNG", compress_level=3)
     return output.getvalue()
