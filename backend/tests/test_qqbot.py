@@ -41,6 +41,7 @@ def bot(tmp_path, monkeypatch):
     monkeypatch.setenv("LOGBOOK_SQLITE", str(tmp_path / "logbook.sqlite3"))
     qqbot.link_quota._failures.clear()
     qqbot.report_quota._failures.clear()
+    qqbot.record_quota._failures.clear()
     qqbot.group_link_quota._failures.clear()
     client = FakeClient()
     with TestClient(api.app):  # 建表
@@ -160,6 +161,18 @@ def test_bind_web_account_in_private_and_request_group_report(bot, monkeypatch):
     assert post(client, group_at("日报", "other-group", group="other-qq-group")).status_code == 200
     assert "#qq-group=" in fake.replies[-1]["content"]
     assert fake.images == [("group", "qq-group", "repeat-report", b"test-png")]
+
+    # 「战绩」：最近 10 局有效对局，疑似直接退出不计入。
+    assert post(client, group_at("<@bot> 战绩", "record")).status_code == 200
+    group, msg_id, record = fake.group_replies[-1]
+    assert (group, msg_id) == ("qq-group", "record")
+    assert "最近 1 局战绩" in record and "胜率 100%（1 胜 0 负）" in record and "走势 胜" in record
+    for index in range(3):
+        post(client, group_at("战绩", f"record-quota-{index}"))
+    assert "太频繁" in fake.group_replies[-1][2]
+    links = len(fake.replies)
+    assert post(client, group_at("战绩", "record-unlinked", member="third-qq-member")).status_code == 200
+    assert len(fake.replies) == links + 1 and "#qq-group=" in fake.replies[-1]["content"]
     assert all(card.day == played_at.date() and card.wins == 1 and card.excluded == 1 for card in rendered)
     assert all(card.username != "existing" for card in rendered)
     with storage.connect() as db:

@@ -65,6 +65,10 @@ class Settings:
     def qq_report_command(self) -> str:
         return self._qq_command("QQBOT_REPORT_COMMAND", "日报")
 
+    @property
+    def qq_record_command(self) -> str:
+        return self._qq_command("QQBOT_RECORD_COMMAND", "战绩")
+
     @staticmethod
     def _qq_command(variable: str, default: str) -> str:
         value = os.getenv(variable, "").strip() or default

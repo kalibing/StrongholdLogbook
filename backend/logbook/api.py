@@ -556,6 +556,7 @@ def my_profile(request: Request, user=Depends(current_user)):
             identity["qq"] = {
                 "bound": qq_binding.private_bound(database, app_id, user["id"]),
                 "report_command": settings.qq_report_command,
+                "record_command": settings.qq_record_command,
             }
     payload = (link["payload"] if link else None) or {}
     player = payload.get("player") or {}

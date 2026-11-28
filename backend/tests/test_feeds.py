@@ -94,7 +94,7 @@ def test_only_site_admins_can_configure_detected_push_groups(bot):
 def test_group_unknown_command_gets_help(bot):
     client, fake = bot
     post(client, group_at("你好"))
-    assert fake.replies == [("group", GROUP, "@我发送「日报」查看自己的昨日战报。")]
+    assert fake.replies == [("group", GROUP, "@我发送「日报」查看自己的昨日战报，发送「战绩」查看最近 10 局战绩。")]
 
 
 def test_c2c_subscribe_does_not_create_a_push_destination(bot):

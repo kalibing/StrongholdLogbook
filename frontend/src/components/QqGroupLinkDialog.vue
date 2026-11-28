@@ -48,7 +48,7 @@ async function confirm() {
     <template v-if="stage === 'confirm' && preview">
       <p class="set-password-note">
         将把群成员<b>「{{ preview.nickname || '（未取到群昵称）' }}」</b><template v-if="preview.group_number">在群
-        <code>{{ preview.group_number }}</code></template>的身份关联到你的账号。之后他在群里 @机器人 发「日报」，会显示你的昨日战报。
+        <code>{{ preview.group_number }}</code></template>的身份关联到你的账号。之后他在群里 @机器人 发「日报」，会显示你的昨日战报，发「战绩」会显示你最近 10 局的战绩。
       </p>
       <p class="muted set-password-note">不是你本人在群里请求的，请不要确认。在群里 @机器人 发「解绑」可以随时解除。</p>
       <div class="set-password-actions">
@@ -57,7 +57,7 @@ async function confirm() {
       </div>
     </template>
     <template v-else>
-      <p v-if="stage === 'done'" class="set-password-note">现在可以回到群里 @机器人 发「日报」查看昨日战报了。</p>
+      <p v-if="stage === 'done'" class="set-password-note">现在可以回到群里 @机器人 发「日报」查看昨日战报、发「战绩」查看最近战绩了。</p>
       <p v-else class="load-message" role="alert">{{ error }}</p>
       <div class="set-password-actions">
         <NButton type="primary" @click="emit('closed')">知道了</NButton>

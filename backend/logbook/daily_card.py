@@ -142,6 +142,47 @@ def load(database, user, day, *, group=False):
                  trophy_total=total["total"] if total else None)
 
 
+RECORD_LIMIT = 10
+
+
+def record_text(database, user) -> str:
+    """群里「战绩」指令的文字回复：最近 10 局有效对局（排除疑似直接退出）的胜率、走势、常用盟约与策略。"""
+    user_id = user["id"]
+    rows = database.execute(
+        "SELECT id, played_at, result, strategy, rounds, kills, coins, trophies, suspected_exit, bonds, operators "
+        "FROM matches WHERE user_id = %s AND NOT suspected_exit ORDER BY played_at DESC, id DESC LIMIT %s",
+        (user_id, RECORD_LIMIT),
+    ).fetchall()
+    profile = database.execute("SELECT nickname FROM skland_profiles WHERE user_id = %s", (user_id,)).fetchone()
+    name = (profile["nickname"] if profile else None) or "你"
+    if not rows:
+        return f"{name}还没有有效的作战记录。"
+    rows.reverse()  # 旧 → 新，走势从左往右读
+    summary = stats.overview(rows, 0, "recent")
+    wins, matches = summary["wins"], summary["matches"]
+    lines = [
+        f"{name} · 最近 {matches} 局战绩",
+        f"胜率 {wins / matches:.0%}（{wins} 胜 {matches - wins} 负）",
+        "走势 " + "".join("胜" if result == "win" else "负" for result in summary["recent_results"]),
+    ]
+    if summary["bonds"]:
+        lines.append("常用盟约 " + "、".join(f"{bond['name']} {bond['count']} 局" for bond in summary["bonds"][:3]))
+    if summary["strategies"]:
+        lines.append("常用策略 " + "、".join(
+            f"{entry['name']} {entry['count']} 局" for entry in summary["strategies"][:3]))
+    extras = []
+    if summary["max_layers"]:
+        extras.append(f"单局最高盟约 {summary['max_layers']} 层")
+    if summary["average_coins"] is not None:
+        extras.append(f"场均金币 {fmt(summary['average_coins'])}")
+    if extras:
+        lines.append(" · ".join(extras))
+    total = trophy_summary(database, user_id)["trophy_total"]
+    if total:
+        lines.append(f"奖杯总数 {fmt(total['total'])}")
+    return "\n".join(lines)
+
+
 def trophy_summary(database, user_id) -> dict:
     """奖杯总数取最新返回的数据：成就档案快照与最近一局的「对局后奖杯」谁更新用谁，都没有再累加对局增减。"""
     link = database.execute("SELECT payload, fetched_at FROM achv_links WHERE user_id = %s", (user_id,)).fetchone()

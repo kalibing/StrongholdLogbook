@@ -1,5 +1,5 @@
 """QQ 官方机器人 Webhook 接入：单聊里发「登录」，机器人回一个一次性免密登录链接；
-群里 @机器人发「日报」查询自己的昨日战报：群成员第一次查询时，机器人用「群消息私聊回复」
+群里 @机器人发「日报」查询自己的昨日战报（发「战绩」查最近 10 局）：群成员第一次查询时，机器人用「群消息私聊回复」
 把一次性关联链接私聊发给他，在网页登录并确认后生效；群里 @机器人发「解绑」解除本群关联。
 
 独立进程运行（uvicorn logbook.qqbot:app），与网页 API 分开：
@@ -62,7 +62,7 @@ LOGIN_COMMANDS = {"登录", "登陆", "注册", "login", "/登录", "/login"}
 HELP_TEXT = (
     "发送「登录」获取作战档案的一次性登录链接（10 分钟内有效，只能用一次）。\n"
     "第一次使用会自动为你创建账号，登录后可以设置密码、修改一次账号名。\n"
-    "在群里 @我发送「日报」查看昨日战报，第一次会私聊你一个关联链接。"
+    "在群里 @我发送「日报」查看昨日战报、发送「战绩」查看最近 10 局战绩，第一次会私聊你一个关联链接。"
 )
 
 
@@ -253,6 +253,7 @@ def login_reply(link: str, username: str) -> str:
 # 每个 openid 每小时最多签发 5 个登录链接，防止刷消息。
 link_quota = FailureThrottle(limit=5, window=60 * 60)
 report_quota = FailureThrottle(limit=3, window=60)
+record_quota = FailureThrottle(limit=3, window=60)
 
 
 def command_parts(content):
@@ -422,7 +423,7 @@ UNBIND_COMMANDS = {"解绑", "解除绑定"}
 
 def group_link_reply(link: str) -> str:
     return (
-        "你在这个群还没有关联作战档案账号。打开下面的链接并登录，确认后即可在群里查看昨日战报"
+        "你在这个群还没有关联作战档案账号。打开下面的链接并登录，确认后即可在群里查看昨日战报和战绩"
         f"（10 分钟内有效，只能用一次，请勿转发）：\n{link}"
     )
 
@@ -451,7 +452,7 @@ def send_group_link(client, config, group_openid, member_openid, msg_id, nicknam
         if error.err_code != NOT_FRIEND:
             return
         # 只有这种情况在群里提示，否则用户会以为机器人没反应。
-        client.reply_group(group_openid, msg_id, "请先添加我为 QQ 好友，再 @我 查看昨日战报。")
+        client.reply_group(group_openid, msg_id, "请先添加我为 QQ 好友，再 @我 查看战报。")
         return
     LOGGER.info("Group link sent by private reply")
 
@@ -483,6 +484,30 @@ def group_report(client, config, group_openid, member_openid, msg_id, nickname="
     except (StorageUnavailable, daily_card.CardFontError) as error:
         LOGGER.warning("Could not produce a QQ group report: %s", type(error).__name__)
         client.reply_group(group_openid, msg_id, "暂时无法生成昨日战报，请稍后再试。")
+
+
+def group_record(client, config, group_openid, member_openid, msg_id, nickname=""):
+    if not isinstance(member_openid, str) or not accounts.OPENID_PATTERN.fullmatch(member_openid):
+        client.reply_group(group_openid, msg_id, "暂时无法确认请求者的 QQ 身份。")
+        return
+    try:
+        with connect() as database:
+            user = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
+            if user is None:
+                reply = None
+            elif record_quota.take(str(user["id"])):
+                reply = daily_card.record_text(database, user)
+            else:
+                reply = "查询战绩太频繁，请稍后再试。"
+    except StorageUnavailable:
+        LOGGER.warning("Could not load a QQ group record")
+        client.reply_group(group_openid, msg_id, "暂时无法查询战绩，请稍后再试。")
+        return
+    LOGGER.info("Group record: member %s", "unlinked, sending link" if user is None else "linked")
+    if user is None:
+        send_group_link(client, config, group_openid, member_openid, msg_id, nickname)
+    else:
+        client.reply_group(group_openid, msg_id, reply)
 
 
 def group_unbind(client, config, group_openid, member_openid, msg_id) -> None:
@@ -518,18 +543,21 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
     try:
         command, _ = command_parts(content)
         # 只记录识别出的指令名，不记消息原文。
-        known = {settings.qq_report_command, *UNBIND_COMMANDS}
+        known = {settings.qq_report_command, settings.qq_record_command, *UNBIND_COMMANDS}
         LOGGER.info("Group @ event: %s", "bili" if is_bili_command(content) else command if command in known else "other")
         if is_bili_command(content):
             handle_bili(client, config, "group", group_openid, msg_id, member_openid)
         elif command == settings.qq_report_command:
             group_report(client, config, group_openid, member_openid, msg_id, author.get("member_nickname"))
+        elif command == settings.qq_record_command:
+            group_record(client, config, group_openid, member_openid, msg_id, author.get("member_nickname"))
         elif command in UNBIND_COMMANDS:
             group_unbind(client, config, group_openid, member_openid, msg_id)
         elif command == settings.qq_bind_command:
             client.reply_group(group_openid, msg_id, "请私聊我完成账号绑定，绑定码只发在私聊里。")
         else:
-            client.reply_group(group_openid, msg_id, f"@我发送「{settings.qq_report_command}」查看自己的昨日战报。")
+            client.reply_group(group_openid, msg_id, f"@我发送「{settings.qq_report_command}」查看自己的昨日战报，"
+                               f"发送「{settings.qq_record_command}」查看最近 10 局战绩。")
     except (HTTPError, URLError, RuntimeError, ValueError) as error:
         LOGGER.warning("QQ group reply failed: %s", describe(error))
 
