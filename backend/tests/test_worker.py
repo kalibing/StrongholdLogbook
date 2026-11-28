@@ -99,4 +99,4 @@ def test_failed_import_is_recorded():
 def test_upsert_covers_every_column():
     assert "INSERT INTO matches (id, user_id" in UPSERT_MATCH
     assert "ON CONFLICT" in UPSERT_MATCH
-    assert len(COLUMNS) == 20
+    assert len(COLUMNS) == 21

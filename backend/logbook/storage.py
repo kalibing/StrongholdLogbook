@@ -22,7 +22,7 @@ from uuid import UUID
 
 from .config import settings
 from .errors import StorageUnavailable, UniqueConflict, WriteRejected
-from .sqlite_schema import SCHEMA
+from .sqlite_schema import ADDED_COLUMNS, SCHEMA
 
 TIMESTAMP_COLUMNS = frozenset({
     "played_at", "created_at", "completed_at", "expires_at", "locked_until", "fetched_at", "updated_at",
@@ -286,6 +286,9 @@ def open_sqlite(path) -> sqlite3.Connection:
     connection.execute("PRAGMA busy_timeout = 5000")
     for statement in SCHEMA:
         connection.execute(statement)
+    for table, column, kind in ADDED_COLUMNS:
+        if column not in {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
     return connection
 
 

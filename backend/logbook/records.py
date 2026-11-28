@@ -54,6 +54,7 @@ class MatchInput(BaseModel):
     coins: Stat | None = None
     sync_count: Stat | None = None
     trophies: SignedStat | None = None
+    trophy_after: Stat | None = None
     duration_seconds: Stat | None = None
     suspected_exit: bool | None = None
     bonds: list[Bond] = Field(default_factory=list, max_length=100)

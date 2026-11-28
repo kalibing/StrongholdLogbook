@@ -72,6 +72,10 @@ def _columns(ddl: str, dialect: str) -> dict[str, set[str]]:
             tables[statement.this.this.name] = {
                 column.name for column in statement.this.expressions if isinstance(column, exp.ColumnDef)
             }
+        elif isinstance(statement, exp.Alter) and statement.args.get("kind") == "TABLE":
+            for action in statement.args.get("actions") or []:
+                if isinstance(action, exp.ColumnDef):
+                    tables[statement.this.name].add(action.name)
         elif isinstance(statement, exp.Drop) and statement.args.get("kind") == "TABLE":
             for table in statement.args.get("tables") or []:
                 tables.pop(table.name, None)

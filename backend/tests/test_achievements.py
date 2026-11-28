@@ -1,7 +1,7 @@
 """成就档案：归一化、token 解析与接口层的离线测试（不联网）。"""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from logbook import achievements, hypergryph, storage
 from logbook.api import app
 from logbook.security import hasher
+from logbook.worker import process_one
 
 ORIGIN = "http://localhost:8080"
 PASSWORD = "local-test-password"
@@ -189,6 +190,28 @@ def test_api_connect_and_read(client, monkeypatch):
 
     assert client.delete("/api/achv/session", headers=HEADERS).status_code == 204
     assert client.get("/api/achv/status").json()["connected"] is False
+
+
+def test_overview_trophy_total_follows_newest_data(client, monkeypatch):
+    def imported(external_id, played_at, after):
+        match = {"external_id": external_id, "played_at": played_at.isoformat(), "play": "联合模拟",
+                 "difficulty": "标准模拟", "result": "win", "trophies": 10, "trophy_after": after,
+                 "duration_seconds": 600}
+        assert client.post("/api/imports", json=[match], headers=HEADERS).status_code == 202
+        with storage.connect() as database:
+            while process_one(database):
+                pass
+        return client.get("/api/overview").json()["trophy_total"]
+
+    now = datetime.now(timezone.utc)
+    assert imported("before-link", now - timedelta(days=1), 400) == {"total": 400, "source": "match"}
+
+    monkeypatch.setattr(hypergryph, "player_summary", lambda code: json.loads(json.dumps(SUMMARY)))
+    assert client.post("/api/achv/session", json={"token": TOKEN}, headers=HEADERS).status_code == 200
+    assert client.get("/api/overview").json()["trophy_total"] == {"total": 470, "source": "profile"}
+
+    # 开局在拉档案之前、结算在之后，奖杯变化不在档案里，以对局为准。
+    assert imported("after-link", now - timedelta(minutes=5), 480) == {"total": 480, "source": "match"}
 
 
 def test_api_connect_reports_credential_errors(client, monkeypatch):

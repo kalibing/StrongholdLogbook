@@ -251,6 +251,7 @@ def test_sparse_skland_sync_preserves_existing_match_fields(client, monkeypatch)
     detail = sync()
     assert detail["trophies"] == 0
     assert detail["bosses"] == []
+    assert client.get("/api/overview").json()["trophy_total"] == {"total": 20, "source": "match"}
 
 
 def test_distribution_uses_prts_levels_and_keeps_unknown_matches(client):

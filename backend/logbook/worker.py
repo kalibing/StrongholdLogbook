@@ -13,11 +13,12 @@ LOGGER = logging.getLogger(__name__)
 COLUMNS = (
     "protocol", "external_id", "played_at", "play", "difficulty", "result",
     "scenario", "strategy", "initiator", "rounds", "kills", "coins", "sync_count",
-    "trophies", "duration_seconds", "suspected_exit", "bonds", "squad", "operators", "bosses",
+    "trophies", "trophy_after", "duration_seconds", "suspected_exit", "bonds", "squad", "operators", "bosses",
 )
 COLLECTION_COLUMNS = ("bonds", "squad", "operators", "bosses")
 OPTIONAL_COLUMNS = (
-    "scenario", "strategy", "initiator", "rounds", "kills", "coins", "sync_count", "trophies", "duration_seconds",
+    "scenario", "strategy", "initiator", "rounds", "kills", "coins", "sync_count", "trophies", "trophy_after",
+    "duration_seconds",
 )
 UPDATE_COLUMNS = (
     "played_at = EXCLUDED.played_at",

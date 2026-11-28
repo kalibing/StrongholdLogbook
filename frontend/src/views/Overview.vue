@@ -62,6 +62,12 @@ const distribution = useResource<DistributionGroup[]>(distributionUrl, revision,
 /** 与筛选栏同序：独立模拟在前，联合模拟在后。 */
 const distributionGroups = computed(() => [...(distribution.data.value ?? [])].sort((a, b) => playRank(a.play) - playRank(b.play)))
 
+const TROPHY_SOURCES = {
+  profile: '来自成就档案的累计奖杯',
+  match: '来自最近一局对局结算后的奖杯数',
+  matches: '按已导入对局的奖杯记录累计，绑定成就档案或从森空岛导入后以游戏数据为准',
+} as const
+
 const TIERS: Record<string, { icon: Component; color: string }> = {
   标准模拟: { icon: ShieldOutline, color: '#e0b04a' },
   险境模拟: { icon: FlameOutline, color: '#e58b48' },
@@ -126,7 +132,7 @@ function openMatch(id: string) {
               <small v-if="data.excluded" class="excluded-count">已排除 {{ number(data.excluded) }} 局</small>
             </div>
             <dl class="overview-trophies"
-              :title="data.trophy_total?.source === 'profile' ? '来自成就档案的累计奖杯' : '按已导入对局的奖杯记录累计，绑定成就档案后以游戏数据为准'">
+              :title="TROPHY_SOURCES[data.trophy_total?.source ?? 'matches']">
               <div>
                 <dt><TrophyIcon :badge="data.trophy_badge" :total="data.trophy_total?.total" :size="38" />奖杯总数</dt>
                 <dd class="trophy-change-value">{{ number(data.trophy_total?.total ?? null) }}</dd>

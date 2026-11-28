@@ -41,6 +41,7 @@ SCHEMA = (
         coins INTEGER,
         sync_count INTEGER,
         trophies INTEGER,
+        trophy_after INTEGER,
         duration_seconds INTEGER,
         suspected_exit INTEGER NOT NULL,
         bonds TEXT NOT NULL,
@@ -217,4 +218,9 @@ SCHEMA = (
         PRIMARY KEY (source, item_id)
     )
     """,
+)
+
+# 建表之后新增的列：旧的 SQLite 文件按 (表, 列, 类型) 补列，对应 Alembic 里的 ALTER TABLE。
+ADDED_COLUMNS = (
+    ("matches", "trophy_after", "INTEGER"),  # 0014
 )

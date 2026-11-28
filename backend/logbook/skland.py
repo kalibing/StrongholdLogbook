@@ -210,6 +210,7 @@ def to_snapshot(records: list[dict]) -> dict:
             "coins": record.get("coinCost"),
             "sync_count": record.get("syncCnt"),
             "trophies": int(after) - int(before) if before not in (None, "") and after not in (None, "") else None,
+            "trophy_after": int(after) if after not in (None, "") else None,
             "duration_seconds": (ended - started) if started and ended > started else None,
         }
         if isinstance(record.get("bondInfo"), list):

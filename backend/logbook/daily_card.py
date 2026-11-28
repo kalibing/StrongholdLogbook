@@ -143,16 +143,25 @@ def load(database, user, day, *, group=False):
 
 
 def trophy_summary(database, user_id) -> dict:
-    """Prefer the achievement profile's lifetime trophy count, then sum the stored matches."""
-    link = database.execute("SELECT payload FROM achv_links WHERE user_id = %s", (user_id,)).fetchone()
+    """奖杯总数取最新返回的数据：成就档案快照与最近一局的「对局后奖杯」谁更新用谁，都没有再累加对局增减。"""
+    link = database.execute("SELECT payload, fetched_at FROM achv_links WHERE user_id = %s", (user_id,)).fetchone()
+    latest = database.execute(
+        "SELECT played_at, duration_seconds, trophy_after FROM matches "
+        "WHERE user_id = %s AND trophy_after IS NOT NULL ORDER BY played_at DESC, id DESC LIMIT 1", (user_id,),
+    ).fetchone()
     recorded = database.execute(
         "SELECT SUM(trophies) AS total, COUNT(trophies) AS counted FROM matches WHERE user_id = %s", (user_id,),
     ).fetchone()
     payload = (link["payload"] if link else None) or {}
     trophy = payload.get("trophy")
     badge = {"icon": trophy.get("icon"), "level": trophy.get("level")} if trophy else None
-    if trophy and trophy.get("total") is not None:
-        total = {"total": trophy["total"], "source": "profile"}
+    profile = trophy.get("total") if trophy else None
+    # 对局记的是开局时间，奖杯在结算时才变，按结束时间和档案的拉取时间比较。
+    ended = latest["played_at"] + timedelta(seconds=latest["duration_seconds"] or 0) if latest else None
+    if latest and (profile is None or ended > link["fetched_at"]):
+        total = {"total": latest["trophy_after"], "source": "match"}
+    elif profile is not None:
+        total = {"total": profile, "source": "profile"}
     elif recorded and recorded["counted"]:
         total = {"total": max(0, int(recorded["total"] or 0)), "source": "matches"}
     else:

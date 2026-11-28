@@ -68,7 +68,7 @@ export interface Overview {
   trophy_change: number | null
   trophy_badge: TrophyBadge | null
   /** 账号累计奖杯：profile 来自成就档案，matches 为导入对局的奖杯记录累加（旧后端没有此字段） */
-  trophy_total?: { total: number; source: 'profile' | 'matches' } | null
+  trophy_total?: { total: number; source: 'profile' | 'match' | 'matches' } | null
   matches: number
   wins: number
   excluded: number
