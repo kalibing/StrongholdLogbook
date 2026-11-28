@@ -162,18 +162,20 @@ def test_bind_web_account_in_private_and_request_group_report(bot, monkeypatch):
     assert "#qq-group=" in fake.replies[-1]["content"]
     assert fake.images == [("group", "qq-group", "repeat-report", b"test-png")]
 
-    # 「战绩」：最近 10 局有效对局，疑似直接退出不计入。
+    # 「战绩」：最近 10 局有效对局，疑似直接退出不计入；现在按图片卡片返回。
     assert post(client, group_at("<@bot> 战绩", "record")).status_code == 200
-    group, msg_id, record = fake.group_replies[-1]
-    assert (group, msg_id) == ("qq-group", "record")
-    assert "最近 1 局战绩" in record and "胜率 100%（1 胜 0 负）" in record and "走势 胜" in record
+    assert fake.images[-1] == ("group", "qq-group", "record", b"test-png")
+    record_card = rendered[-1]
+    assert record_card.title == "最近 1 局战绩" and record_card.word == "近期"
+    assert record_card.wins == 1 and record_card.matches
     for index in range(3):
         post(client, group_at("战绩", f"record-quota-{index}"))
     assert "太频繁" in fake.group_replies[-1][2]
     links = len(fake.replies)
     assert post(client, group_at("战绩", "record-unlinked", member="third-qq-member")).status_code == 200
     assert len(fake.replies) == links + 1 and "#qq-group=" in fake.replies[-1]["content"]
-    assert all(card.day == played_at.date() and card.wins == 1 and card.excluded == 1 for card in rendered)
+    assert all(card.wins == 1 for card in rendered)
+    assert all(card.day == played_at.date() and card.excluded == 1 for card in rendered if card.title is None)
     assert all(card.username != "existing" for card in rendered)
     with storage.connect() as db:
         # 别的成员的链接没被确认，仍未关联。
@@ -184,8 +186,9 @@ def test_bind_web_account_in_private_and_request_group_report(bot, monkeypatch):
     assert "已解除" in fake.group_replies[-1][2]
     assert post(client, group_at("解绑", "unbind-again")).status_code == 200
     assert "没有关联" in fake.group_replies[-1][2]
+    images_before = len(fake.images)
     assert post(client, group_at("日报", "after-unbind")).status_code == 200
-    assert "#qq-group=" in fake.replies[-1]["content"] and len(fake.images) == 1
+    assert "#qq-group=" in fake.replies[-1]["content"] and len(fake.images) == images_before
 
 
 def test_group_link_confirmed_by_qq_signup_account(bot, monkeypatch):
@@ -217,9 +220,11 @@ def test_group_link_needs_friendship(bot):
     fake.c2c_error = qqbot.QQApiError(400, qqbot.NOT_FRIEND)
     assert post(client, group_at("日报", "not-friend")).status_code == 200
     assert "好友" in fake.group_replies[-1][2]
+    # 其它原因（例如沙箱环境 11292）私聊也发不出去，群里同样要给一句说明，不能静默。
     fake.c2c_error = qqbot.QQApiError(500, 11255)
     assert post(client, group_at("日报", "other-error")).status_code == 200
-    assert len(fake.group_replies) == 1
+    assert len(fake.group_replies) == 2
+    assert "私聊" in fake.group_replies[-1][2]
 
 
 def test_group_link_quota_per_member(bot):

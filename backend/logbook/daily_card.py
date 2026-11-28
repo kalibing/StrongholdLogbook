@@ -66,6 +66,23 @@ class CardFontError(RuntimeError):
     """找不到可显示中文的字体。"""
 
 
+# Noto Sans CJK 的 .ttc 里 face 0 是日文字形（JP），简体中文是第 3 个 face（index 2）。
+# 不指定 index 时 PIL 取 face 0，简繁字体混用会让人一眼看出「字不对」。
+NOTO_SC_FACE = 2
+
+
+def _face_index(path: str, override: str) -> int:
+    if override.strip():
+        try:
+            return max(0, int(override))
+        except ValueError:
+            return 0
+    name = os.path.basename(path).lower()
+    if name.startswith("notosanscjk") and name.endswith(".ttc"):
+        return NOTO_SC_FACE
+    return 0
+
+
 @lru_cache(maxsize=2)
 def font_path(bold):
     override = os.getenv("LOGBOOK_CARD_FONT_BOLD" if bold else "LOGBOOK_CARD_FONT", "").strip()
@@ -79,7 +96,9 @@ def font_path(bold):
 
 @lru_cache(maxsize=64)
 def font(size, bold=False):
-    return ImageFont.truetype(font_path(bold), size)
+    path = font_path(bold)
+    index = _face_index(path, os.getenv("LOGBOOK_CARD_FONT_INDEX", ""))
+    return ImageFont.truetype(path, size, index=index)
 
 
 @dataclass
@@ -91,6 +110,9 @@ class Card:
     trophy_change: int | None
     recap: dict
     trophy_icon: str = "trophy_level1_icon.png"
+    # 「最近 N 局战绩」这类非按天统计的卡片：标题与「昨日/当天」措辞都要覆盖。
+    title: str | None = None
+    word: str | None = None
 
     @property
     def wins(self):
@@ -103,7 +125,7 @@ class Card:
     @property
     def day_word(self):
         """标题与文案用「昨日」还是「当天」：传了别的日期时不该写成昨日。"""
-        return "昨日" if self.is_yesterday else "当天"
+        return self.word or ("昨日" if self.is_yesterday else "当天")
 
 
 def build(rows, excluded, day, username, *, badge=None, trophy_total=None):
@@ -143,6 +165,27 @@ def load(database, user, day, *, group=False):
 
 
 RECORD_LIMIT = 10
+
+
+def load_recent(database, user, *, limit: int = RECORD_LIMIT, group: bool = False):
+    """「最近 N 局战绩」卡片：跨日期取最近的有效对局，复用战报卡渲染（标题与措辞另给）。"""
+    user_id = user["id"]
+    rows = list(database.execute(
+        "SELECT id, played_at, result, play, difficulty, strategy, rounds, kills, coins, trophies, "
+        "duration_seconds, suspected_exit, bonds, bosses FROM matches "
+        "WHERE user_id = %s AND NOT suspected_exit ORDER BY played_at DESC, id DESC LIMIT %s",
+        (user_id, limit),
+    ).fetchall())
+    profile = database.execute("SELECT nickname FROM skland_profiles WHERE user_id = %s", (user_id,)).fetchone()
+    nickname = profile["nickname"] if profile else None
+    display_name = nickname or ("QQ 群成员" if group else user["username"])
+    trophies = trophy_summary(database, user_id)
+    total = trophies["trophy_total"]
+    card = build(rows, 0, datetime.now(CHINA).date(), display_name, badge=trophies["trophy_badge"],
+                 trophy_total=total["total"] if total else None)
+    card.title = f"最近 {len(rows)} 局战绩"
+    card.word = "近期"
+    return card
 
 
 def record_text(database, user) -> str:
@@ -288,7 +331,8 @@ def header(draw, top, card):
     radar(draw, WIDTH - PAD - 190, top + height // 2)
     heading = ellipsize(draw, f"卫戍协议  /  {card.username}", 650, font(20, True))
     draw.text((PAD + 32, top + 28), heading, font=font(20, True), fill=ACCENT)
-    draw.text((PAD + 30, top + 58), "昨日战报" if card.is_yesterday else "每日战报", font=font(56, True), fill=TEXT)
+    draw.text((PAD + 30, top + 58), card.title or ("昨日战报" if card.is_yesterday else "每日战报"),
+              font=font(56, True), fill=TEXT)
     weekday = WEEKDAYS[card.day.weekday()]
     draw.text((PAD + 32, top + 128), f"{card.day.isoformat()}  星期{weekday}", font=font(22), fill=MUTED)
     return top + height + GAP

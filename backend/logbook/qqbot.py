@@ -449,10 +449,13 @@ def send_group_link(client, config, group_openid, member_openid, msg_id, nicknam
         client.reply_c2c(member_openid, msg_id, group_link_reply(f"{settings.public_origin}/#qq-group={token}"))
     except QQApiError as error:
         LOGGER.warning("Group link private reply failed: %s", describe(error))
-        if error.err_code != NOT_FRIEND:
-            return
-        # 只有这种情况在群里提示，否则用户会以为机器人没反应。
-        client.reply_group(group_openid, msg_id, "请先添加我为 QQ 好友，再 @我 查看战报。")
+        if error.err_code == NOT_FRIEND:
+            # 没有好友关系时私聊必然失败，群里说明一次，否则用户以为机器人没反应。
+            client.reply_group(group_openid, msg_id, "请先添加我为 QQ 好友，再 @我 查看战报。")
+        else:
+            # 平台限制（如沙箱环境 11292）导致私聊发不出去时，也要在群里给出可执行的下一步。
+            client.reply_group(group_openid, msg_id,
+                               "关联链接只能私聊发送，刚才私聊没发出去；请先加我为好友，或在网页登录后再试。")
         return
     LOGGER.info("Group link sent by private reply")
 
@@ -491,14 +494,14 @@ def group_record(client, config, group_openid, member_openid, msg_id, nickname="
         client.reply_group(group_openid, msg_id, "暂时无法确认请求者的 QQ 身份。")
         return
     try:
+        card, reply = None, ""
         with connect() as database:
             user = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
-            if user is None:
-                reply = None
-            elif record_quota.take(str(user["id"])):
-                reply = daily_card.record_text(database, user)
-            else:
-                reply = "查询战绩太频繁，请稍后再试。"
+            if user is not None:
+                if record_quota.take(str(user["id"])):
+                    card = daily_card.load_recent(database, user, group=True)
+                else:
+                    reply = "查询战绩太频繁，请稍后再试。"
     except StorageUnavailable:
         LOGGER.warning("Could not load a QQ group record")
         client.reply_group(group_openid, msg_id, "暂时无法查询战绩，请稍后再试。")
@@ -506,8 +509,20 @@ def group_record(client, config, group_openid, member_openid, msg_id, nickname="
     LOGGER.info("Group record: member %s", "unlinked, sending link" if user is None else "linked")
     if user is None:
         send_group_link(client, config, group_openid, member_openid, msg_id, nickname)
-    else:
+    elif reply:
         client.reply_group(group_openid, msg_id, reply)
+    elif not card.matches:
+        client.reply_group(group_openid, msg_id, "还没有有效的作战记录。")
+    else:
+        try:
+            png = daily_card.render(card)
+        except daily_card.CardFontError:
+            # 服务器缺中文字体时退回文字版，至少把内容给出去。
+            LOGGER.warning("Card font missing; falling back to text record")
+            with connect() as database:
+                client.reply_group(group_openid, msg_id, daily_card.record_text(database, user))
+            return
+        client.reply_image("group", group_openid, msg_id, png)
 
 
 def group_unbind(client, config, group_openid, member_openid, msg_id) -> None:
@@ -556,8 +571,12 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
         elif command == settings.qq_bind_command:
             client.reply_group(group_openid, msg_id, "请私聊我完成账号绑定，绑定码只发在私聊里。")
         else:
-            client.reply_group(group_openid, msg_id, f"@我发送「{settings.qq_report_command}」查看自己的昨日战报，"
-                               f"发送「{settings.qq_record_command}」查看最近 10 局战绩。")
+            # 任何没识别的输入都回一次完整命令清单，避免群里 @ 了却没反应。
+            client.reply_group(group_openid, msg_id,
+                               f"@我发送「{settings.qq_report_command}」查看自己的昨日战报；"
+                               f"发送「{settings.qq_record_command}」查看最近 10 局战绩（图片）；"
+                               f"发送「解绑」解除本群与作战档案账号的关联；"
+                               "「B站状态」仅站点管理员可用。")
     except (HTTPError, URLError, RuntimeError, ValueError) as error:
         LOGGER.warning("QQ group reply failed: %s", describe(error))
 
