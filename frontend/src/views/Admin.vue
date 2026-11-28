@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { NButton, NInput, useDialog } from 'naive-ui'
+import { NButton, NInput, useDialog, useMessage } from 'naive-ui'
 import { api, message, post, send, useResource } from '../api'
 import { logbook } from '../context'
 import type { AdminNotice } from '../models'
@@ -21,8 +21,7 @@ const username = ref('')
 const title = ref('')
 const body = ref('')
 const publishing = ref(false)
-const formError = ref('')
-const formNotice = ref('')
+const toast = useMessage()
 const dialog = useDialog()
 
 const dateFormat = new Intl.DateTimeFormat('zh-CN', {
@@ -30,14 +29,12 @@ const dateFormat = new Intl.DateTimeFormat('zh-CN', {
 })
 
 async function publish() {
-  formError.value = ''
-  formNotice.value = ''
   if (!title.value.trim() || !body.value.trim()) {
-    formError.value = '标题和正文都不能为空'
+    toast.error('标题和正文都不能为空')
     return
   }
   if (audience.value === 'user' && !username.value.trim()) {
-    formError.value = '请填写收件账号'
+    toast.error('请填写收件账号')
     return
   }
   publishing.value = true
@@ -47,12 +44,12 @@ async function publish() {
       body: body.value,
       username: audience.value === 'user' ? username.value.trim() : null,
     }))
-    formNotice.value = audience.value === 'all' ? '公告已发布，所有账号都能在铃铛里看到。' : `已发送给 ${username.value.trim()}。`
+    toast.success(audience.value === 'all' ? '公告已发布，所有账号都能在铃铛里看到。' : `已发送给 ${username.value.trim()}。`)
     title.value = ''
     body.value = ''
     revision.value++
   } catch (reason) {
-    formError.value = message(reason)
+    toast.error(message(reason))
   } finally {
     publishing.value = false
   }
@@ -69,7 +66,7 @@ function confirmRemove(item: AdminNotice) {
         await api(`/admin/notifications/${item.id}`, send('DELETE'))
         revision.value++
       } catch (reason) {
-        formError.value = message(reason)
+        toast.error(message(reason))
       }
     },
   })
@@ -96,9 +93,7 @@ function confirmRemove(item: AdminNotice) {
           placeholder="正文，按纯文本显示，可以换行" aria-label="正文" />
         <div class="admin-actions">
           <NButton type="primary" attr-type="submit" :loading="publishing">{{ audience === 'all' ? '发布公告' : '发送通知' }}</NButton>
-          <span v-if="formNotice" class="muted" role="status">{{ formNotice }}</span>
         </div>
-        <p v-if="formError" class="load-message" role="alert">{{ formError }}</p>
       </form>
     </section>
 

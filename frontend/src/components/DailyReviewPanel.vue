@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { NButton, NIcon } from 'naive-ui'
+import { NButton, NIcon, useMessage } from 'naive-ui'
 import { ChevronForwardOutline, FlameOutline, TimeOutline } from '@vicons/ionicons5'
 import { api, message } from '../api'
 import { BOSS_MARKS } from '../assets'
@@ -11,7 +11,9 @@ import BossLabel from './BossLabel.vue'
 const props = defineProps<{ review: DailyReview; url: string }>()
 const emit = defineEmits<{ open: [id: string] }>()
 const analysis = ref('')
-const error = ref('')
+/** 生成失败过：按钮改成「重试」，原因用 toast 提示。 */
+const failed = ref(false)
+const toast = useMessage()
 const pending = ref(false)
 const request = new AbortController()
 const bosses = computed(() => props.review.bosses ?? [])
@@ -37,12 +39,15 @@ onBeforeUnmount(() => request.abort())
 
 async function generate() {
   pending.value = true
-  error.value = ''
+  failed.value = false
   try {
     const result = await api<{ analysis: string }>(props.url, { method: 'POST', signal: request.signal })
     if (!request.signal.aborted) analysis.value = result.analysis
   } catch (reason) {
-    if (!request.signal.aborted) error.value = message(reason)
+    if (!request.signal.aborted) {
+      failed.value = true
+      toast.error(message(reason))
+    }
   } finally {
     if (!request.signal.aborted) pending.value = false
   }
@@ -54,7 +59,7 @@ async function generate() {
     <header class="split review-heading">
       <h2 id="daily-review-title">战报复盘</h2>
       <NButton v-if="review.ai_available && !analysis" secondary size="small" :loading="pending" @click="generate">
-        {{ error ? '重试 AI 分析' : '生成 AI 分析' }}
+        {{ failed ? '重试 AI 分析' : '生成 AI 分析' }}
       </NButton>
     </header>
     <dl class="review-metrics">
@@ -93,7 +98,6 @@ async function generate() {
       </ul>
     </details>
     <p v-if="review.ai_available && !analysis" class="review-service muted">点击后将昨日战绩摘要发送至已配置的模型服务。</p>
-    <p v-if="error" class="review-error" role="alert">{{ error }}</p>
     <div v-if="analysis" class="review-analysis" role="status"><h3>AI 分析</h3><p>{{ analysis }}</p></div>
   </section>
 </template>
@@ -126,8 +130,7 @@ async function generate() {
 .review-match-copy span { color: var(--muted); font-size: .9375rem; }
 .review-match b { color: var(--accent); text-align: right; font: 500 1rem var(--numbers); }
 .review-match > i { flex: none; }
-.review-service, .review-error { margin-top: .6rem; font-size: .9375rem; }
-.review-error { color: var(--loss); }
+.review-service { margin-top: .6rem; font-size: .9375rem; }
 .review-analysis { padding-top: .7rem; margin-top: .75rem; border-top: 1px solid var(--line); }
 .review-analysis p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: .35rem; }
 </style>

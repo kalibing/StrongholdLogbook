@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NConfigProvider, NDialogProvider, NDropdown, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, zhCN } from 'naive-ui'
+import { NButton, NConfigProvider, NDialogProvider, NDropdown, NIcon, NInput, NMessageProvider, darkTheme, dateZhCN, useMessage, zhCN } from 'naive-ui'
 import {
   CalendarOutline, CloseOutline, CloudDownloadOutline, GridOutline, ListOutline, LogOutOutline, MenuOutline,
   MegaphoneOutline, MoonOutline, PeopleOutline, PersonOutline, RibbonOutline, SunnyOutline,
 } from '@vicons/ionicons5'
-import type { DropdownOption, GlobalThemeOverrides } from 'naive-ui'
+import type { DropdownOption, GlobalThemeOverrides, MessageApi } from 'naive-ui'
 import { api, ApiError, message, post } from './api'
 import { logbookKey, newFilters, type Theme } from './context'
 import type { Facet, User } from './models'
@@ -290,15 +290,22 @@ async function register() {
   }
 }
 
-// 退出失败只提示一行，不能借用 error：它会把整页内容换成「重试会话」。
-const logoutError = ref('')
+// App 自己渲染 NMessageProvider，不能在这里直接 useMessage；由放在 provider 里的桥接组件取到 toast。
+const toast = shallowRef<MessageApi | null>(null)
+const ToastBridge = defineComponent({
+  setup() {
+    toast.value = useMessage()
+    return () => null
+  },
+})
+
+// 退出失败用 toast 提示，不能借用 error：它会把整页内容换成「重试会话」。
 async function logout() {
-  logoutError.value = ''
   try {
     await api('/session', { method: 'DELETE' })
     resetSession()
   } catch (reason) {
-    logoutError.value = `退出登录失败：${message(reason)}`
+    toast.value?.error(`退出登录失败：${message(reason)}`)
   }
 }
 
@@ -368,6 +375,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
 <template>
   <NConfigProvider :theme="theme === 'dark' ? darkTheme : null" :theme-overrides="overrides" :locale="zhCN" :date-locale="dateZhCN">
   <NMessageProvider>
+  <ToastBridge />
   <NDialogProvider>
   <div class="shell" :class="{ 'shell--bare': !user, 'shell--nav-open': navOpen }">
     <aside v-if="user" id="sidebar" class="sidebar" aria-label="侧边栏">
@@ -440,7 +448,6 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
             <HeadingArt />
             <i class="heading-scan" aria-hidden="true"></i>
           </div>
-          <p v-if="logoutError" class="load-message" role="alert">{{ logoutError }} <button type="button" @click="logout">重试</button></p>
           <p v-if="error" class="load-message" role="alert">{{ error }} <button type="button" @click="restoreSession">重试</button></p>
           <RouterView v-else v-slot="{ Component, route: pageRoute }">
             <Transition name="page">

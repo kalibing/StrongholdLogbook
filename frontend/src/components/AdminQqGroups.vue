@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { NButton, NCheckbox, NCheckboxGroup, NInput, NSelect } from 'naive-ui'
+import { NButton, NCheckbox, NCheckboxGroup, NInput, NSelect, useMessage } from 'naive-ui'
 import { api, message, send, useResource } from '../api'
 
 type Source = 'ak' | 'bili'
@@ -28,8 +28,7 @@ const selected = ref<string | null>(null)
 const groupNumber = ref('')
 const sources = ref<Source[]>([])
 const saving = ref(false)
-const saveError = ref('')
-const saved = ref(false)
+const toast = useMessage()
 
 function chooseGroup(openid: string) {
   const group = data.value?.items.find(item => item.group_openid === openid)
@@ -37,17 +36,13 @@ function chooseGroup(openid: string) {
   selected.value = openid
   groupNumber.value = group.group_number ?? ''
   sources.value = [...group.sources]
-  saveError.value = ''
-  saved.value = false
 }
 
 async function save() {
   if (!selected.value) return
-  saved.value = false
-  saveError.value = ''
   const number = groupNumber.value.trim()
   if (number && !/^[0-9]{1,20}$/.test(number)) {
-    saveError.value = 'QQ群号须为数字。'
+    toast.error('QQ群号须为数字。')
     return
   }
   saving.value = true
@@ -56,10 +51,10 @@ async function save() {
       group_number: number || null,
       sources: sources.value,
     }))
-    saved.value = true
+    toast.success('已保存')
     refresh()
   } catch (reason) {
-    saveError.value = message(reason)
+    toast.error(message(reason))
   } finally {
     saving.value = false
   }
@@ -91,9 +86,7 @@ async function save() {
           </NCheckboxGroup>
           <div class="qq-group-actions">
             <NButton type="primary" attr-type="submit" :loading="saving">保存</NButton>
-            <span v-if="saved" class="muted" role="status">已保存</span>
           </div>
-          <p v-if="saveError" class="load-message" role="alert">{{ saveError }}</p>
         </template>
       </form>
     </template>

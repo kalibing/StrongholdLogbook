@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { NButton, NIcon, NInput } from 'naive-ui'
+import { NButton, NIcon, NInput, useMessage } from 'naive-ui'
 import { CreateOutline } from '@vicons/ionicons5'
 import { logbook } from '../context'
 import { api, message, post, send, useResource } from '../api'
@@ -10,6 +10,8 @@ import type { ProfileInfo, User } from '../models'
 // 个人主页只负责账号资料：昵称与头像可改；登录名一般不可改，QQ 机器人注册的账号可以改一次。
 const { revision, user, setUser } = logbook()
 const { data, error, refresh } = useResource<ProfileInfo>(ref('/profile'), revision, true)
+// 操作结果（保存失败、复制结果等）用 toast 提示；页面数据读取失败仍在原位显示并可重试。
+const toast = useMessage()
 
 // 昵称和头像以页头共享的登录态为准，改完立即同步到页头。
 const username = computed(() => user.value?.username ?? data.value?.username ?? '')
@@ -20,17 +22,13 @@ const account = computed(() => data.value?.account ?? null)
 const qq = computed(() => data.value?.qq ?? null)
 const qqBinding = ref<{ command: string; expires_in: number } | null>(null)
 const qqBusy = ref(false)
-const qqError = ref('')
-const qqCopyStatus = ref('')
 
 async function requestQqBinding() {
   qqBusy.value = true
-  qqError.value = ''
-  qqCopyStatus.value = ''
   try {
     qqBinding.value = await api('/profile/qq-binding', post({}))
   } catch (reason) {
-    qqError.value = message(reason)
+    toast.error(message(reason))
     refresh()
   } finally {
     qqBusy.value = false
@@ -41,9 +39,9 @@ async function copyQqCommand() {
   if (!qqBinding.value) return
   try {
     await navigator.clipboard.writeText(qqBinding.value.command)
-    qqCopyStatus.value = '已复制'
+    toast.success('已复制')
   } catch {
-    qqCopyStatus.value = '请手动复制指令'
+    toast.warning('无法自动复制，请手动复制指令')
   }
 }
 
@@ -51,24 +49,21 @@ const NAME_LIMIT = 16
 const editing = ref(false)
 const draft = ref('')
 const saving = ref(false)
-const nameError = ref('')
 const nameInput = ref<InstanceType<typeof NInput> | null>(null)
 
 function startEdit() {
   draft.value = user.value?.display_name ?? ''
-  nameError.value = ''
   editing.value = true
   void nextTick(() => nameInput.value?.focus())
 }
 
 async function saveName() {
   saving.value = true
-  nameError.value = ''
   try {
     setUser(await api<User>('/profile', send('PATCH', { display_name: draft.value })))
     editing.value = false
   } catch (reason) {
-    nameError.value = message(reason)
+    toast.error(message(reason))
   } finally {
     saving.value = false
   }
@@ -79,23 +74,20 @@ const canRename = computed(() => user.value?.username_editable === true)
 const renaming = ref(false)
 const renameDraft = ref('')
 const renameBusy = ref(false)
-const renameError = ref('')
 
 function startRename() {
   renameDraft.value = ''
-  renameError.value = ''
   renaming.value = true
 }
 
 async function saveRename() {
   const value = renameDraft.value.trim().toLowerCase()
-  renameError.value = ''
   if (!USERNAME_RULE.test(value)) {
-    renameError.value = '账号须为 3–64 位小写字母、数字、点、下划线或连字符，且以字母或数字开头'
+    toast.error('账号须为 3–64 位小写字母、数字、点、下划线或连字符，且以字母或数字开头')
     return
   }
   if (value.startsWith('qq-')) {
-    renameError.value = '新账号不能以 qq- 开头'
+    toast.error('新账号不能以 qq- 开头')
     return
   }
   if (!window.confirm(`把登录账号改为「${value}」？只能修改这一次，之后用新账号和原密码登录。`)) return
@@ -104,7 +96,7 @@ async function saveRename() {
     setUser(await api<User>('/account/username', send('PATCH', { username: value })))
     renaming.value = false
   } catch (reason) {
-    renameError.value = message(reason)
+    toast.error(message(reason))
   } finally {
     renameBusy.value = false
   }
@@ -114,27 +106,25 @@ const AVATAR_LIMIT = 2 * 1024 * 1024
 const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 const fileInput = ref<HTMLInputElement | null>(null)
 const avatarBusy = ref(false)
-const avatarError = ref('')
 
 async function uploadAvatar(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  avatarError.value = ''
   if (!AVATAR_TYPES.includes(file.type)) {
-    avatarError.value = '只支持 PNG、JPEG、WebP 或 GIF 图片。'
+    toast.error('只支持 PNG、JPEG、WebP 或 GIF 图片。')
     return
   }
   if (file.size > AVATAR_LIMIT) {
-    avatarError.value = '图片不能超过 2 MB。'
+    toast.error('图片不能超过 2 MB。')
     return
   }
   avatarBusy.value = true
   try {
     setUser(await api<User>('/profile/avatar', { method: 'PUT', headers: { 'Content-Type': file.type }, body: file }))
   } catch (reason) {
-    avatarError.value = message(reason)
+    toast.error(message(reason))
   } finally {
     avatarBusy.value = false
   }
@@ -142,11 +132,10 @@ async function uploadAvatar(event: Event) {
 
 async function removeAvatar() {
   avatarBusy.value = true
-  avatarError.value = ''
   try {
     setUser(await api<User>('/profile/avatar', send('DELETE')))
   } catch (reason) {
-    avatarError.value = message(reason)
+    toast.error(message(reason))
   } finally {
     avatarBusy.value = false
   }
@@ -179,7 +168,6 @@ async function removeAvatar() {
         <NButton size="small" type="primary" attr-type="submit" :loading="saving">保存</NButton>
         <NButton size="small" secondary :disabled="saving" @click="editing = false">取消</NButton>
       </form>
-      <p v-if="nameError || avatarError" class="profile-error" role="alert">{{ nameError || avatarError }}</p>
 
       <dl class="profile-facts">
         <div>
@@ -200,7 +188,6 @@ async function removeAvatar() {
               <NButton size="small" secondary :disabled="renameBusy" @click="renaming = false">取消</NButton>
             </form>
             <small class="muted">只能修改一次，密码不变。</small>
-            <small v-if="renameError" class="profile-error" role="alert">{{ renameError }}</small>
           </dd>
         </div>
         <div v-if="account?.nickname">
@@ -225,11 +212,9 @@ async function removeAvatar() {
                 <div class="profile-qq-command">
                   <code>{{ qqBinding.command }}</code>
                   <NButton size="small" secondary @click="copyQqCommand">复制</NButton>
-                  <small v-if="qqCopyStatus" role="status">{{ qqCopyStatus }}</small>
                 </div>
                 <NButton size="small" text @click="refresh">我已发送，刷新状态</NButton>
               </div>
-              <small v-if="qqError" class="profile-error" role="alert">{{ qqError }}</small>
             </template>
             <small class="muted profile-qq-group">在群里 @机器人 发「{{ qq.report_command }}」查询昨日战报：第一次会私聊你一个关联链接，打开并确认即可，不需要先绑定 QQ。</small>
           </dd>
