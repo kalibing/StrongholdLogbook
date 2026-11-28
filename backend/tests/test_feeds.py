@@ -17,7 +17,7 @@ NOW = datetime(2026, 11, 28, 12, 30, tzinfo=feeds.CHINA)
 class FakeClient:
     def __init__(self):
         self.replies, self.sent = [], []
-        self.images = []
+        self.outbound = []
 
     def reply_c2c(self, openid, msg_id, content, seq=1):
         self.replies.append(("c2c", openid, content))
@@ -30,9 +30,10 @@ class FakeClient:
 
     def send_group(self, group_openid, content):
         self.sent.append(("group", group_openid, content))
+        self.outbound.append((group_openid, "text", content))
 
-    def send_group_image(self, group_openid, image_url, content):
-        self.images.append((group_openid, image_url, content))
+    def send_group_markdown(self, group_openid, content):
+        self.outbound.append((group_openid, "markdown", content))
 
 
 @pytest.fixture()
@@ -182,20 +183,30 @@ def test_bili_parsing_and_links(monkeypatch):
     assert items[0].text == "发布了视频：《明日方舟》SideStory PV\n活动即将开启"
     assert items[1].text == "#明日方舟# 新干员 [doge]"
     assert items[2].text == "转发了动态\n转发抽奖"
-    assert [item.image_url for item in items] == [
-        "https://i1.hdslb.com/cover.jpg", "https://i0.hdslb.com/first.png", "https://i2.hdslb.com/original.jpg",
+    assert [[image.url for image in item.images] for item in items] == [
+        ["https://i1.hdslb.com/cover.jpg"],
+        ["https://i0.hdslb.com/first.png", "https://i0.hdslb.com/second.png"],
+        ["https://i2.hdslb.com/original.jpg"],
     ]
-    assert "t.bilibili.com" not in feeds.bili_message(items[0])
+    _, footer = feeds.bili_message(items[0])
+    assert "t.bilibili.com" not in footer
     monkeypatch.setenv("FEED_LINKS", "1")
-    assert feeds.bili_message(items[0]).endswith("https://t.bilibili.com/111")
+    _, footer = feeds.bili_message(items[0])
+    assert footer.endswith("https://t.bilibili.com/111")
 
 
-def test_bili_poller_sends_one_image_with_text_and_falls_back_for_failed_target(bot):
+def test_bili_preserves_original_paragraphs_and_long_caption():
+    text = "第一段\r\n\r\n　第二段：" + "没有截断" * 50 + "\n最后一段\n"
+    item = {"modules": {"module_dynamic": {"major": {"opus": {"summary": {"text": text}}}}}}
+    assert feeds.bili_text(item) == text.replace("\r\n", "\n")
+
+
+def test_bili_poller_sends_all_images_in_one_message_per_group(bot):
     class Flaky(FakeClient):
-        def send_group_image(self, group_openid, image_url, content):
+        def send_group_markdown(self, group_openid, content):
+            super().send_group_markdown(group_openid, content)
             if group_openid == GROUP:
-                raise RuntimeError("image unavailable")
-            super().send_group_image(group_openid, image_url, content)
+                raise RuntimeError("message rejected")
 
     client = Flaky()
     entries = list(BILI_FEED["data"]["items"])
@@ -206,17 +217,29 @@ def test_bili_poller_sends_one_image_with_text_and_falls_back_for_failed_target(
             assert feeds.configure_group(database, CONFIG.app_id, group, None, [feeds.BILI])
         assert poller.run_bili(database, "161775300", "SESSDATA=x") == 0
         item = entries[1]
+        timestamp = datetime.now(feeds.CHINA).replace(microsecond=0)
+        pics = [{"url": f"//i0.hdslb.com/{index}.png", "width": 1000, "height": 2100} for index in range(1, 8)]
         entries.insert(0, {
             **item, "id_str": "114",
-            "modules": {**item["modules"], "module_author": {"pub_ts": datetime.now(feeds.CHINA).timestamp()}},
+            "modules": {
+                "module_author": {"pub_ts": timestamp.timestamp()},
+                "module_dynamic": {"major": {"opus": {
+                    "summary": {"text": "第一行\n\n#明日方舟# 新干员 [doge]"},
+                    "pics": [*pics, pics[0]],
+                }}},
+            },
         })
         assert poller.run_bili(database, "161775300", "SESSDATA=x") == 1
         assert poller.run_bili(database, "161775300", "SESSDATA=x") == 0
-    assert len(client.images) == len(client.sent) == 1
-    group, image, caption = client.images[0]
-    assert (group, image) == ("second-group", "https://i0.hdslb.com/first.png")
-    assert "#明日方舟# 新干员" in caption
-    assert client.sent == [("group", GROUP, caption)]
+    markdown = "\n\n".join([
+        "【明日方舟 B 站动态】", "第一行", "\u200b", r"\#明日方舟\# 新干员 \[doge\]",
+        *(f"![配图 {index} #600px #1260px](https://i0.hdslb.com/{index}.png)" for index in range(1, 8)),
+        timestamp.strftime("%Y-%m-%d %H:%M"),
+    ])
+    assert client.outbound == [
+        (GROUP, "markdown", markdown),
+        ("second-group", "markdown", markdown),
+    ]
 
 
 def test_bili_risk_control_raises():
@@ -255,14 +278,20 @@ def at(hour, minute, second=0):
     (at(9, 58), 30),        # 10 点整点窗口提前开始
     (at(12, 30), 120),      # 忙时段非整点
     (at(12, 57), 60),       # 不越过 :58 的整点窗口
-    (at(20, 0), 600),       # 闲时整点也不加密
-    (at(17, 58), 600),      # 18 点已不在忙时段
-    (at(3, 10), 600),
-    (at(3, 50), 480),       # 闲时也在 :58 重新判断
+    (at(20, 0), 1800),      # 闲时整点也不加密
+    (at(17, 58), 1800),     # 18 点已不在忙时段
+    (at(3, 10), 1800),
+    (at(3, 50), 1800),      # 不为闲时整点提前唤醒
+    (at(9, 47), 660),       # 09:58 进入首个忙时整点窗口
 ])
 def test_schedule(moment, expected):
-    schedule = feeds.Schedule(peak=30, busy=120, idle=600)
+    schedule = feeds.Schedule(peak=30, busy=120, idle=1800)
     assert schedule.delay(moment) == expected
+
+
+def test_bilibili_idle_wait_can_cross_an_inactive_hour_boundary():
+    assert feeds.Schedule(peak=60, busy=180, idle=3600).delay(at(21, 31)) == 3600
+    assert feeds.Schedule(peak=60, busy=180, idle=3600, busy_start=0, busy_end=6).delay(at(23, 30)) == 1680
 
 
 def test_parse_hours():

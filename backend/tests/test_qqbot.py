@@ -173,13 +173,22 @@ def test_group_image_push_uploads_without_sending_then_sends_media(monkeypatch):
 
     monkeypatch.setattr(client, "_post", post)
     url = "https://i0.hdslb.com/cover.jpg"
-    client.send_group_image("group", url, "动态摘要")
+    client.send_group_image("group", url, "caption")
     assert calls == [
         ("/v2/groups/group/files", {"file_type": 1, "srv_send_msg": False, "url": url}),
         ("/v2/groups/group/messages", {
-            "msg_type": 7, "content": "动态摘要", "media": {"file_info": "uploaded-image"},
+            "msg_type": 7, "content": "caption", "media": {"file_info": "uploaded-image"},
         }),
     ]
+
+
+def test_send_group_markdown_posts_a_single_message(monkeypatch):
+    client = qqbot.QQClient(CONFIG)
+    calls = []
+    monkeypatch.setattr(client, "_post", lambda path, payload: calls.append((path, payload)))
+    content = "正文\n\n![配图 #600px #300px](https://i0.hdslb.com/cover.jpg)"
+    client.send_group_markdown("group", content)
+    assert calls == [("/v2/groups/group/messages", {"msg_type": 2, "markdown": {"content": content}})]
 
 
 def test_callback_validation_returns_signature(bot):

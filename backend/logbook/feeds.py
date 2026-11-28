@@ -13,8 +13,8 @@
 
 环境变量：
 - 轮询按北京时间调度（见 Schedule）：FEED_BUSY_HOURS 为密集时段，默认 10-18；
-  游戏公告 FEED_AK_PEAK / FEED_AK_INTERVAL / FEED_AK_IDLE 默认 30 / 120 / 600 秒，
-  B 站 FEED_BILI_PEAK / FEED_BILI_INTERVAL / FEED_BILI_IDLE 默认 60 / 180 / 900 秒
+  游戏公告 FEED_AK_PEAK / FEED_AK_INTERVAL / FEED_AK_IDLE 默认 30 / 120 / 1800 秒，
+  B 站 FEED_BILI_PEAK / FEED_BILI_INTERVAL / FEED_BILI_IDLE 默认 60 / 180 / 3600 秒
   （分别是忙时段整点前后、忙时段其他时间、其余时间）。
 - FEED_BILI_UID：B 站账号 UID，默认 161775300（明日方舟官号）。
 - BILIBILI_COOKIE：B 站 Cookie（至少包含 SESSDATA 与 buvid3）。
@@ -36,7 +36,7 @@ from threading import Event
 import time
 from typing import Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import Request as UrlRequest, urlopen
 
 from . import bilibili
@@ -128,13 +128,20 @@ def targets(database, app_id: str, source: str) -> list[str]:
 
 
 @dataclass(frozen=True)
+class FeedImage:
+    url: str
+    width: int | None = None
+    height: int | None = None
+
+
+@dataclass(frozen=True)
 class Item:
     source: str
     id: str
     text: str
     link: str = ""
     published: datetime | None = None
-    image_url: str | None = None
+    images: tuple[FeedImage, ...] = ()
 
 
 def get_json(url: str, headers: dict | None = None, timeout: float = 10) -> dict:
@@ -203,7 +210,7 @@ def bili_text(item: dict) -> str:
     modules = item.get("modules") or {}
     dynamic = modules.get("module_dynamic") or {}
     major = dynamic.get("major") or {}
-    desc = ((dynamic.get("desc") or {}).get("text") or "").strip()
+    desc = (dynamic.get("desc") or {}).get("text") or ""
     kind = item.get("type")
     parts = []
     if archive := major.get("archive"):
@@ -222,12 +229,13 @@ def bili_text(item: dict) -> str:
     elif kind == "DYNAMIC_TYPE_FORWARD":
         parts.append("转发了动态")
     if desc:
-        parts.append(shorten(plain_text(desc).replace("\n", " ")))
+        parts.append(desc.replace("\r\n", "\n").replace("\r", "\n"))
     return "\n".join(part for part in parts if part) or "发布了新动态"
 
 
-def bili_image(item: dict) -> str | None:
-    """选择动态的首张可用配图或视频封面，也处理转发的原动态。"""
+def bili_images(item: dict) -> tuple[FeedImage, ...]:
+    """按动态顺序收集配图与封面，也处理转发的原动态。"""
+    images: dict[str, FeedImage] = {}
     for entry in (item, item.get("orig")):
         if not isinstance(entry, dict):
             continue
@@ -249,8 +257,17 @@ def bili_image(item: dict) -> str | None:
                 continue
             if (url.scheme in {"http", "https"} and url.path
                     and re.fullmatch(r"i[0-9]+\.hdslb\.com", url.netloc, re.IGNORECASE)):
-                return urlunsplit(url._replace(scheme="https", fragment=""))
-    return None
+                address = urlunsplit(url._replace(scheme="https", fragment=""))
+                metadata = picture if isinstance(picture, dict) else {}
+                width = metadata.get("width") or metadata.get("img_width")
+                height = metadata.get("height") or metadata.get("img_height")
+                if isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
+                    old_image = images.get(address)
+                    if old_image is None or old_image.width is None:
+                        images[address] = FeedImage(address, width, height)
+                else:
+                    images.setdefault(address, FeedImage(address))
+    return tuple(images.values())
 
 
 def fetch_bili(uid: str, cookie: str, fetch: Callable = get_json) -> list[Item]:
@@ -274,17 +291,36 @@ def fetch_bili(uid: str, cookie: str, fetch: Callable = get_json) -> list[Item]:
         published = None
         if isinstance(author.get("pub_ts"), (int, float)) or str(author.get("pub_ts", "")).isdigit():
             published = datetime.fromtimestamp(int(author["pub_ts"]), CHINA)
-        items.append(Item(BILI, dynamic_id, bili_text(entry), f"https://t.bilibili.com/{dynamic_id}", published, bili_image(entry)))
+        items.append(Item(BILI, dynamic_id, bili_text(entry), f"https://t.bilibili.com/{dynamic_id}", published, bili_images(entry)))
     return items
 
 
-def bili_message(item: Item) -> str:
-    lines = ["【明日方舟 B 站动态】", item.text]
+def bili_message(item: Item) -> tuple[str, str]:
+    footer = []
     if item.published:
-        lines.append(item.published.strftime("%Y-%m-%d %H:%M"))
+        footer.append(item.published.strftime("%Y-%m-%d %H:%M"))
     if links_enabled():
-        lines.append(item.link)
-    return "\n".join(lines)
+        footer.append(item.link)
+    return f"【明日方舟 B 站动态】\n{item.text}", "\n".join(footer)
+
+
+def bili_markdown(content: str, images: tuple[FeedImage, ...], footer: str) -> str:
+    # QQ Markdown keeps paragraph breaks and collapses consecutive empty lines.
+    lines = [
+        re.sub(r"([\\`*_{}\[\]<>#+!~|&.\-])", r"\\\1", line) if line.strip() else "\u200b"
+        for line in content.split("\n")
+    ]
+    for index, image in enumerate(images, 1):
+        label = f"配图 {index}"
+        if image.width and image.height:
+            width = min(600, image.width)
+            height = max(1, round(image.height * width / image.width))
+            label += f" #{width}px #{height}px"
+        url = quote(image.url, safe=":/?&=%@+,$#;[]!~*'-_")
+        lines.append(f"![{label}]({url})")
+    if footer:
+        lines.extend(footer.split("\n"))
+    return "\n\n".join(lines)
 
 
 def links_enabled() -> bool:
@@ -328,18 +364,12 @@ SEND_ERRORS = (HTTPError, URLError, TimeoutError, RuntimeError, ValueError)
 
 
 def deliver(client, database, app_id: str, source: str, content: str, sleep: Callable = time.sleep,
-            *, image_url: str | None = None) -> int:
+            *, markdown: bool = False) -> int:
+    send = client.send_group_markdown if markdown else client.send_group
     sent = 0
     for openid in targets(database, app_id, source):
         try:
-            if image_url:
-                try:
-                    client.send_group_image(openid, image_url, content)
-                except SEND_ERRORS as error:
-                    LOGGER.warning("Group image push failed: %s %s", type(error).__name__, getattr(error, "code", ""))
-                    client.send_group(openid, content)
-            else:
-                client.send_group(openid, content)
+            send(openid, content)
             sent += 1
         except SEND_ERRORS as error:
             # 只记发送错误的类型和状态码，不记群 openid。
@@ -365,7 +395,12 @@ class Poller:
     def run_bili(self, database, uid: str, cookie: str) -> int:
         pushed = 0
         for item in new_items(database, BILI, fetch_bili(uid, cookie, self.fetch)):
-            deliver(self.client, database, self.app_id, BILI, bili_message(item), self.sleep, image_url=item.image_url)
+            content, footer = bili_message(item)
+            if item.images:
+                content = bili_markdown(content, item.images, footer)
+            elif footer:
+                content = f"{content}\n{footer}"
+            deliver(self.client, database, self.app_id, BILI, content, self.sleep, markdown=bool(item.images))
             pushed += 1
         return pushed
 
@@ -400,11 +435,14 @@ class Schedule:
             chosen = self.peak
         else:
             chosen = self.busy if busy else self.idle
-        # 不要一觉睡过下一个整点窗口的开头。
-        until_window = ((58 - minute) % 60) * 60 - now.second
-        if until_window > 0:
-            chosen = min(chosen, until_window)
-        return float(max(chosen, 1))
+        # 只为下一个忙时整点提前唤醒。闲时不需要每小时 :58 都查询。
+        next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1 if minute < 58 else 2)
+        if next_hour.hour >= self.busy_end:
+            next_hour = next_hour.replace(hour=self.busy_start) + timedelta(days=1)
+        elif next_hour.hour < self.busy_start:
+            next_hour = next_hour.replace(hour=self.busy_start)
+        until_window = (next_hour - timedelta(minutes=2) - now).total_seconds()
+        return max(1.0, min(chosen, until_window))
 
 
 def parse_hours(value: str) -> tuple[int, int]:
@@ -423,12 +461,12 @@ def main():
     start, end = parse_hours(os.getenv("FEED_BUSY_HOURS", "10-18"))
     ak_schedule = Schedule(
         peak=interval("FEED_AK_PEAK", 30), busy=interval("FEED_AK_INTERVAL", 120),
-        idle=interval("FEED_AK_IDLE", 600), busy_start=start, busy_end=end,
+        idle=interval("FEED_AK_IDLE", 1800), busy_start=start, busy_end=end,
     )
     # B 站请求太密容易触发风控，下限 60 秒。
     bili_schedule = Schedule(
         peak=interval("FEED_BILI_PEAK", 60, 60), busy=interval("FEED_BILI_INTERVAL", 180, 60),
-        idle=interval("FEED_BILI_IDLE", 900, 60), busy_start=start, busy_end=end,
+        idle=interval("FEED_BILI_IDLE", 3600, 60), busy_start=start, busy_end=end,
     )
     uid = os.getenv("FEED_BILI_UID", "161775300").strip()
     if not uid.isdigit():

@@ -193,6 +193,10 @@ class QQClient:
         """主动消息：不带 msg_id。"""
         self._post(f"/v2/groups/{quote(group_openid, safe='')}/messages", {"msg_type": 0, "content": content})
 
+    def send_group_markdown(self, group_openid: str, content: str) -> None:
+        self._post(f"/v2/groups/{quote(group_openid, safe='')}/messages",
+                   {"msg_type": 2, "markdown": {"content": content}})
+
     def send_group_image(self, group_openid: str, image_url: str, content: str) -> None:
         base = f"/v2/groups/{quote(group_openid, safe='')}"
         file_info = self._upload_image(base, {"url": image_url})

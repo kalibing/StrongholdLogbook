@@ -282,7 +282,8 @@ sudo systemctl daemon-reload && sudo systemctl restart caddy
 站点管理员在「管理后台 → QQ 群推送」选择机器人已识别的群，填写群号，勾选明日方舟公告与 B 站官号动态。新群先 @机器人发一次消息，再刷新管理页。QQ 发送消息使用群 OpenID，群号用于管理员识别。已有群推送会随数据库迁移显示在管理页。
 
 - 推送由独立进程运行。Compose 的 feeds 服务随 --profile qqbot 启动，裸机使用 deploy/systemd/logbook-feeds.service。每个来源首次轮询只记录已有条目，之后推送新增且未超过 3 天的条目。
-- 轮询按北京时间调度：`FEED_BUSY_HOURS`（默认 `10-18`）是密集时段，时段内整点前后 `:58–:05` 再加密。游戏公告默认 30 / 120 / 600 秒（整点前后 / 时段内其他时间 / 时段外），B 站默认 60 / 180 / 900 秒。B 站被风控（如 `-352`）时按 2 的幂退避，最长 30 分钟。各间隔可用 `FEED_AK_PEAK` / `FEED_AK_INTERVAL` / `FEED_AK_IDLE`、`FEED_BILI_PEAK` / `FEED_BILI_INTERVAL` / `FEED_BILI_IDLE` 调整。
+- 轮询按北京时间调度。`FEED_BUSY_HOURS` 默认 `10-18`，忙时整点前后 `:58–:05` 加密。公告按整点、忙时其他、闲时分别间隔 30 秒、2 分钟、30 分钟。B 站分别间隔 1 分钟、3 分钟、60 分钟，遇到风控会按失败次数退避。各间隔可用 `FEED_AK_PEAK` / `FEED_AK_INTERVAL` / `FEED_AK_IDLE`、`FEED_BILI_PEAK` / `FEED_BILI_INTERVAL` / `FEED_BILI_IDLE` 调整。
+- B 站图文动态用一条 QQ Markdown 消息发送，顶部保留原文换行，中间按顺序嵌入各张配图，末尾显示发布时间。视频动态使用视频封面。
 - B 站动态使用已登录账号。已绑定 QQ 的站点管理员可发送「B站状态」，需要重新登录时在私聊获取扫码二维码。登录凭据加密存入数据库，推送进程下次读取时生效。部署也可用 BILIBILI_COOKIE 提供登录态。
 - 发二维码用的是 QQ 富媒体消息（先上传图片再发 `msg_type 7`），需要机器人有发图权限。
 - 主动消息受 QQ 平台限制：每群 / 每个用户每天上限 1000 条，用户或群可以在客户端关闭「允许主动发送」，关闭后推送会失败，日志里只记录失败的状态码。推送默认不附链接，因为消息里的链接域名需要先在开放平台配置。配好后设 `FEED_LINKS=1`。
