@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from . import bands, daily_review, stats
 from .bond_names import BOND_NAMES
@@ -438,9 +438,10 @@ def highlights(image, draw, top, card):
     duration = "—" if seconds is None else (f"{seconds // 3600} 小时 {seconds // 60 % 60} 分" if seconds >= 3600 else f"{seconds // 60} 分")
     peak_names = peak["names"] if peak else []
     peak_icon = next((name for name in MAJOR_BONDS if name in peak_names), next(iter(peak_names), ""))
+    peak_label = peak_icon if card.title else "、".join(peak_names)
     cells = [
         ("单局最高盟约总层数", f"{fmt(max(map(stats.bond_total, rows), default=None))} 层", "", "metric-bond.png"),
-        ("单项最高盟约", f"{fmt(peak['layers'])} 层" if peak else "—", "、".join(peak_names), BOND_ICONS.get(peak_icon)),
+        ("单项最高盟约", f"{fmt(peak['layers'])} 层" if peak else "—", peak_label, BOND_ICONS.get(peak_icon)),
         ("场均击杀", fmt(sum(kills) / len(kills) if kills else None), "", None),
         ("金币总花费", fmt(sum(coins) if coins else None), "", "metric-funds.png"),
         ("最长连胜", f"{fmt(recap.get('longest_win_streak'))} 局", "", None),
@@ -618,6 +619,26 @@ def key_matches(draw, top, card):
     return top + height + GAP
 
 
+def chart_dashes(draw, left, right, y, color, *, dash=5, gap=4):
+    for x in range(left, right, dash + gap):
+        draw.line((x, y, min(x + dash - 1, right), y), fill=color)
+
+
+def trend_area(image, xs, ys, top, baseline):
+    left, right = xs[0], xs[-1]
+    if left == right:
+        return
+    size = (right - left + 1, baseline - top + 1)
+    mask = Image.new("L", size)
+    fill = ImageDraw.Draw(mask)
+    for x1, y1, x2, y2 in zip(xs, ys, xs[1:], ys[1:]):
+        if y1 is not None and y2 is not None:
+            a, b = x1 - left, x2 - left
+            fill.polygon(((a, y1 - top), (b, y2 - top), (b, size[1] - 1), (a, size[1] - 1)), fill=255)
+    fade = Image.linear_gradient("L").resize(size).point(lambda alpha: round((255 - alpha) * .22))
+    image.paste(ACCENT, (left, top, right + 1, baseline + 1), ImageChops.multiply(mask, fade))
+
+
 def trend(image, draw, top, card):
     points = list(stats.chart_points(card.matches[::-1], "recent"))
     layers = [point["peak"]["layers"] for point in points if point["peak"]]
@@ -628,49 +649,61 @@ def trend(image, draw, top, card):
         return top + height + RECORD_GAP
 
     average = sum(layers) / len(layers)
-    height = 390
-    body = record_panel(draw, top, height, "对局趋势", f"场均 {compact_number(average)} 层")
-    draw.text((PAD + 24, body + 13), "单项最高盟约层数", font=font(22, True), fill=TEXT, anchor="lm")
-    draw.text((PAD + 225, body + 13), "由早到晚", font=font(18), fill=RECORD_MUTED, anchor="lm")
-    for label, color, x in (("胜", WIN, WIDTH - PAD - 122), ("负", LOSS, WIDTH - PAD - 66)):
-        draw.text((x, body + 13), f"◆ {label}", font=font(18), fill=color, anchor="lm")
+    height = 419
+    body = record_panel(draw, top, height, "对局趋势")
+    content_left, right = PAD + 24, WIDTH - PAD - 24
+    legend_face = font(19)
+    for label, color, x in (("胜", WIN, right - 92), ("负", LOSS, right - 38)):
+        draw.rectangle((x, top + 33, x + 8, top + 41), fill=color)
+        draw.text((x + 14, top + 37), label, font=legend_face, fill=color, anchor="lm")
+    metric_y = body + 17
+    icon_width = paste_icon(image, "metric-bond.png", content_left, metric_y - 12, 24)
+    draw.text((content_left + icon_width, metric_y), "单项最高盟约层数",
+              font=font(22, True), fill=TEXT, anchor="lm")
+    average_label = f"单项最高场均 {compact_number(average)} 层"
+    label_left = right - round(draw.textlength(average_label, font=legend_face))
+    chart_dashes(draw, label_left - 34, label_left - 10, metric_y, CHART_AVERAGE)
+    draw.text((right, metric_y), average_label, font=legend_face, fill=CHART_AVERAGE, anchor="rm")
 
-    draw.rounded_rectangle((PAD + 24, body + 37, WIDTH - PAD - 24, top + height - 18),
-                           radius=RADIUS, fill=RECORD_INSET, outline=RECORD_LINE)
-    left, right = PAD + 106, WIDTH - PAD - 39
-    base_y, plot_height = body + 207, 140
+    left = PAD + 100
+    base_y, plot_height = body + 218, 148
+    plot_top = base_y - plot_height
     step = (max(layers) + 3) // 4
     max_layers = step * 4
     axis_face, point_face = font(18), font(20, True)
-    for value in range(0, max_layers + 1, step):
-        y = base_y - plot_height * value / max_layers
-        draw.line((left, y, right, y), fill=RECORD_LINE)
-        draw.text((left - 12, y), compact_number(value), font=axis_face, fill=RECORD_MUTED, anchor="rm")
-    average_y = base_y - plot_height * average / max_layers
-    for x in range(left, right, 13):
-        draw.line((x, average_y, min(x + 6, right), average_y), fill=CHART_AVERAGE)
-
     col_width = (right - left) / len(points)
     xs = [round(left + (index + 0.5) * col_width) for index in range(len(points))]
     ys = [round(base_y - plot_height * point["peak"]["layers"] / max_layers) if point["peak"] else None
           for point in points]
+    for value in range(0, max_layers + 1, step):
+        y = base_y - plot_height * value / max_layers
+        if value:
+            chart_dashes(draw, left, right, y, RECORD_LINE, dash=4)
+        else:
+            draw.line((left, y, right, y), fill=RECORD_LINE)
+        draw.text((left - 12, y), compact_number(value), font=axis_face, fill=RECORD_MUTED, anchor="rm")
+    trend_area(image, xs, ys, plot_top, base_y)
+    average_y = base_y - plot_height * average / max_layers
+    chart_dashes(draw, left, right, average_y, CHART_AVERAGE)
     for x1, y1, x2, y2 in zip(xs, ys, xs[1:], ys[1:]):
         if y1 is not None and y2 is not None:
-            draw.line((x1, y1, x2, y2), fill=ACCENT, width=3)
+            draw.line((x1, y1, x2, y2), fill=ACCENT, width=2)
     for index, (point, x, y) in enumerate(zip(points, xs, ys), 1):
-        draw.text((x, base_y + 19), str(index), font=axis_face, fill=RECORD_MUTED, anchor="mm")
+        win = point["result"] == "win"
+        color = WIN if win else LOSS
+        draw.text((x, base_y + 20), str(index), font=axis_face, fill=RECORD_MUTED, anchor="mm")
+        draw.text((x, base_y + 45), "胜" if win else "负", font=axis_face, fill=color, anchor="mm")
         if y is None:
-            draw.text((x, base_y + 58), "—", font=axis_face, fill=RECORD_MUTED, anchor="mm")
             continue
-        color = WIN if point["result"] == "win" else LOSS
-        draw.polygon(((x, y - 7), (x + 7, y), (x, y + 7), (x - 7, y)), fill=color, outline=RECORD_INSET)
+        draw.polygon(((x, y - 10), (x + 10, y), (x, y + 10), (x - 10, y)), fill=RECORD_PANEL)
+        draw.polygon(((x, y - 7), (x + 7, y), (x, y + 7), (x - 7, y)), fill=color)
         peak = point["peak"]
-        draw.text((x, y - 15), compact_number(peak["layers"]), font=point_face, fill=TEXT, anchor="mb",
-                  stroke_width=2, stroke_fill=RECORD_INSET)
+        draw.text((x, y - 16), compact_number(peak["layers"]), font=point_face, fill=TEXT, anchor="mb",
+                  stroke_width=2, stroke_fill=RECORD_PANEL)
         name = peak["names"][0]
-        paste_icon(image, BOND_ICONS.get(name), x - 10, base_y + 33, 20)
-        name = ellipsize(draw, name, col_width - 8, axis_face)
-        draw.text((x, base_y + 71), name, font=axis_face, fill=TEXT, anchor="mm")
+        paste_icon(image, BOND_ICONS.get(name), x - 12, base_y + 61, 24)
+        name = ellipsize(draw, name, col_width - 12, axis_face)
+        draw.text((x, base_y + 101), name, font=axis_face, fill=TEXT, anchor="mm")
 
     return top + height + RECORD_GAP
 

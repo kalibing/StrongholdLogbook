@@ -46,6 +46,18 @@ def test_build_sums_trophies_and_keeps_order():
     assert card.recap["most_kills"]["id"] == "m20"
 
 
+def test_recent_highlights_show_one_name_for_tied_peak(monkeypatch):
+    rows = [match(20, "win", bonds=[{"name": "叙拉古", "layers": 8}, {"name": "伊比利亚", "layers": 8}])]
+    card = daily_card.build(rows, excluded=0, day=date(2026, 11, 26), username="tester")
+    card.title = "最近 1 局战绩"
+    rendered = []
+    monkeypatch.setattr(daily_card, "recent_highlights", lambda image, draw, top, cells: rendered.extend(cells))
+
+    daily_card.highlights(None, None, 0, card)
+
+    assert rendered[1] == ("单项最高盟约", "8 层", "伊比利亚", daily_card.BOND_ICONS["伊比利亚"])
+
+
 def test_card_palette_matches_website_dark_theme():
     style = Path(__file__).resolve().parents[2] / "frontend" / "src" / "style.css"
     dark_theme = style.read_text(encoding="utf-8").split(":root {", 1)[1].split("}", 1)[0]
