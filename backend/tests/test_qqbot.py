@@ -7,7 +7,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from logbook import accounts, api, qqbot, storage, worker
+from logbook import accounts, api, qq_binding, qqbot, skland, storage, worker
+from logbook.credentials import SKLAND
 from logbook.records import CHINA
 
 ORIGIN = "http://localhost:8080"
@@ -21,6 +22,7 @@ class FakeClient:
         self.replies = []
         self.group_replies = []
         self.images = []
+        self.image_captions = []
         self.c2c_error = None
 
     def reply_c2c(self, openid, msg_id, content, seq=1):
@@ -33,6 +35,7 @@ class FakeClient:
 
     def reply_image(self, target_type, openid, msg_id, png, content="", seq=1):
         self.images.append((target_type, openid, msg_id, png))
+        self.image_captions.append(content)
 
 
 @pytest.fixture()
@@ -42,6 +45,7 @@ def bot(tmp_path, monkeypatch):
     qqbot.link_quota._failures.clear()
     qqbot.report_quota._failures.clear()
     qqbot.record_quota._failures.clear()
+    qqbot.record_sync_quota._failures.clear()
     qqbot.group_link_quota._failures.clear()
     client = FakeClient()
     with TestClient(api.app):  # 建表
@@ -189,6 +193,47 @@ def test_bind_web_account_in_private_and_request_group_report(bot, monkeypatch):
     images_before = len(fake.images)
     assert post(client, group_at("日报", "after-unbind")).status_code == 200
     assert "#qq-group=" in fake.replies[-1]["content"] and len(fake.images) == images_before
+
+
+def test_group_record_syncs_saved_skland_before_render_and_falls_back(bot, monkeypatch):
+    client, fake = bot
+    rendered = []
+    sync_calls = []
+    played = datetime.now(CHINA)
+
+    def pull(*, access_token, deadline):
+        assert deadline > time.monotonic()
+        sync_calls.append(access_token)
+        if len(sync_calls) > 1:
+            raise skland.AccessTokenRejected("test rejection")
+        return {"matches": [{
+            "external_id": "new-skland-match", "played_at": played.isoformat(),
+            "play": "联合模拟", "difficulty": "绝境模拟", "result": "win",
+        }]}, "新昵称"
+
+    def render(card):
+        rendered.append(card)
+        return b"test-png"
+
+    monkeypatch.setattr(skland, "pull_snapshot", pull)
+    monkeypatch.setattr(qqbot.daily_card, "render", render)
+    with TestClient(api.app) as web, storage.connect() as db:
+        user = accounts.create_with_password(db, "skland-player", "web-user-password")
+        user_id = user["id"]
+        token = qq_binding.issue_group_link(db, CONFIG.app_id, "qq-group", "qq-member")
+        qq_binding.confirm_group_link(db, CONFIG.app_id, token, user_id)
+        sealed_token = web.app.state.credentials.seal(SKLAND, user_id, "saved-test-token")
+        db.execute("INSERT INTO skland_import_tokens (user_id, access_token) VALUES (%s, %s)", (user_id, sealed_token))
+
+    assert post(client, group_at("战绩", "sync-record")).status_code == 200
+    assert post(client, group_at("战绩", "fallback-record")).status_code == 200
+    assert sync_calls == ["saved-test-token", "saved-test-token"]
+    assert [card.username for card in rendered] == ["新昵称", "新昵称"]
+    assert all(card.title == "最近 1 局战绩" and card.wins == 1 for card in rendered)
+    assert fake.image_captions == ["", "本次未完成森空岛同步，显示已保存战绩。"]
+    with storage.connect() as db:
+        rows = db.execute("SELECT external_id FROM matches WHERE user_id = %s", (user_id,)).fetchall()
+        assert rows == [{"external_id": "new-skland-match"}]
 
 
 def test_group_link_confirmed_by_qq_signup_account(bot, monkeypatch):

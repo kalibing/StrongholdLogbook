@@ -52,7 +52,8 @@ class AccessTokenRejected(SklandError):
     """鹰角拒绝了用 access token 换取授权的请求。"""
 
 
-def _request(method: str, url: str, headers: dict | None = None, body: dict | None = None) -> tuple[int, str]:
+def _request(method: str, url: str, headers: dict | None = None, body: dict | None = None, *,
+             deadline: float | None = None) -> tuple[int, str]:
     data = json.dumps(body, ensure_ascii=False).encode() if body is not None else None
     request = urllib.request.Request(url, data=data, method=method)
     request.add_header("User-Agent", UA)
@@ -62,8 +63,11 @@ def _request(method: str, url: str, headers: dict | None = None, body: dict | No
         request.add_header("Content-Type", "application/json")
     for key, value in (headers or {}).items():
         request.add_header(key, value)
+    timeout = 25 if deadline is None else min(25, deadline - time.monotonic())
+    if timeout <= 0:
+        raise SklandError("森空岛同步超时")
     try:
-        with urllib.request.urlopen(request, timeout=25) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             raw, status = response.read(), response.status
     except urllib.error.HTTPError as error:
         raw, status = error.read(), error.code
@@ -82,10 +86,10 @@ def sign(sign_token: str, path: str, query: str = "", did: str = "", timestamp: 
     return hashlib.md5(digest.encode()).hexdigest(), t, header
 
 
-def cred_from_token(access_token: str) -> tuple[str, str]:
+def cred_from_token(access_token: str, *, deadline: float | None = None) -> tuple[str, str]:
     """鹰角 token → (cred, sign_token)。access_token 用森空岛 appCode 换 oauth code。"""
     status, text = _request("POST", "https://as.hypergryph.com/user/oauth2/v2/grant",
-                            body={"appCode": SKLAND_APP_CODE, "token": access_token, "type": 0})
+                            body={"appCode": SKLAND_APP_CODE, "token": access_token, "type": 0}, deadline=deadline)
     if status in (401, 403):
         raise AccessTokenRejected("鹰角未接受此 token，请重新获取后再试。")
     if status != 200:
@@ -98,7 +102,7 @@ def cred_from_token(access_token: str) -> tuple[str, str]:
     if not code:
         raise AccessTokenRejected("鹰角未接受此 token，请重新获取后再试。")
     status, text = _request("POST", f"{API_BASE}/web/v1/user/auth/generate_cred_by_code",
-                            body={"code": code, "kind": 1})
+                            body={"code": code, "kind": 1}, deadline=deadline)
     try:
         data = json.loads(text).get("data") or {}
     except ValueError:
@@ -108,7 +112,8 @@ def cred_from_token(access_token: str) -> tuple[str, str]:
     return str(data["cred"]), str(data["token"])
 
 
-def api_get(cred: str, sign_token: str, path: str, query: str = "", role: str = "") -> dict:
+def api_get(cred: str, sign_token: str, path: str, query: str = "", role: str = "", *,
+            deadline: float | None = None) -> dict:
     signature, timestamp, header = sign(sign_token, path, query)
     headers = {
         "cred": cred,
@@ -122,7 +127,7 @@ def api_get(cred: str, sign_token: str, path: str, query: str = "", role: str = 
     if role:
         headers["sk-game-role"] = role
     url = API_BASE + path + (("?" + query) if query else "")
-    status, text = _request("GET", url, headers=headers)
+    status, text = _request("GET", url, headers=headers, deadline=deadline)
     try:
         payload = json.loads(text)
     except ValueError:
@@ -132,8 +137,9 @@ def api_get(cred: str, sign_token: str, path: str, query: str = "", role: str = 
     return payload
 
 
-def arknights_role(cred: str, sign_token: str) -> tuple[str, str | None]:
-    payload = api_get(cred, sign_token, "/api/v1/game/player/binding")
+def arknights_role(cred: str, sign_token: str, *, deadline: float | None = None) -> tuple[str, str | None]:
+    options = {"deadline": deadline} if deadline is not None else {}
+    payload = api_get(cred, sign_token, "/api/v1/game/player/binding", **options)
     for app in ((payload.get("data") or {}).get("list") or []):
         if app.get("appCode") != "arknights":
             continue
@@ -147,13 +153,29 @@ def arknights_role(cred: str, sign_token: str) -> tuple[str, str | None]:
     raise SklandError("森空岛账号下没有绑定明日方舟角色")
 
 
-def history(cred: str, sign_token: str, role: str, season: str = SEASON) -> list[dict]:
+def history(cred: str, sign_token: str, role: str, season: str = SEASON, *, deadline: float | None = None) -> list[dict]:
+    options = {"deadline": deadline} if deadline is not None else {}
     payload = api_get(cred, sign_token, "/api/v1/game/garrison/guide/history-log",
-                      f"seasonId={season}", role)
+                      f"seasonId={season}", role, **options)
     records = ((payload.get("data") or {}).get("records")) or []
     if not records:
         raise SklandError("森空岛没有返回战绩（可能本季未参与）")
     return records
+
+
+def pull_snapshot(*, cred="", sign_token="", access_token="", season=SEASON, deadline=None):
+    options = {"deadline": deadline} if deadline is not None else {}
+    if not cred or not sign_token:
+        cred, sign_token = cred_from_token(access_token, **options)
+    role, nickname = arknights_role(cred, sign_token, **options)
+    return to_snapshot(history(cred, sign_token, role, season, **options)), nickname
+
+
+def save_profile(database, user_id, nickname):
+    database.execute("""
+        INSERT INTO skland_profiles (user_id, nickname) VALUES (%s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET nickname = EXCLUDED.nickname
+    """, (user_id, nickname))
 
 
 def to_snapshot(records: list[dict]) -> dict:

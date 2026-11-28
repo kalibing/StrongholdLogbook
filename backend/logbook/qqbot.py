@@ -4,7 +4,7 @@
 
 独立进程运行（uvicorn logbook.qqbot:app），与网页 API 分开：
 - 网页 API 的写请求要校验 Origin，回调请求没有 Origin；分开后两边的防护各自保持严格。
-- 这个进程只用到建号、签发登录链接与站内通知，不读战绩、会话和森空岛 / 成就令牌。
+- 「战绩」只读取发指令的群成员已关联账号的档案，并用该账号已保存的凭据尝试同步森空岛。
 
 协议要点（QQ 机器人 API v2 文档）：
 - 回调地址校验 op=13：对 event_ts + plain_token 做 Ed25519 签名，回 {"plain_token", "signature"}。
@@ -39,12 +39,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from . import accounts, bilibili, daily_card, feeds, qq_binding
-from .credentials import CredentialStorageError
+from . import accounts, bilibili, daily_card, feeds, qq_binding, skland, worker
+from .credentials import SKLAND, CredentialStorageError, CredentialVault, load_key
 from .config import settings
-from .errors import StorageUnavailable
+from .errors import StorageUnavailable, WriteRejected
 from .limits import FailureThrottle, RequestSizeLimit
-from .records import CHINA
+from .records import CHINA, read_snapshot
 from .storage import connect
 
 LOGGER = logging.getLogger(__name__)
@@ -254,6 +254,10 @@ def login_reply(link: str, username: str) -> str:
 link_quota = FailureThrottle(limit=5, window=60 * 60)
 report_quota = FailureThrottle(limit=3, window=60)
 record_quota = FailureThrottle(limit=3, window=60)
+record_sync_quota = FailureThrottle(limit=50, window=24 * 60 * 60)
+record_sync_lock = Lock()
+record_sync_active = set()
+RECORD_SYNC_TIMEOUT = 8
 
 
 def command_parts(content):
@@ -489,19 +493,69 @@ def group_report(client, config, group_openid, member_openid, msg_id, nickname="
         client.reply_group(group_openid, msg_id, "暂时无法生成昨日战报，请稍后再试。")
 
 
+def sync_group_record(config, group_openid, member_openid, user_id, sealed_token):
+    key = str(user_id)
+    with record_sync_lock:
+        if key in record_sync_active or not record_sync_quota.take(key):
+            return False
+        record_sync_active.add(key)
+    try:
+        deadline = time.monotonic() + RECORD_SYNC_TIMEOUT
+        token = CredentialVault(load_key(True)).unseal(SKLAND, user_id, sealed_token)
+        snapshot, nickname = skland.pull_snapshot(access_token=token, deadline=deadline)
+        records = read_snapshot(snapshot)
+        if time.monotonic() >= deadline:
+            return False
+        with connect() as database, database.transaction():
+            # 和导入 worker 使用相同的账号行锁，并确认拉取期间凭据和群关联没有更换。
+            database.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
+            current = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
+            saved = database.execute(
+                "SELECT access_token FROM skland_import_tokens WHERE user_id = %s FOR UPDATE", (user_id,),
+            ).fetchone()
+            if not current or current["id"] != user_id or not saved or saved["access_token"] != sealed_token:
+                return False
+            worker.upsert_matches(database, user_id, [record.import_payload() for record in records])
+            skland.save_profile(database, user_id, nickname)
+        return True
+    except (CredentialStorageError, skland.SklandError, StorageUnavailable, WriteRejected,
+            OSError, ValueError, TypeError, AttributeError) as error:
+        LOGGER.warning("Could not sync QQ group record: %s", type(error).__name__)
+        return False
+    finally:
+        with record_sync_lock:
+            record_sync_active.discard(key)
+
+
+def load_group_record(config, group_openid, member_openid):
+    with connect() as database:
+        user = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
+        if user is None:
+            return None, None, ""
+        user_id = user["id"]
+        if not record_quota.take(str(user_id)):
+            return user, None, "查询战绩太频繁，请稍后再试。"
+        saved = database.execute(
+            "SELECT access_token FROM skland_import_tokens WHERE user_id = %s", (user_id,),
+        ).fetchone()
+        if not saved:
+            return user, daily_card.load_recent(database, user, group=True), ""
+
+    synced = sync_group_record(config, group_openid, member_openid, user_id, saved["access_token"])
+    with connect() as database:
+        current = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
+        if not current or current["id"] != user_id:
+            return user, None, "群关联已更新，请重新发送「战绩」。"
+        note = "" if synced else "本次未完成森空岛同步，显示已保存战绩。"
+        return current, daily_card.load_recent(database, current, group=True), note
+
+
 def group_record(client, config, group_openid, member_openid, msg_id, nickname=""):
     if not isinstance(member_openid, str) or not accounts.OPENID_PATTERN.fullmatch(member_openid):
         client.reply_group(group_openid, msg_id, "暂时无法确认请求者的 QQ 身份。")
         return
     try:
-        card, reply = None, ""
-        with connect() as database:
-            user = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
-            if user is not None:
-                if record_quota.take(str(user["id"])):
-                    card = daily_card.load_recent(database, user, group=True)
-                else:
-                    reply = "查询战绩太频繁，请稍后再试。"
+        user, card, note = load_group_record(config, group_openid, member_openid)
     except StorageUnavailable:
         LOGGER.warning("Could not load a QQ group record")
         client.reply_group(group_openid, msg_id, "暂时无法查询战绩，请稍后再试。")
@@ -509,10 +563,11 @@ def group_record(client, config, group_openid, member_openid, msg_id, nickname="
     LOGGER.info("Group record: member %s", "unlinked, sending link" if user is None else "linked")
     if user is None:
         send_group_link(client, config, group_openid, member_openid, msg_id, nickname)
-    elif reply:
-        client.reply_group(group_openid, msg_id, reply)
+    elif card is None:
+        client.reply_group(group_openid, msg_id, note)
     elif not card.matches:
-        client.reply_group(group_openid, msg_id, "还没有有效的作战记录。")
+        text = "还没有有效的作战记录。请在网页「数据导入」同步森空岛战绩。"
+        client.reply_group(group_openid, msg_id, text)
     else:
         try:
             png = daily_card.render(card)
@@ -520,9 +575,10 @@ def group_record(client, config, group_openid, member_openid, msg_id, nickname="
             # 服务器缺中文字体时退回文字版，至少把内容给出去。
             LOGGER.warning("Card font missing; falling back to text record")
             with connect() as database:
-                client.reply_group(group_openid, msg_id, daily_card.record_text(database, user))
+                text = daily_card.record_text(database, user)
+            client.reply_group(group_openid, msg_id, f"{note}\n{text}" if note else text)
             return
-        client.reply_image("group", group_openid, msg_id, png)
+        client.reply_image("group", group_openid, msg_id, png, content=note)
 
 
 def group_unbind(client, config, group_openid, member_openid, msg_id) -> None:

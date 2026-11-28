@@ -107,6 +107,11 @@ def pending_records(payload):
     return records
 
 
+def upsert_matches(connection, user_id, records):
+    with connection.cursor() as cursor:
+        cursor.executemany(UPSERT_MATCH, [write_parameters(connection, user_id, record) for record in records])
+
+
 def process_one(connection) -> bool:
     with connection.transaction():
         job = connection.execute("""
@@ -124,8 +129,9 @@ def process_one(connection) -> bool:
         job_id, user_id = job["id"], job["user_id"]
         records, total = pending_records(job["payload"]), job["total"]
         try:
-            with connection.transaction(), connection.cursor() as cursor:
-                cursor.executemany(UPSERT_MATCH, [write_parameters(connection, user_id, record) for record in records])
+            with connection.transaction():
+                connection.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
+                upsert_matches(connection, user_id, records)
         except WriteRejected:
             connection.execute("""
                 UPDATE import_jobs SET status = 'failed', payload = '[]', completed_at = now(),

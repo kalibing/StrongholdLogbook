@@ -98,8 +98,7 @@ services:
 
   # QQ 机器人回调（可选）：配好 QQBOT_APP_ID / QQBOT_APP_SECRET 后用
   #   docker compose --profile qqbot up -d --build
-  # 启动。只能访问数据库、QQ 开放平台与 B 站扫码登录接口，不读会话与导入令牌；
-  # 凭据密钥只用来加密扫码得到的 B 站 Cookie。
+  # 启动。凭据密钥用于加密 B 站 Cookie，以及读取已关联账号的森空岛同步凭据。
   qqbot:
     <<: *hardening
     build: *backend_build

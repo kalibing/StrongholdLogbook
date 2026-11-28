@@ -857,10 +857,7 @@ def queue_import(pool, user_id, content, *, sealed_token=None, skland_profile=No
                 ON CONFLICT (user_id) DO UPDATE SET access_token = EXCLUDED.access_token
             """, (user_id, sealed_token))
         if skland_profile is not None:
-            database.execute("""
-                INSERT INTO skland_profiles (user_id, nickname) VALUES (%s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET nickname = EXCLUDED.nickname
-            """, (user_id, skland_profile["nickname"]))
+            skland.save_profile(database, user_id, skland_profile["nickname"])
     return {"id": job_id, "status": "pending", "total": len(records)}
 
 
@@ -919,7 +916,6 @@ async def import_from_skland(request: Request, user=Depends(current_user)):
     vault = request.app.state.credentials
 
     def pull() -> tuple[dict, dict]:
-        pull_cred, pull_sign = cred, sign_token
         token = access_token
         if use_saved:
             with pool.connection() as database:
@@ -933,11 +929,9 @@ async def import_from_skland(request: Request, user=Depends(current_user)):
             except CredentialStorageError as error:
                 raise HTTPException(424, "无法读取已保存的 token，请更换后重试。") from error
         try:
-            if not pull_cred or not pull_sign:
-                pull_cred, pull_sign = skland.cred_from_token(token)
-            role, nickname = skland.arknights_role(pull_cred, pull_sign)
-            records = skland.history(pull_cred, pull_sign, role, season)
-            return skland.to_snapshot(records), {"nickname": nickname}
+            snapshot, nickname = skland.pull_snapshot(cred=cred, sign_token=sign_token,
+                                                     access_token=token, season=season)
+            return snapshot, {"nickname": nickname}
         except skland.AccessTokenRejected as error:
             if use_saved:
                 raise HTTPException(424, "已保存的 token 无法通过鹰角验证，请更换后重试。") from error
