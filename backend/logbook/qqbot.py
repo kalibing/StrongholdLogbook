@@ -55,6 +55,8 @@ WEBHOOK_PATH = "/qqbot/webhook"
 MAX_BODY = 64 * 1024
 # 回调时间戳与本机时间相差太多时拒绝，挡住旧请求重放；平台重投同一事件由事件 ID 去重。
 MAX_CLOCK_SKEW = 10 * 60
+VALIDATION_TOKEN = re.compile(r"[A-Za-z0-9_-]{1,128}")
+VALIDATION_TS = re.compile(r"[0-9]{1,20}")
 LOGIN_COMMANDS = {"登录", "登陆", "注册", "login", "/登录", "/login"}
 HELP_TEXT = (
     "发送「登录」获取作战档案的一次性登录链接（10 分钟内有效，只能用一次）。\n"
@@ -478,8 +480,12 @@ def create_app(config: BotConfig | None = None, client: QQClient | None = None) 
 
         if op == 13:
             # 回调地址校验：用 Bot Secret 派生的私钥签 event_ts + plain_token。
+            # op=13 不带签名，等于对外提供签名：签的内容和业务事件验签的 timestamp + body 拼法相同。
+            # 限定 event_ts 为数字、plain_token 为字母数字，拼出来的内容不可能是 JSON 请求体，
+            # 拿这里的签名就伪造不了业务事件。
             plain_token, event_ts = data.get("plain_token"), data.get("event_ts")
-            if not isinstance(plain_token, str) or not isinstance(event_ts, str):
+            if (not isinstance(plain_token, str) or not isinstance(event_ts, str)
+                    or not VALIDATION_TOKEN.fullmatch(plain_token) or not VALIDATION_TS.fullmatch(event_ts)):
                 raise HTTPException(400, "invalid validation payload")
             return {"plain_token": plain_token, "signature": sign(config, (event_ts + plain_token).encode())}
 

@@ -298,3 +298,36 @@ def test_parse_hours():
     assert feeds.parse_hours("9-21") == (9, 21)
     with pytest.raises(RuntimeError):
         feeds.parse_hours("18-10")
+
+
+def test_unexpected_poll_errors_do_not_stop_the_poller():
+    class Broken(feeds.Poller):
+        def run_ak(self, database):
+            raise AttributeError("'list' object has no attribute 'get'")
+
+        def run_bili(self, database, uid, cookie):
+            raise TypeError("unexpected payload")
+
+    poller = Broken(FakeClient(), CONFIG.app_id)
+    feeds.poll_ak(poller, None)
+    assert feeds.poll_bili(poller, None, "1", "SESSDATA=x") is False
+
+
+def test_malformed_bili_payload_counts_as_failed_poll():
+    payload = {"code": 0, "data": {"items": [{"id_str": "1", "modules": "oops"}]}}
+    poller = feeds.Poller(FakeClient(), CONFIG.app_id, fetch=lambda *_args: payload)
+    assert feeds.poll_bili(poller, None, "1", "SESSDATA=x") is False
+
+
+def test_storage_errors_still_reach_the_main_loop():
+    class Down(feeds.Poller):
+        def run_ak(self, database):
+            raise feeds.StorageUnavailable("down")
+
+        run_bili = lambda self, *args: self.run_ak(None)  # noqa: E731
+
+    poller = Down(FakeClient(), CONFIG.app_id)
+    with pytest.raises(feeds.StorageUnavailable):
+        feeds.poll_ak(poller, None)
+    with pytest.raises(feeds.StorageUnavailable):
+        feeds.poll_bili(poller, None, "1", "SESSDATA=x")

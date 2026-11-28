@@ -405,6 +405,39 @@ class Poller:
         return pushed
 
 
+POLL_ERRORS = (HTTPError, URLError, TimeoutError, RuntimeError, ValueError)
+
+
+def poll_ak(poller: Poller, database) -> None:
+    """跑一轮公告轮询；除了数据库中断，任何异常都只记日志，不让推送进程退出。"""
+    try:
+        if pushed := poller.run_ak(database):
+            LOGGER.info("Pushed %d new bulletin(s)", pushed)
+    except StorageUnavailable:
+        raise
+    except POLL_ERRORS as error:
+        LOGGER.warning("Bulletin poll failed: %s", type(error).__name__)
+    except Exception:  # noqa: BLE001 - 接口返回结构变化等意外错误，下一轮再试
+        LOGGER.exception("Unexpected bulletin poll error")
+
+
+def poll_bili(poller: Poller, database, uid: str, cookie: str) -> bool:
+    """跑一轮 B 站轮询，成功返回 True；失败只记日志（调用方据此退避），数据库中断照常抛出。"""
+    try:
+        if pushed := poller.run_bili(database, uid, cookie):
+            LOGGER.info("Pushed %d new Bilibili dynamic(s)", pushed)
+        return True
+    except StorageUnavailable:
+        raise
+    except (BiliBlocked, *POLL_ERRORS) as error:
+        # Cookie 失效（-101）时管理员在私聊发「B站状态」重新扫码。
+        LOGGER.warning("Bilibili poll failed: %s %s", type(error).__name__,
+                       error if isinstance(error, BiliBlocked) else "")
+    except Exception:  # noqa: BLE001 - 接口返回结构变化等意外错误，按失败退避
+        LOGGER.exception("Unexpected Bilibili poll error")
+    return False
+
+
 def interval(name: str, default: int, floor: int = 30) -> int:
     try:
         return max(floor, int(os.getenv(name, default)))
@@ -484,11 +517,7 @@ def main():
             with connect() as database:
                 if now >= next_ak:
                     next_ak = now + ak_schedule.delay(datetime.now(CHINA))
-                    try:
-                        if pushed := poller.run_ak(database):
-                            LOGGER.info("Pushed %d new bulletin(s)", pushed)
-                    except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError) as error:
-                        LOGGER.warning("Bulletin poll failed: %s", type(error).__name__)
+                    poll_ak(poller, database)
                 if now >= next_bili:
                     # 每轮重新读：机器人扫码登录后不用重启推送进程。
                     try:
@@ -503,15 +532,10 @@ def main():
                         next_bili = now + 60
                     else:
                         warned_no_cookie = False
-                        try:
-                            if pushed := poller.run_bili(database, uid, cookie):
-                                LOGGER.info("Pushed %d new Bilibili dynamic(s)", pushed)
-                            bili_failures = 0
-                        except (BiliBlocked, HTTPError, URLError, TimeoutError, ValueError) as error:
-                            # 风控时按 2 的幂退避，最长 30 分钟；Cookie 失效（-101）时管理员在私聊发「B站状态」重新扫码。
-                            bili_failures += 1
-                            LOGGER.warning("Bilibili poll failed (%d in a row): %s %s", bili_failures,
-                                           type(error).__name__, error if isinstance(error, BiliBlocked) else "")
+                        # 失败时按 2 的幂退避，最长 30 分钟。
+                        bili_failures = 0 if poll_bili(poller, database, uid, cookie) else bili_failures + 1
+                        if bili_failures > 1:
+                            LOGGER.warning("Bilibili poll failed %d times in a row", bili_failures)
                         regular = bili_schedule.delay(datetime.now(CHINA))
                         backoff = min(bili_schedule.busy * 2 ** min(bili_failures, 4), 1800)
                         next_bili = now + (max(regular, backoff) if bili_failures else regular)

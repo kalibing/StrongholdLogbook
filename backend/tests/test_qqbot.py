@@ -201,6 +201,19 @@ def test_callback_validation_returns_signature(bot):
     CONFIG.signing_key.public_key().verify(bytes.fromhex(body["signature"]), b"1700000000abc")
 
 
+def test_callback_validation_cannot_sign_a_forged_event(bot):
+    client, fake = bot
+    timestamp = str(int(time.time()))
+    forged = json.dumps(c2c()).encode()
+    response = client.post(qqbot.WEBHOOK_PATH, json={"op": 13, "d": {"plain_token": forged.decode(), "event_ts": timestamp}},
+                           headers={"X-Bot-Appid": CONFIG.app_id})
+    assert response.status_code == 400
+    for d in ({"plain_token": "abc", "event_ts": "17x"}, {"plain_token": "a b", "event_ts": "1700000000"}):
+        response = client.post(qqbot.WEBHOOK_PATH, json={"op": 13, "d": d}, headers={"X-Bot-Appid": CONFIG.app_id})
+        assert response.status_code == 400
+    assert fake.replies == []
+
+
 def test_login_command_creates_account_and_link_works(bot):
     client, fake = bot
     response = post(client, c2c())
