@@ -1,7 +1,9 @@
 import io
-from datetime import date, datetime
+from collections import OrderedDict
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import re
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -56,6 +58,27 @@ def test_recent_highlights_show_one_name_for_tied_peak(monkeypatch):
     daily_card.highlights(None, None, 0, card)
 
     assert rendered[1] == ("单项最高盟约", "8 层", "伊比利亚", daily_card.BOND_ICONS["伊比利亚"])
+
+
+def test_recent_png_reused_only_for_same_content_and_minute(monkeypatch):
+    now = datetime(2026, 11, 26, 20, 0, tzinfo=CHINA)
+    monkeypatch.setattr(daily_card, "datetime", SimpleNamespace(now=lambda tz: now))
+    monkeypatch.setattr(daily_card, "_record_pngs", OrderedDict())
+    calls = []
+
+    def render(card, stamp):
+        calls.append((card.username, stamp))
+        return bytes([len(calls)])
+
+    monkeypatch.setattr(daily_card, "_render_png", render)
+    card = daily_card.build([match(20, "win")], excluded=0, day=now.date(), username="tester")
+    card.title = "最近 1 局战绩"
+
+    assert daily_card.render(card) == daily_card.render(card) == b"\x01"
+    card.matches[0]["coins"] += 1
+    assert daily_card.render(card) == b"\x02"
+    now += timedelta(minutes=1)
+    assert daily_card.render(card) == b"\x03"
 
 
 def test_card_palette_matches_website_dark_theme():

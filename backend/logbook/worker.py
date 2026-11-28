@@ -42,15 +42,22 @@ UPSERT_MATCH = (
 )
 
 
-def complete_squad(connection, user_id, record):
+def needs_squad_history(squad):
+    return any("items" not in unit or unit.get("elite") is None or unit.get("evolve") is None
+               or unit["name"] == unit["id"] for unit in squad)
+
+
+def complete_squad(connection, user_id, record, previous_squads=None):
     """Preserve unreported unit fields when a unit can be matched unambiguously."""
     squad = record["squad"]
+    key = (record["protocol"], record["external_id"])
     previous = []
-    if any("items" not in unit or unit.get("elite") is None or unit.get("evolve") is None
-           or unit["name"] == unit["id"] for unit in squad):
+    if previous_squads is not None:
+        previous = previous_squads.get(key, [])
+    elif needs_squad_history(squad):
         row = connection.execute(
             "SELECT squad FROM matches WHERE user_id = %s AND protocol = %s AND external_id = %s",
-            (user_id, record["protocol"], record["external_id"]),
+            (user_id, *key),
         ).fetchone()
         previous = row["squad"] if row else []
     current_counts = Counter(unit["id"] for unit in squad)
@@ -69,14 +76,14 @@ def complete_squad(connection, user_id, record):
     return completed
 
 
-def write_parameters(connection, user_id, record):
+def write_parameters(connection, user_id, record, *, previous_squads=None):
     values = {"protocol": DEFAULT_PROTOCOL, **record}
     exit_reported = values.get("suspected_exit") is not None
     if not exit_reported:
         values["suspected_exit"] = values.get("rounds") == values.get("kills") == values.get("coins") == 0
     has_collection = [column in values for column in COLLECTION_COLUMNS]
     if values.get("squad"):
-        values["squad"] = complete_squad(connection, user_id, values)
+        values["squad"] = complete_squad(connection, user_id, values, previous_squads)
         names = {unit["id"]: unit["name"] for unit in values["squad"]}
         values["operators"] = [
             {**operator, "name": names.get(operator["id"], operator["name"])}
@@ -108,8 +115,28 @@ def pending_records(payload):
 
 
 def upsert_matches(connection, user_id, records):
+    records = list(records)
+    keys = list(dict.fromkeys(
+        (record.get("protocol", DEFAULT_PROTOCOL), record["external_id"])
+        for record in records if needs_squad_history(record.get("squad") or ())
+    ))
+    previous_squads = {}
+    # 每批最多 601 个参数，兼容 SQLite 对参数数量的限制。
+    batch_size = 300
+    for start in range(0, len(keys), batch_size):
+        batch = keys[start:start + batch_size]
+        placeholders = ", ".join(["(%s, %s)"] * len(batch))
+        parameters = (user_id, *(value for key in batch for value in key))
+        rows = connection.execute(
+            f"SELECT protocol, external_id, squad FROM matches WHERE user_id = %s "
+            f"AND (protocol, external_id) IN (VALUES {placeholders})",
+            parameters,
+        ).fetchall()
+        previous_squads.update({(row["protocol"], row["external_id"]): row["squad"] for row in rows})
     with connection.cursor() as cursor:
-        cursor.executemany(UPSERT_MATCH, [write_parameters(connection, user_id, record) for record in records])
+        cursor.executemany(UPSERT_MATCH, [
+            write_parameters(connection, user_id, record, previous_squads=previous_squads) for record in records
+        ])
 
 
 def process_one(connection) -> bool:

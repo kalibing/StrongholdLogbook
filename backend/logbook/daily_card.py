@@ -5,10 +5,13 @@
 
 import io
 import os
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
+from threading import Lock
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
@@ -43,6 +46,9 @@ RECORD_INSET = "#1e2b30"
 RECORD_LINE = "#566c72"
 RECORD_MUTED = "#c2d0cf"
 RECORD_GAP = 26
+RECORD_PNG_CACHE_SIZE = 24
+_record_pngs: OrderedDict[bytes, bytes] = OrderedDict()
+_record_png_lock = Lock()
 WEEKDAYS = "一二三四五六日"
 MAX_ROWS = 12
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -308,6 +314,32 @@ def paste_icon(image, filename, x, y, size):
     return size + 8
 
 
+@lru_cache(maxsize=128)
+def visible_icon(filename, size):
+    art = icon(filename, size)
+    if art is None:
+        return None, None
+    alpha = art.getchannel("A")
+    # 光晕和倒影保留在原图里，以主体的可见边缘计算对齐位置。
+    bounds = alpha.point(lambda value: 255 if value >= 64 else 0).getbbox() or alpha.getbbox()
+    return art, bounds
+
+
+def draw_icon_value(image, draw, center, value, face, color, width, filename, icon_size):
+    cx, cy = center
+    art, bounds = visible_icon(filename, icon_size)
+    icon_width = bounds[2] - bounds[0] + 8 if bounds else 0
+    value = ellipsize(draw, value, width - icon_width, face)
+    x0, y0, x1, y1 = draw.textbbox((0, 0), value, font=face, anchor="lt")
+    left = cx - (icon_width + x1 - x0) / 2
+    if bounds:
+        icon_x = round(left - bounds[0])
+        icon_y = round(cy - (bounds[1] + bounds[3]) / 2)
+        image.paste(art, (icon_x, icon_y), art)
+    draw.text((left + icon_width - x0, cy - (y0 + y1) / 2), value,
+              font=face, fill=color, anchor="lt")
+
+
 def ring(image, center, diameter, segments, *, background=PANEL):
     segments = [(value, color) for value, color in segments if value > 0]
     total = sum(value for value, _ in segments)
@@ -483,14 +515,8 @@ def recent_highlights(image, draw, top, cells):
         draw.rounded_rectangle((x, y, x + cell_width, y + row_height - 10), radius=RADIUS,
                                fill=RECORD_RAISED, outline=RECORD_LINE)
         draw.text((center, y + 23), label, font=label_face, fill=RECORD_MUTED, anchor="mm")
-        icon_size = 28
-        offset = icon_size + 8 if icon(filename, icon_size) is not None else 0
-        value = ellipsize(draw, value, cell_width - 28 - offset, value_face)
-        left = center - (offset + draw.textlength(value, font=value_face)) / 2
-        value_y = y + 58
-        if offset:
-            paste_icon(image, filename, left, value_y - icon_size // 2, icon_size)
-        draw.text((left + offset, value_y), value, font=value_face, fill=TEXT, anchor="lm")
+        draw_icon_value(image, draw, (center, y + 57), value, value_face, TEXT,
+                        cell_width - 28, filename, 28)
         if sub:
             sub = ellipsize(draw, sub, cell_width - 28, label_face)
             draw.text((center, y + 86), sub, font=label_face, fill=RECORD_MUTED, anchor="mm")
@@ -564,18 +590,16 @@ def recent_score(image, draw, top, card):
     if card.trophy_change is not None:
         columns.append(("获得奖杯", card.trophy_change, ACCENT, card.trophy_icon))
     left = PAD + 16
-    col_width = (score_right - 16 - left) / len(columns)
+    trophy_extra_width = 26 if card.trophy_change is not None else 0
+    col_width = (score_right - 16 - left - trophy_extra_width) / len(columns)
     value_face = font(25, True)
-    for index, (label, value, color, filename) in enumerate(columns):
-        x = left + (index + 0.5) * col_width
+    for label, value, color, filename in columns:
+        width = col_width + (trophy_extra_width if filename else 0)
+        x = left + width / 2
         draw.text((x, body + 252), label, font=font(18), fill=RECORD_MUTED, anchor="mm")
-        size = 18
-        offset = size + 8 if icon(filename, size) is not None else 0
-        value = ellipsize(draw, compact_number(value), col_width - 4 - offset, value_face)
-        start = x - (draw.textlength(value, font=value_face) + offset) / 2
-        if offset:
-            paste_icon(image, filename, start, body + 276, size)
-        draw.text((start + offset, body + 285), value, font=value_face, fill=color, anchor="lm")
+        draw_icon_value(image, draw, (x, body + 285), compact_number(value), value_face, color,
+                        width - 4, filename, 30)
+        left += width
 
     shown = shown_bonds(card.recap["bonds"])
     if shown:
@@ -764,6 +788,27 @@ def empty(draw, top, card):
 
 
 def render(card):
+    stamp = datetime.now(CHINA).strftime("%Y-%m-%d %H:%M")
+    if not card.title:
+        return _render_png(card, stamp)
+
+    # 查询和同步先完成。以整张卡的数据及页脚分钟区分内容，战绩更新时自然重新绘制。
+    key = sha256(repr((stamp, card)).encode("utf-8")).digest()
+    with _record_png_lock:
+        png = _record_pngs.get(key)
+        if png is not None:
+            _record_pngs.move_to_end(key)
+            return png
+    png = _render_png(card, stamp)
+    with _record_png_lock:
+        _record_pngs[key] = png
+        _record_pngs.move_to_end(key)
+        if len(_record_pngs) > RECORD_PNG_CACHE_SIZE:
+            _record_pngs.popitem(last=False)
+    return png
+
+
+def _render_png(card, stamp):
     """先在足够高的画布上排版，再裁到实际高度。"""
     image = Image.new("RGB", (WIDTH, 4000), RECORD_BG if card.title else BG)
     draw = ImageDraw.Draw(image)
@@ -779,10 +824,9 @@ def render(card):
         y = match_list(image, draw, y, card)
     else:
         y = empty(draw, y, card)
-    stamp = datetime.now(CHINA).strftime("%Y-%m-%d %H:%M")
     draw.text((PAD, y + 4), f"卫戍协议 · 作战档案　生成于 {stamp}（北京时间）",
               font=font(17 if card.title else 16), fill=RECORD_MUTED if card.title else MUTED)
     output = io.BytesIO()
-    # 保持 PNG 无损，避开 optimize=True 带来的额外编码耗时。
-    image.crop((0, 0, WIDTH, y + 40)).save(output, format="PNG")
+    # QQ 图片用较快的无损压缩，避免额外编码耗时且保持上传体积接近原图。
+    image.crop((0, 0, WIDTH, y + 40)).save(output, format="PNG", compress_level=3 if card.title else 6)
     return output.getvalue()
