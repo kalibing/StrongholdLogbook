@@ -350,12 +350,24 @@ def icon(filename, size):
     return result
 
 
-def paste_icon(image, filename, x, y, size):
-    art = icon(filename, size)
-    if art is None:
+def text_middle(draw, y, face):
+    """用 anchor="lm" 在 y 处画字时，汉字可见部分的垂直中心（字体的 middle 与字形中心并不重合）。"""
+    _, top, _, bottom = draw.textbbox((0, y), "国", font=face, anchor="lm")
+    return (top + bottom) / 2
+
+
+def paste_icon(image, filename, x, cy, size, *, slot=None, gap=8):
+    """按图标的可见边缘贴图：垂直中心对准 cy，左边缘贴着 x。
+
+    给了 slot 时在 [x, x + slot] 内水平居中，返回固定的 slot + gap，让同一列的文字对齐；
+    否则返回可见宽度 + gap。没有图标返回 0。
+    """
+    art, bounds = visible_icon(filename, size)
+    if art is None or bounds is None:
         return 0
-    image.paste(art, (int(x) + (size - art.width) // 2, int(y) + (size - art.height) // 2), art)
-    return size + 8
+    left = x +((slot - (bounds[2] - bounds[0])) / 2 if slot else 0)
+    image.paste(art, (round(left - bounds[0]), round(cy - (bounds[1] + bounds[3]) / 2)), art)
+    return (slot if slot else bounds[2] - bounds[0]) + gap
 
 
 @lru_cache(maxsize=128)
@@ -479,8 +491,10 @@ def highlight_grid(image, draw, top, title, cells, columns=3):
         draw.rounded_rectangle((x, y, x + cell_width, y + row_height - 10), radius=RADIUS,
                                fill=RECORD_RAISED, outline=RECORD_LINE)
         draw.text((center, y + 23), label, font=label_face, fill=RECORD_MUTED, anchor="mm")
+        # 策略图标是干员头像，细节多，比盟约 / 金币这类单色图标画大一点才看得清。
+        icon_size = 38 if filename and filename.startswith("strategy-") else 28
         draw_icon_value(image, draw, (center, y + 57 if sub else y + 62), value, value_face,
-                        color[0] if color else TEXT, cell_width - 28, filename, 28)
+                        color[0] if color else TEXT, cell_width - 28, filename, icon_size)
         if sub:
             sub = ellipsize(draw, sub, cell_width - 28, label_face)
             draw.text((center, y + 86), sub, font=label_face, fill=RECORD_MUTED, anchor="mm")
@@ -513,7 +527,7 @@ def bond_distribution(image, draw, shown, center, diameter, legend_x, row_height
     for index, (item, color) in enumerate(zip(shown, PALETTE)):
         y = cy + (index - (len(shown) - 1) / 2) * row_height
         draw.rounded_rectangle((legend_x, y - 6, legend_x + 12, y + 6), radius=RADIUS, fill=color)
-        paste_icon(image, BOND_ICONS.get(item["name"]), legend_x + 28, y - 12, 24)
+        paste_icon(image, BOND_ICONS.get(item["name"]), legend_x + 24, text_middle(draw, y, name_face), 24, slot=28)
         name = ellipsize(draw, item["name"], layers_x - name_x - 76, name_face)
         draw.text((name_x, y), name, font=name_face, fill=TEXT, anchor="lm")
         draw.text((layers_x, y), f"{compact_number(item['layers'])} 层", font=count_face, fill=TEXT, anchor="rm")
@@ -639,9 +653,9 @@ def trend(image, draw, top, card):
         draw.rectangle((x, top + 33, x + 8, top + 41), fill=color)
         draw.text((x + 14, top + 37), label, font=legend_face, fill=color, anchor="lm")
     metric_y = body + 17
-    icon_width = paste_icon(image, "metric-bond.png", content_left, metric_y - 12, 24)
-    draw.text((content_left + icon_width, metric_y), "单项最高盟约层数",
-              font=font(22, True), fill=TEXT, anchor="lm")
+    metric_face = font(22, True)
+    icon_width = paste_icon(image, "metric-bond.png", content_left, text_middle(draw, metric_y, metric_face), 26)
+    draw.text((content_left + icon_width, metric_y), "单项最高盟约层数", font=metric_face, fill=TEXT, anchor="lm")
     average_label = f"单项最高场均 {compact_number(average)} 层"
     label_left = right - round(draw.textlength(average_label, font=legend_face))
     chart_dashes(draw, label_left - 34, label_left - 10, metric_y, CHART_AVERAGE)
@@ -683,7 +697,7 @@ def trend(image, draw, top, card):
         draw.text((x, y - 16), compact_number(peak["layers"]), font=point_face, fill=TEXT, anchor="mb",
                   stroke_width=2, stroke_fill=RECORD_PANEL)
         name = peak["names"][0]
-        paste_icon(image, BOND_ICONS.get(name), x - 12, base_y + 61, 24)
+        paste_icon(image, BOND_ICONS.get(name), x - 12, base_y + 73, 24, slot=24)
         name = ellipsize(draw, name, col_width - 12, axis_face)
         draw.text((x, base_y + 101), name, font=axis_face, fill=TEXT, anchor="mm")
 
@@ -717,7 +731,8 @@ def match_list(image, draw, top, card):
         band = row.get("strategy")
         _, strategy = bands.resolve(band)
         band_id = bands.band_id(band)
-        offset = paste_icon(image, f"strategy-{band_id}.png" if band_id else None, PAD + 432, y - 17, 34)
+        offset = paste_icon(image, f"strategy-{band_id}.png" if band_id else None, PAD + 432,
+                            text_middle(draw, y, data_face), 34, slot=34)
         draw.text((PAD + 432 + offset, y), ellipsize(draw, strategy or "—", 230 - offset, data_face),
                   font=data_face, fill=TEXT, anchor="lm")
         for x, value in ((685, row["rounds"]), (782, row["kills"]), (879, stats.bond_total(row))):
@@ -792,7 +807,7 @@ def strategy_list(image, draw, top, card):
             draw.rectangle((left, top_y + 1, right, top_y + row_height - 1), fill=RECORD_INSET)
         draw.text((rank_x, y), str(index + 1), font=font(19, True),
                   fill=ACCENT if index < 3 else RECORD_MUTED, anchor="mm")
-        paste_icon(image, strategy_icon(entry["name"]), name_x, y - 17, 34)
+        paste_icon(image, strategy_icon(entry["name"]), name_x, text_middle(draw, y, data_face), 34, slot=34)
         offset = 42  # 自定义策略没有图标，名字也保持同一列
         name = ellipsize(draw, entry["name"], count_x - 70 - name_x - offset, data_face)
         draw.text((name_x + offset, y), name, font=data_face, fill=TEXT, anchor="lm")

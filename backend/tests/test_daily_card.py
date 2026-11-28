@@ -119,3 +119,25 @@ def test_render_empty_day():
     png = daily_card.render(daily_card.build([], excluded=2, day=date(2026, 11, 26), username="tester"))
     image = Image.open(io.BytesIO(png))
     assert image.height < 500
+
+
+def test_paste_icon_aligns_visible_edges_not_padding(tmp_path, monkeypatch):
+    # 20×20 图标，可见部分只在右下角 10×6：按可见边缘对齐，透明留白不能把图标挤偏。
+    art = Image.new("RGBA", (20, 20))
+    art.paste((255, 255, 255, 255), (8, 12, 18, 18))
+    art.save(tmp_path / "padded.png")
+    monkeypatch.setattr(daily_card, "ART", tmp_path)
+    daily_card.icon.cache_clear()
+    daily_card.visible_icon.cache_clear()
+    try:
+        canvas = Image.new("RGB", (100, 100))
+        assert daily_card.paste_icon(canvas, "padded.png", 30, 50, 20) == 10 + 8
+        assert canvas.getbbox() == (30, 47, 40, 53)
+
+        canvas = Image.new("RGB", (100, 100))
+        assert daily_card.paste_icon(canvas, "padded.png", 30, 50, 20, slot=30) == 30 + 8
+        assert canvas.getbbox() == (40, 47, 50, 53)
+        assert daily_card.paste_icon(canvas, "missing.png", 30, 50, 20, slot=30) == 0
+    finally:
+        daily_card.icon.cache_clear()
+        daily_card.visible_icon.cache_clear()
