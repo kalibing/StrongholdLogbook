@@ -158,16 +158,18 @@ class QQClient:
             return {}
         return data if isinstance(data, dict) else {}
 
-    def reply_image(self, target_type: str, openid: str, msg_id: str, png: bytes, content: str = "",
-                    seq: int = 1) -> None:
-        """富媒体消息：先上传图片（file_type 1，base64）拿 file_info，再发 msg_type 7 的被动回复。"""
-        base = f"/v2/groups/{quote(openid, safe='')}" if target_type == "group" else f"/v2/users/{quote(openid, safe='')}"
-        uploaded = self._post(f"{base}/files", {
-            "file_type": 1, "file_data": base64.b64encode(png).decode("ascii"), "srv_send_msg": False,
-        })
+    def _upload_image(self, base: str, source: dict[str, str]) -> str:
+        uploaded = self._post(f"{base}/files", {"file_type": 1, "srv_send_msg": False, **source})
         file_info = uploaded.get("file_info")
         if not isinstance(file_info, str) or not file_info:
             raise RuntimeError("QQ media upload returned no file_info")
+        return file_info
+
+    def reply_image(self, target_type: str, openid: str, msg_id: str, png: bytes, content: str = "",
+                    seq: int = 1) -> None:
+        """用 PNG 作为图片回复一条收到的 QQ 消息。"""
+        base = f"/v2/groups/{quote(openid, safe='')}" if target_type == "group" else f"/v2/users/{quote(openid, safe='')}"
+        file_info = self._upload_image(base, {"file_data": base64.b64encode(png).decode("ascii")})
         self._post(f"{base}/messages", {
             "msg_type": 7, "content": content or " ", "media": {"file_info": file_info},
             "msg_id": msg_id, "msg_seq": seq,
@@ -190,6 +192,13 @@ class QQClient:
     def send_group(self, group_openid: str, content: str) -> None:
         """主动消息：不带 msg_id。"""
         self._post(f"/v2/groups/{quote(group_openid, safe='')}/messages", {"msg_type": 0, "content": content})
+
+    def send_group_image(self, group_openid: str, image_url: str, content: str) -> None:
+        base = f"/v2/groups/{quote(group_openid, safe='')}"
+        file_info = self._upload_image(base, {"url": image_url})
+        self._post(f"{base}/messages", {
+            "msg_type": 7, "content": content or " ", "media": {"file_info": file_info},
+        })
 
 
 def login_reply(link: str, username: str) -> str:

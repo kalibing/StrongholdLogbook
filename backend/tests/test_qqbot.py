@@ -163,6 +163,25 @@ def test_seed_is_secret_repeated_to_32_bytes():
     assert qqbot.sign(CONFIG, b"x") == expected.hex()
 
 
+def test_group_image_push_uploads_without_sending_then_sends_media(monkeypatch):
+    client = qqbot.QQClient(CONFIG)
+    calls = []
+
+    def post(path, payload):
+        calls.append((path, payload))
+        return {"file_info": "uploaded-image"}
+
+    monkeypatch.setattr(client, "_post", post)
+    url = "https://i0.hdslb.com/cover.jpg"
+    client.send_group_image("group", url, "动态摘要")
+    assert calls == [
+        ("/v2/groups/group/files", {"file_type": 1, "srv_send_msg": False, "url": url}),
+        ("/v2/groups/group/messages", {
+            "msg_type": 7, "content": "动态摘要", "media": {"file_info": "uploaded-image"},
+        }),
+    ]
+
+
 def test_callback_validation_returns_signature(bot):
     client, _ = bot
     response = client.post(qqbot.WEBHOOK_PATH, json={"op": 13, "d": {"plain_token": "abc", "event_ts": "1700000000"}},

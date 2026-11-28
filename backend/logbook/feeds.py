@@ -36,6 +36,7 @@ from threading import Event
 import time
 from typing import Callable
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request as UrlRequest, urlopen
 
 from . import bilibili
@@ -133,6 +134,7 @@ class Item:
     text: str
     link: str = ""
     published: datetime | None = None
+    image_url: str | None = None
 
 
 def get_json(url: str, headers: dict | None = None, timeout: float = 10) -> dict:
@@ -224,6 +226,33 @@ def bili_text(item: dict) -> str:
     return "\n".join(part for part in parts if part) or "发布了新动态"
 
 
+def bili_image(item: dict) -> str | None:
+    """选择动态的首张可用配图或视频封面，也处理转发的原动态。"""
+    for entry in (item, item.get("orig")):
+        if not isinstance(entry, dict):
+            continue
+        dynamic = (entry.get("modules") or {}).get("module_dynamic") or {}
+        major = dynamic.get("major") or {}
+        pictures = (
+            *((major.get("opus") or {}).get("pics") or []),
+            *((major.get("draw") or {}).get("items") or []),
+            *((major.get("article") or {}).get("covers") or []),
+            (major.get("archive") or {}).get("cover"),
+        )
+        for picture in pictures:
+            value = (picture.get("url") or picture.get("src")) if isinstance(picture, dict) else picture
+            if not isinstance(value, str):
+                continue
+            try:
+                url = urlsplit("https:" + value if value.startswith("//") else value)
+            except ValueError:
+                continue
+            if (url.scheme in {"http", "https"} and url.path
+                    and re.fullmatch(r"i[0-9]+\.hdslb\.com", url.netloc, re.IGNORECASE)):
+                return urlunsplit(url._replace(scheme="https", fragment=""))
+    return None
+
+
 def fetch_bili(uid: str, cookie: str, fetch: Callable = get_json) -> list[Item]:
     headers = {
         "Cookie": cookie,
@@ -245,7 +274,7 @@ def fetch_bili(uid: str, cookie: str, fetch: Callable = get_json) -> list[Item]:
         published = None
         if isinstance(author.get("pub_ts"), (int, float)) or str(author.get("pub_ts", "")).isdigit():
             published = datetime.fromtimestamp(int(author["pub_ts"]), CHINA)
-        items.append(Item(BILI, dynamic_id, bili_text(entry), f"https://t.bilibili.com/{dynamic_id}", published))
+        items.append(Item(BILI, dynamic_id, bili_text(entry), f"https://t.bilibili.com/{dynamic_id}", published, bili_image(entry)))
     return items
 
 
@@ -295,13 +324,24 @@ def new_items(database, source: str, items: list[Item], now: datetime | None = N
     return sorted(fresh, key=lambda item: item.published or now)
 
 
-def deliver(client, database, app_id: str, source: str, content: str, sleep: Callable = time.sleep) -> int:
+SEND_ERRORS = (HTTPError, URLError, TimeoutError, RuntimeError, ValueError)
+
+
+def deliver(client, database, app_id: str, source: str, content: str, sleep: Callable = time.sleep,
+            *, image_url: str | None = None) -> int:
     sent = 0
     for openid in targets(database, app_id, source):
         try:
-            client.send_group(openid, content)
+            if image_url:
+                try:
+                    client.send_group_image(openid, image_url, content)
+                except SEND_ERRORS as error:
+                    LOGGER.warning("Group image push failed: %s %s", type(error).__name__, getattr(error, "code", ""))
+                    client.send_group(openid, content)
+            else:
+                client.send_group(openid, content)
             sent += 1
-        except (HTTPError, URLError, TimeoutError, RuntimeError, ValueError) as error:
+        except SEND_ERRORS as error:
             # 只记发送错误的类型和状态码，不记群 openid。
             LOGGER.warning("Group push failed: %s %s", type(error).__name__, getattr(error, "code", ""))
         sleep(SEND_GAP)
@@ -325,7 +365,7 @@ class Poller:
     def run_bili(self, database, uid: str, cookie: str) -> int:
         pushed = 0
         for item in new_items(database, BILI, fetch_bili(uid, cookie, self.fetch)):
-            deliver(self.client, database, self.app_id, BILI, bili_message(item), self.sleep)
+            deliver(self.client, database, self.app_id, BILI, bili_message(item), self.sleep, image_url=item.image_url)
             pushed += 1
         return pushed
 

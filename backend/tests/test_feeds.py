@@ -17,6 +17,7 @@ NOW = datetime(2026, 11, 28, 12, 30, tzinfo=feeds.CHINA)
 class FakeClient:
     def __init__(self):
         self.replies, self.sent = [], []
+        self.images = []
 
     def reply_c2c(self, openid, msg_id, content, seq=1):
         self.replies.append(("c2c", openid, content))
@@ -29,6 +30,9 @@ class FakeClient:
 
     def send_group(self, group_openid, content):
         self.sent.append(("group", group_openid, content))
+
+    def send_group_image(self, group_openid, image_url, content):
+        self.images.append((group_openid, image_url, content))
 
 
 @pytest.fixture()
@@ -151,13 +155,17 @@ BILI_FEED = {"code": 0, "data": {"items": [
     {"id_str": "111", "type": "DYNAMIC_TYPE_AV", "modules": {
         "module_author": {"pub_ts": 1795660000},
         "module_dynamic": {"desc": None, "major": {"type": "MAJOR_TYPE_ARCHIVE", "archive": {
-            "title": "《明日方舟》SideStory PV", "desc": "活动即将开启"}}}}},
+            "title": "《明日方舟》SideStory PV", "desc": "活动即将开启", "cover": "//i1.hdslb.com/cover.jpg"}}}}},
     {"id_str": "112", "type": "DYNAMIC_TYPE_DRAW", "modules": {
         "module_author": {"pub_ts": 1795650000},
         "module_dynamic": {"desc": None, "major": {"type": "MAJOR_TYPE_OPUS", "opus": {
-            "title": None, "summary": {"text": "#明日方舟# 新干员 [doge]"}}}}}},
+            "title": None, "summary": {"text": "#明日方舟# 新干员 [doge]"},
+            "pics": [{"url": "https://invalid.example/cover.jpg"}, {"url": "https://i0.hdslb.com/first.png"},
+                     {"url": "https://i0.hdslb.com/second.png"}]}}}}},
     {"id_str": "113", "type": "DYNAMIC_TYPE_FORWARD", "modules": {
-        "module_author": {"pub_ts": 1795640000}, "module_dynamic": {"desc": {"text": "转发抽奖"}}}},
+        "module_author": {"pub_ts": 1795640000}, "module_dynamic": {"desc": {"text": "转发抽奖"}}},
+        "orig": {"modules": {"module_dynamic": {"major": {"draw": {
+            "items": [{"src": "http://i2.hdslb.com/original.jpg"}]}}}}}},
 ]}}
 
 
@@ -174,9 +182,41 @@ def test_bili_parsing_and_links(monkeypatch):
     assert items[0].text == "发布了视频：《明日方舟》SideStory PV\n活动即将开启"
     assert items[1].text == "#明日方舟# 新干员 [doge]"
     assert items[2].text == "转发了动态\n转发抽奖"
+    assert [item.image_url for item in items] == [
+        "https://i1.hdslb.com/cover.jpg", "https://i0.hdslb.com/first.png", "https://i2.hdslb.com/original.jpg",
+    ]
     assert "t.bilibili.com" not in feeds.bili_message(items[0])
     monkeypatch.setenv("FEED_LINKS", "1")
     assert feeds.bili_message(items[0]).endswith("https://t.bilibili.com/111")
+
+
+def test_bili_poller_sends_one_image_with_text_and_falls_back_for_failed_target(bot):
+    class Flaky(FakeClient):
+        def send_group_image(self, group_openid, image_url, content):
+            if group_openid == GROUP:
+                raise RuntimeError("image unavailable")
+            super().send_group_image(group_openid, image_url, content)
+
+    client = Flaky()
+    entries = list(BILI_FEED["data"]["items"])
+    poller = feeds.Poller(client, CONFIG.app_id, lambda *_: {"code": 0, "data": {"items": entries}}, sleep=lambda _: None)
+    with connect() as database:
+        for group in (GROUP, "second-group"):
+            feeds.observe_group(database, CONFIG.app_id, group)
+            assert feeds.configure_group(database, CONFIG.app_id, group, None, [feeds.BILI])
+        assert poller.run_bili(database, "161775300", "SESSDATA=x") == 0
+        item = entries[1]
+        entries.insert(0, {
+            **item, "id_str": "114",
+            "modules": {**item["modules"], "module_author": {"pub_ts": datetime.now(feeds.CHINA).timestamp()}},
+        })
+        assert poller.run_bili(database, "161775300", "SESSDATA=x") == 1
+        assert poller.run_bili(database, "161775300", "SESSDATA=x") == 0
+    assert len(client.images) == len(client.sent) == 1
+    group, image, caption = client.images[0]
+    assert (group, image) == ("second-group", "https://i0.hdslb.com/first.png")
+    assert "#明日方舟# 新干员" in caption
+    assert client.sent == [("group", GROUP, caption)]
 
 
 def test_bili_risk_control_raises():
