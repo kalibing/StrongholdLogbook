@@ -776,7 +776,7 @@ def strategy_overview(image, draw, top, card):
         ("总局数", compact_number(matches), "", None),
         ("胜 / 负", f"{compact_number(wins)} / {compact_number(matches - wins)}", "", None),
         ("总胜率", f"{wins / matches:.1%}", "", None, ACCENT),
-        ("最常用", favorite["name"], f"{favorite['count']} 局", strategy_icon(favorite["name"])),
+        ("最常用", favorite["name"], "", strategy_icon(favorite["name"])),
     ]
     return highlight_grid(image, draw, top, "总览", cells, columns=4)
 
