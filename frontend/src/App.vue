@@ -14,6 +14,7 @@ import HeadingArt from './components/HeadingArt.vue'
 import LogoMark from './components/LogoMark.vue'
 import NotificationBell from './components/NotificationBell.vue'
 import SetPasswordDialog from './components/SetPasswordDialog.vue'
+import QqGroupLinkDialog from './components/QqGroupLinkDialog.vue'
 
 const STORAGE_THEME = 'logbook:theme'
 const USERNAME_RULE = /^[a-z0-9][a-z0-9_.-]{2,63}$/
@@ -136,12 +137,64 @@ function takeQqLinkToken(): string | null {
   if (!window.location.hash.startsWith(QQ_LINK_PREFIX)) return null
   const token = decodeURIComponent(window.location.hash.slice(QQ_LINK_PREFIX.length))
   window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+  dropLinkHash()
   return token || null
+}
+
+/**
+ * 整页加载时，路由的首次导航会把带 # 的原始地址写回地址栏，覆盖上面的 replaceState；
+ * 等路由就绪后再通过路由清一次 #，令牌就不会留在地址栏和历史记录里。
+ */
+function dropLinkHash() {
+  void router.isReady().then(() => {
+    if (route.hash.startsWith(QQ_LINK_PREFIX) || route.hash.startsWith(QQ_GROUP_PREFIX)) {
+      void router.replace({ path: route.path, query: route.query, hash: '' })
+    }
+  })
+}
+
+const QQ_GROUP_PREFIX = '#qq-group='
+const STORAGE_QQ_GROUP = 'logbook:qq-group'
+
+/** 群身份关联令牌：从地址栏取出后立刻抹掉，暂存到本标签页，没登录时登录后再确认。 */
+function readQqGroupToken(): string {
+  if (window.location.hash.startsWith(QQ_GROUP_PREFIX)) {
+    const token = decodeURIComponent(window.location.hash.slice(QQ_GROUP_PREFIX.length))
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+    dropLinkHash()
+    try {
+      if (token) window.sessionStorage.setItem(STORAGE_QQ_GROUP, token)
+    } catch {
+      // 隐私模式下无法暂存：本次页面内仍可确认。
+    }
+    return token
+  }
+  try {
+    return window.sessionStorage.getItem(STORAGE_QQ_GROUP) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+const qqGroupToken = ref(readQqGroupToken())
+
+function clearQqGroupToken() {
+  qqGroupToken.value = ''
+  try {
+    window.sessionStorage.removeItem(STORAGE_QQ_GROUP)
+  } catch {
+    // 忽略
+  }
 }
 
 /** 已打开页面时再点同一站点的登录链接，只会改 # 片段、不会刷新页面。 */
 function onHashChange() {
   if (window.location.hash.startsWith(QQ_LINK_PREFIX)) void restoreSession()
+  if (window.location.hash.startsWith(QQ_GROUP_PREFIX)) {
+    // 换了新令牌时重新挂载确认框。
+    qqGroupToken.value = ''
+    void nextTick(() => { qqGroupToken.value = readQqGroupToken() })
+  }
 }
 
 async function restoreSession() {
@@ -345,6 +398,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
           </NDropdown>
           <NotificationBell :key="user.username" />
           <SetPasswordDialog :user="user" @updated="setUser" />
+          <QqGroupLinkDialog v-if="qqGroupToken" :key="qqGroupToken" :token="qqGroupToken" @closed="clearQqGroupToken" />
           <NButton quaternary class="theme-toggle" :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
             :title="theme === 'dark' ? '切换到浅色' : '切换到深色'" @click="toggleTheme">
             <template #icon>
@@ -405,6 +459,7 @@ provide(logbookKey, { filters, user, setUser, facets, revision, theme, toggleThe
                   ? '登录后查看对局记录、盟约趋势和干员出场统计。'
                   : '自己设置登录账号和密码，注册后直接登录。' }}
               </p>
+              <p v-if="qqGroupToken" class="muted">登录后即可确认关联 QQ 群身份。还没有账号可以私聊机器人发「登录」注册。</p>
             </header>
             <form v-if="authMode === 'register'" class="login-form" @submit.prevent="register">
               <label class="filter-field">账号

@@ -21,8 +21,11 @@ class FakeClient:
         self.replies = []
         self.group_replies = []
         self.images = []
+        self.c2c_error = None
 
     def reply_c2c(self, openid, msg_id, content, seq=1):
+        if self.c2c_error:
+            raise self.c2c_error
         self.replies.append({"openid": openid, "msg_id": msg_id, "content": content})
 
     def reply_group(self, group_openid, msg_id, content, seq=1):
@@ -38,6 +41,7 @@ def bot(tmp_path, monkeypatch):
     monkeypatch.setenv("LOGBOOK_SQLITE", str(tmp_path / "logbook.sqlite3"))
     qqbot.link_quota._failures.clear()
     qqbot.report_quota._failures.clear()
+    qqbot.group_link_quota._failures.clear()
     client = FakeClient()
     with TestClient(api.app):  # 建表
         pass
@@ -65,10 +69,16 @@ def post(client, payload, **kwargs):
     return client.post(qqbot.WEBHOOK_PATH, content=body, headers=headers)
 
 
-def group_at(content, msg_id, *, member="qq-member", group="qq-group", event="GROUP_AT_MESSAGE_CREATE"):
+def group_at(content, msg_id, *, member="qq-member", group="qq-group", event="GROUP_AT_MESSAGE_CREATE",
+             nickname="博士"):
     return {"op": 0, "id": msg_id, "t": event, "d": {
-        "id": msg_id, "group_openid": group, "content": content, "author": {"member_openid": member},
+        "id": msg_id, "group_openid": group, "content": content,
+        "author": {"member_openid": member, "member_nickname": nickname},
     }}
+
+
+def group_link_token(reply):
+    return reply["content"].split("#qq-group=", 1)[1].strip()
 
 
 def test_bind_web_account_in_private_and_request_group_report(bot, monkeypatch):
@@ -117,43 +127,95 @@ def test_bind_web_account_in_private_and_request_group_report(bot, monkeypatch):
         web.cookies.clear()
         assert web.post("/api/session/qq-link", headers=origin, json={"token": token}).json()["username"] == "existing"
 
-    replies = len(fake.group_replies)
+    replies, group_replies = len(fake.replies), len(fake.group_replies)
     assert post(client, group_at("/日报", "not-at", event="GROUP_MESSAGE_CREATE")).status_code == 200
-    assert len(fake.group_replies) == replies and fake.images == []
+    assert len(fake.group_replies) == group_replies and fake.images == []
+
+    # 未关联的群成员：私聊回复这条群消息的发送者一个关联链接，群里不说话。
     assert post(client, group_at("<@bot> /日报", "first-report")).status_code == 200
-    request = fake.group_replies[-1][2].rsplit("「", 1)[1].split("」")[0]
-    assert post(client, c2c(request, "private-proof", "private-proof")).status_code == 200
-    proof = fake.replies[-1]["content"].split("「")[1].split("」")[0]
-    assert post(client, group_at(proof, "wrong-member", member="other-qq-member")).status_code == 200
-    assert post(client, group_at(proof, "wrong-group", group="other-qq-group")).status_code == 200
+    assert len(fake.group_replies) == group_replies and len(fake.replies) == replies + 1
+    link_reply = fake.replies[-1]
+    assert link_reply["openid"] == "qq-member" and link_reply["msg_id"] == "first-report"
+    token = group_link_token(link_reply)
+    assert post(client, group_at("日报", "other-member", member="other-qq-member")).status_code == 200
+    other_token = group_link_token(fake.replies[-1])
     assert fake.images == []
-    assert post(client, group_at(proof, "correct-member")).status_code == 200
+
+    with TestClient(api.app) as web:
+        preview = web.post("/api/qq-group-link/preview", headers=origin, json={"token": token})
+        assert preview.status_code == 401
+        assert web.post("/api/session", headers=origin, json={
+            "username": "existing", "password": "web-user-password",
+        }).status_code == 200
+        assert web.post("/api/qq-group-link/confirm", json={"token": token}).status_code == 403
+        preview = web.post("/api/qq-group-link/preview", headers=origin, json={"token": token})
+        assert preview.json() == {"nickname": "博士", "group_number": None}
+        bad = web.post("/api/qq-group-link/confirm", headers=origin, json={"token": "x" * 200})
+        assert bad.status_code == 422 and "x" * 20 not in bad.text
+        assert web.post("/api/qq-group-link/confirm", headers=origin, json={"token": token}).status_code == 204
+        replay = web.post("/api/qq-group-link/confirm", headers=origin, json={"token": token})
+        assert replay.status_code == 404 and "无效" in replay.json()["detail"]
+
     assert post(client, group_at("日报", "repeat-report")).status_code == 200
-    assert fake.images == [
-        ("group", "qq-group", "correct-member", b"test-png"),
-        ("group", "qq-group", "repeat-report", b"test-png"),
-    ]
+    assert post(client, group_at("日报", "other-group", group="other-qq-group")).status_code == 200
+    assert "#qq-group=" in fake.replies[-1]["content"]
+    assert fake.images == [("group", "qq-group", "repeat-report", b"test-png")]
     assert all(card.day == played_at.date() and card.wins == 1 and card.excluded == 1 for card in rendered)
     assert all(card.username != "existing" for card in rendered)
+    with storage.connect() as db:
+        # 别的成员的链接没被确认，仍未关联。
+        assert qqbot.qq_binding.group_account(db, CONFIG.app_id, "qq-group", "other-qq-member") is None
+        assert qqbot.qq_binding.group_link_info(db, CONFIG.app_id, other_token) is not None
+
+    assert post(client, group_at("解绑", "unbind")).status_code == 200
+    assert "已解除" in fake.group_replies[-1][2]
+    assert post(client, group_at("解绑", "unbind-again")).status_code == 200
+    assert "没有关联" in fake.group_replies[-1][2]
+    assert post(client, group_at("日报", "after-unbind")).status_code == 200
+    assert "#qq-group=" in fake.replies[-1]["content"] and len(fake.images) == 1
 
 
-def test_qq_signup_binds_openid_for_group_reports(bot, monkeypatch):
+def test_group_link_confirmed_by_qq_signup_account(bot, monkeypatch):
     client, fake = bot
     monkeypatch.setenv("QQBOT_APP_ID", CONFIG.app_id)
-    assert post(client, group_at("日报", "before-signup", member=OPENID)).status_code == 200
-    assert "私聊" in fake.group_replies[-1][2] and "登录" in fake.group_replies[-1][2]
-    with storage.connect() as db:
-        assert accounts.find_qq_account(db, CONFIG.app_id, OPENID) is None
-
+    origin = {"Origin": ORIGIN}
     assert post(client, c2c(event_id="signup", msg_id="signup")).status_code == 200
-    token = fake.replies[-1]["content"].split("#qq-login=")[1]
+    login_token = fake.replies[-1]["content"].split("#qq-login=")[1]
+    # 私聊注册不会自动关联群身份：文档没说群成员 openid 与私聊 openid 相同。
+    assert post(client, group_at("/日报", "before-link", member=OPENID)).status_code == 200
+    assert fake.group_replies == []
+    token = group_link_token(fake.replies[-1])
+    with storage.connect() as db:
+        db.execute("INSERT INTO qq_feed_groups (bot_app_id, group_openid, group_number, updated_at) "
+                   "VALUES (%s, %s, %s, now()) ON CONFLICT (bot_app_id, group_openid) DO UPDATE SET "
+                   "group_number = excluded.group_number", (CONFIG.app_id, "qq-group", "123456"))
     with TestClient(api.app) as web:
-        response = web.post("/api/session/qq-link", headers={"Origin": ORIGIN}, json={"token": token})
-        assert response.json()["username"].startswith("qq-")
-        assert web.get("/api/profile").json()["qq"]["bound"] is True
+        assert web.post("/api/session/qq-link", headers=origin, json={"token": login_token}).status_code == 200
+        preview = web.post("/api/qq-group-link/preview", headers=origin, json={"token": token}).json()
+        assert preview == {"nickname": "博士", "group_number": "123456"}
+        assert web.post("/api/qq-group-link/confirm", headers=origin, json={"token": token}).status_code == 204
 
-    assert post(client, group_at("/日报", "after-signup", member=OPENID)).status_code == 200
+    assert post(client, group_at("/日报", "after-link", member=OPENID)).status_code == 200
     assert "暂无有效作战记录" in fake.group_replies[-1][2]
+
+
+def test_group_link_needs_friendship(bot):
+    client, fake = bot
+    fake.c2c_error = qqbot.QQApiError(400, qqbot.NOT_FRIEND)
+    assert post(client, group_at("日报", "not-friend")).status_code == 200
+    assert "好友" in fake.group_replies[-1][2]
+    fake.c2c_error = qqbot.QQApiError(500, 11255)
+    assert post(client, group_at("日报", "other-error")).status_code == 200
+    assert len(fake.group_replies) == 1
+
+
+def test_group_link_quota_per_member(bot):
+    client, fake = bot
+    qqbot.group_link_quota._failures.clear()
+    for index in range(6):
+        post(client, group_at("日报", f"quota-{index}"))
+    assert sum("#qq-group=" in reply["content"] for reply in fake.replies) == 5
+    assert fake.group_replies == []
 
 
 def test_seed_is_secret_repeated_to_32_bytes():
@@ -303,3 +365,18 @@ def test_missing_credentials_fail_at_startup(monkeypatch):
     monkeypatch.delenv("QQBOT_APP_SECRET", raising=False)
     with pytest.raises(RuntimeError):
         qqbot.BotConfig.from_env()
+
+
+def test_api_errors_carry_platform_code(monkeypatch):
+    import io
+    from urllib.error import HTTPError
+
+    def fail(request, timeout):
+        raise HTTPError(request.full_url, 400, "Bad Request", {}, io.BytesIO(b'{"code": 40054004, "message": "x"}'))
+
+    client = qqbot.QQClient(CONFIG)
+    monkeypatch.setattr(client, "access_token", lambda: "token")
+    monkeypatch.setattr(qqbot, "urlopen", fail)
+    with pytest.raises(qqbot.QQApiError) as raised:
+        client.reply_c2c("member", "msg", "hi")
+    assert raised.value.code == 400 and raised.value.err_code == qqbot.NOT_FRIEND

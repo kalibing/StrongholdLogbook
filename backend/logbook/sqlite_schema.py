@@ -150,28 +150,29 @@ SCHEMA = (
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS qq_group_identities (
+    CREATE TABLE IF NOT EXISTS qq_group_members (
         bot_app_id TEXT NOT NULL,
         group_openid TEXT NOT NULL,
         member_openid TEXT NOT NULL,
-        openid TEXT NOT NULL,
-        PRIMARY KEY (bot_app_id, group_openid, member_openid),
-        FOREIGN KEY (bot_app_id, openid) REFERENCES qq_identities(bot_app_id, openid) ON DELETE CASCADE
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER)),
+        PRIMARY KEY (bot_app_id, group_openid, member_openid)
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS qq_group_codes (
+    CREATE TABLE IF NOT EXISTS qq_group_links (
+        token_hash BLOB PRIMARY KEY,
         bot_app_id TEXT NOT NULL,
         group_openid TEXT NOT NULL,
         member_openid TEXT NOT NULL,
-        request_hash BLOB NOT NULL UNIQUE,
-        openid TEXT,
-        confirmation_hash BLOB,
+        nickname TEXT NOT NULL DEFAULT '',
         expires_at INTEGER NOT NULL,
-        PRIMARY KEY (bot_app_id, group_openid, member_openid),
-        FOREIGN KEY (bot_app_id, openid) REFERENCES qq_identities(bot_app_id, openid) ON DELETE CASCADE
+        UNIQUE (bot_app_id, group_openid, member_openid)
     )
     """,
+    # 0013 起群身份改为通过私聊链接关联，旧的群验证码表不再使用。
+    "DROP TABLE IF EXISTS qq_group_codes",
+    "DROP TABLE IF EXISTS qq_group_identities",
     """
     CREATE TABLE IF NOT EXISTS feed_subscriptions (
         bot_app_id TEXT NOT NULL,

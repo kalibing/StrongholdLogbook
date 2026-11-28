@@ -138,6 +138,9 @@ async def invalid_request(request: Request, error: RequestValidationError):
         else:
             detail = "账号须为 3–64 位小写字母、数字、点、下划线或连字符，且以字母或数字开头"
         return JSONResponse({"detail": detail}, status_code=422)
+    if request.method == "POST" and request.url.path.startswith("/api/qq-group-link/"):
+        # 不回显令牌。
+        return JSONResponse({"detail": "关联链接无效或已过期，请在群里重新 @机器人 获取"}, status_code=422)
     if request.method == "POST" and request.url.path in {"/api/session", "/api/achv/session"}:
         # Pydantic's default validation response includes the submitted input.
         return JSONResponse({"detail": "凭据格式或长度无效"}, status_code=422)
@@ -580,6 +583,38 @@ def start_qq_binding(request: Request, user=Depends(current_user)):
     except accounts.AccountError as error:
         raise HTTPException(409, str(error)) from None
     return {"command": f"{command} {code}", "expires_in": int(qq_binding.CODE_TTL.total_seconds())}
+
+
+class QqGroupLink(BaseModel):
+    token: str = Field(min_length=1, max_length=128)
+
+
+GROUP_LINK_INVALID = "关联链接无效或已过期，请在群里重新 @机器人 获取"
+
+
+@app.post("/api/qq-group-link/preview")
+def preview_qq_group_link(details: QqGroupLink, request: Request, user=Depends(current_user)):
+    """确认页先展示要关联的群成员，确认前不改动任何数据。"""
+    app_id = settings.qq_app_id
+    if not app_id:
+        raise HTTPException(503, "站点尚未配置 QQ 机器人")
+    with request.app.state.pool.connection() as database:
+        info = qq_binding.group_link_info(database, app_id, details.token)
+    if info is None:
+        raise HTTPException(404, GROUP_LINK_INVALID)
+    return info
+
+
+@app.post("/api/qq-group-link/confirm", status_code=status.HTTP_204_NO_CONTENT)
+def confirm_qq_group_link(details: QqGroupLink, request: Request, user=Depends(current_user)):
+    app_id = settings.qq_app_id
+    if not app_id:
+        raise HTTPException(503, "站点尚未配置 QQ 机器人")
+    try:
+        with request.app.state.pool.connection() as database:
+            qq_binding.confirm_group_link(database, app_id, details.token, user["id"])
+    except accounts.AccountError as error:
+        raise HTTPException(404, str(error)) from None
 
 
 class ProfileUpdate(BaseModel):

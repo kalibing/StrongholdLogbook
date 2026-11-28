@@ -1,5 +1,6 @@
 """QQ 官方机器人 Webhook 接入：单聊里发「登录」，机器人回一个一次性免密登录链接；
-群里 @机器人发「日报」查询自己的昨日战报。
+群里 @机器人发「日报」查询自己的昨日战报：群成员第一次查询时，机器人用「群消息私聊回复」
+把一次性关联链接私聊发给他，在网页登录并确认后生效；群里 @机器人发「解绑」解除本群关联。
 
 独立进程运行（uvicorn logbook.qqbot:app），与网页 API 分开：
 - 网页 API 的写请求要校验 Origin，回调请求没有 Origin；分开后两边的防护各自保持严格。
@@ -60,7 +61,8 @@ VALIDATION_TS = re.compile(r"[0-9]{1,20}")
 LOGIN_COMMANDS = {"登录", "登陆", "注册", "login", "/登录", "/login"}
 HELP_TEXT = (
     "发送「登录」获取作战档案的一次性登录链接（10 分钟内有效，只能用一次）。\n"
-    "第一次使用会自动为你创建账号，登录后可以设置密码、修改一次账号名。"
+    "第一次使用会自动为你创建账号，登录后可以设置密码、修改一次账号名。\n"
+    "在群里 @我发送「日报」查看昨日战报，第一次会私聊你一个关联链接。"
 )
 
 
@@ -123,6 +125,19 @@ class SeenEvents:
             return True
 
 
+class QQApiError(RuntimeError):
+    """QQ OpenAPI 返回非 2xx：code 是 HTTP 状态（与 HTTPError 一致，供日志使用），err_code 是平台错误码。"""
+
+    def __init__(self, code: int, err_code: int | None):
+        super().__init__(f"QQ API error {code} {err_code}")
+        self.code = code
+        self.err_code = err_code
+
+
+# 「群消息私聊回复」要求用户与机器人是好友，否则返回这个错误码（见「发送单聊消息」接口文档）。
+NOT_FRIEND = 40054004
+
+
 class QQClient:
     """取 access_token（缓存到过期前 60 秒），发送单聊 / 群的被动回复与主动消息。"""
 
@@ -152,8 +167,16 @@ class QQClient:
             f"{API_BASE}{path}", data=json.dumps(payload).encode(), method="POST",
             headers={"Content-Type": "application/json", "Authorization": f"QQBot {self.access_token()}"},
         )
-        with urlopen(request, timeout=20) as response:
-            body = response.read()
+        try:
+            with urlopen(request, timeout=20) as response:
+                body = response.read()
+        except HTTPError as error:
+            try:
+                detail = json.loads(error.read() or b"{}")
+            except ValueError:
+                detail = {}
+            err_code = detail.get("code") if isinstance(detail, dict) else None
+            raise QQApiError(error.code, err_code if isinstance(err_code, int) else None) from None
         try:
             data = json.loads(body) if body else {}
         except ValueError:
@@ -236,20 +259,17 @@ def binding_reply(config, openid, code):
             f"已有站点账号：在「我的主页」获取绑定码，然后在这里发送「{settings.qq_bind_command} 绑定码」。\n"
             "新用户：发送「登录」即可注册并自动绑定 QQ。"
         )
+    if not code.startswith("W"):
+        return "请发送「我的主页」里获取的绑定码。"
     try:
         with connect() as database:
-            if code.startswith("W"):
-                qq_binding.bind_account(database, config.app_id, openid, code)
-                return f"QQ 已绑定。到群里 @我发送「{settings.qq_report_command}」可以查看昨日战报。"
-            if code.startswith("G"):
-                confirmation = qq_binding.confirm_in_private(database, config.app_id, openid, code)
-                return f"回到发起请求的群，@我发送「{settings.qq_report_command} {confirmation}」确认一次。确认码请勿转发。"
+            qq_binding.bind_account(database, config.app_id, openid, code)
     except accounts.AccountError as error:
         return str(error)
     except StorageUnavailable:
         LOGGER.warning("Could not verify a QQ binding")
         return "暂时无法处理绑定，请稍后再试。"
-    return "请发送网站绑定码或群里的验证请求码。"
+    return "QQ 已绑定，之后可以发「登录」获取网页登录链接。"
 
 
 def handle_c2c(client: QQClient, config: BotConfig, data: dict) -> None:
@@ -382,45 +402,84 @@ def handle_bili(client: QQClient, config: BotConfig, target_type: str, openid: s
         bili_login_lock.release()
 
 
-def group_report(client, config, group_openid, member_openid, msg_id, code):
-    if not isinstance(member_openid, str) or not all(
-        accounts.OPENID_PATTERN.fullmatch(value) for value in (group_openid, member_openid)
-    ):
-        client.reply_group(group_openid, msg_id, "暂时无法确认请求者的 QQ 身份。")
+# 每个群成员每小时最多收 5 个关联链接，防止反复 @ 刷私聊。
+group_link_quota = FailureThrottle(limit=5, window=60 * 60)
+UNBIND_COMMANDS = {"解绑", "解除绑定"}
+
+
+def group_link_reply(link: str) -> str:
+    return (
+        "你在这个群还没有关联作战档案账号。打开下面的链接并登录，确认后即可在群里查看昨日战报"
+        f"（10 分钟内有效，只能用一次，请勿转发）：\n{link}"
+    )
+
+
+def send_group_link(client, config, group_openid, member_openid, msg_id, nickname) -> None:
+    """用「群消息私聊回复」把关联链接只发给这条群消息的发送者，群里不提示。
+
+    官方文档（发送单聊消息）：msg_id 可传群消息的 d.id，私聊回复该群消息的发送者，要求为好友关系，
+    次数与群内回复共用。文档没写群事件里哪个字段对应路径中的 user_openid，这里用 author.member_openid。
+    """
+    key = f"{group_openid}:{member_openid}"
+    if not group_link_quota.take(key):
         return
-    if code and (not code.startswith("C") or not re.fullmatch(qq_binding.CODE_PATTERN, code)):
-        client.reply_group(group_openid, msg_id, f"发「{settings.qq_report_command}」查看昨日战报。")
+    try:
+        with connect() as database:
+            token = qq_binding.issue_group_link(database, config.app_id, group_openid, member_openid, nickname)
+    except StorageUnavailable:
+        LOGGER.warning("Could not issue a QQ group link")
+        group_link_quota.refund(key)
+        return
+    try:
+        client.reply_c2c(member_openid, msg_id, group_link_reply(f"{settings.public_origin}/#qq-group={token}"))
+    except QQApiError as error:
+        if error.err_code != NOT_FRIEND:
+            raise
+        # 只有这种情况在群里提示，否则用户会以为机器人没反应。
+        client.reply_group(group_openid, msg_id, "请先添加我为 QQ 好友，再 @我 查看昨日战报。")
+
+
+def group_report(client, config, group_openid, member_openid, msg_id, nickname=""):
+    if not isinstance(member_openid, str) or not accounts.OPENID_PATTERN.fullmatch(member_openid):
+        client.reply_group(group_openid, msg_id, "暂时无法确认请求者的 QQ 身份。")
         return
     day = datetime.now(CHINA).date() - timedelta(days=1)
     try:
+        card, reply = None, ""
         with connect() as database:
             user = qq_binding.group_account(database, config.app_id, group_openid, member_openid)
-            if user is None and code:
-                user = qq_binding.confirm_in_group(database, config.app_id, group_openid, member_openid, code)
-            if user is None:
-                request_code = qq_binding.issue_group_code(database, config.app_id, group_openid, member_openid)
-                reply = (
-                    f"请先私聊我认证。已有站点账号可发「{settings.qq_bind_command}」查看绑定方法，新用户发「登录」。\n"
-                    f"已绑定但仍收到提示时，请私聊发「{settings.qq_bind_command} {request_code}」验证本群身份。"
-                )
-            else:
-                reply = ""
+            if user is not None:
                 if report_quota.take(str(user["id"])):
                     card = daily_card.load(database, user, day, group=True)
                 else:
                     reply = "查询日报太频繁，请稍后再试。"
-        if reply:
+        if user is None:
+            send_group_link(client, config, group_openid, member_openid, msg_id, nickname)
+        elif reply:
             client.reply_group(group_openid, msg_id, reply)
         elif not card.matches:
             client.reply_group(group_openid, msg_id, f"{day:%m 月 %d 日}暂无有效作战记录。")
         else:
             png = daily_card.render(card)
             client.reply_image("group", group_openid, msg_id, png)
-    except accounts.AccountError as error:
-        client.reply_group(group_openid, msg_id, str(error))
     except (StorageUnavailable, daily_card.CardFontError) as error:
         LOGGER.warning("Could not produce a QQ group report: %s", type(error).__name__)
         client.reply_group(group_openid, msg_id, "暂时无法生成昨日战报，请稍后再试。")
+
+
+def group_unbind(client, config, group_openid, member_openid, msg_id) -> None:
+    if not isinstance(member_openid, str) or not accounts.OPENID_PATTERN.fullmatch(member_openid):
+        client.reply_group(group_openid, msg_id, "暂时无法确认请求者的 QQ 身份。")
+        return
+    try:
+        with connect() as database:
+            removed = qq_binding.unbind_group(database, config.app_id, group_openid, member_openid)
+    except StorageUnavailable:
+        LOGGER.warning("Could not unbind a QQ group member")
+        client.reply_group(group_openid, msg_id, "暂时无法解除关联，请稍后再试。")
+        return
+    client.reply_group(group_openid, msg_id,
+                       "已解除你在本群与作战档案账号的关联。" if removed else "你在本群没有关联作战档案账号。")
 
 
 def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
@@ -431,18 +490,21 @@ def handle_group_at(client: QQClient, config: BotConfig, data: dict) -> None:
         LOGGER.warning("Group event without group_openid or id; ignored")
         return
     author = data.get("author")
-    member_openid = author.get("member_openid") if isinstance(author, dict) else None
+    author = author if isinstance(author, dict) else {}
+    member_openid = author.get("member_openid")
     try:
         with connect() as database:
             feeds.observe_group(database, config.app_id, group_openid)
     except StorageUnavailable:
         LOGGER.warning("Could not record a QQ group event")
     try:
-        command, code = command_parts(content)
+        command, _ = command_parts(content)
         if is_bili_command(content):
             handle_bili(client, config, "group", group_openid, msg_id, member_openid)
         elif command == settings.qq_report_command:
-            group_report(client, config, group_openid, member_openid, msg_id, code)
+            group_report(client, config, group_openid, member_openid, msg_id, author.get("member_nickname"))
+        elif command in UNBIND_COMMANDS:
+            group_unbind(client, config, group_openid, member_openid, msg_id)
         elif command == settings.qq_bind_command:
             client.reply_group(group_openid, msg_id, "请私聊我完成账号绑定，绑定码只发在私聊里。")
         else:

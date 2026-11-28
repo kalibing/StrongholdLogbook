@@ -214,7 +214,7 @@ async function removeAvatar() {
           <dt>QQ 账号</dt>
           <dd>
             <template v-if="qq.bound">
-              已绑定 <small class="muted">在群里 @机器人 并发送「{{ qq.report_command }}」，可查询自己的昨日战报。</small>
+              已绑定 <small class="muted">可以私聊机器人发「登录」获取网页登录链接。</small>
             </template>
             <template v-else>
               <NButton size="small" secondary :loading="qqBusy" @click="requestQqBinding">
@@ -231,6 +231,7 @@ async function removeAvatar() {
               </div>
               <small v-if="qqError" class="profile-error" role="alert">{{ qqError }}</small>
             </template>
+            <small class="muted profile-qq-group">在群里 @机器人 发「{{ qq.report_command }}」查询昨日战报：第一次会私聊你一个关联链接，打开并确认即可，不需要先绑定 QQ。</small>
           </dd>
         </div>
       </dl>
@@ -292,6 +293,7 @@ async function removeAvatar() {
 .profile-facts dt { color: var(--muted); font-size: .9375rem; }
 .profile-facts dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; margin: 0; font-weight: 500; }
 .profile-facts small { font-weight: 400; font-size: .9375rem; }
+.profile-qq-group { display: block; flex-basis: 100%; margin-top: .35rem; }
 .profile-qq-binding { display: grid; justify-items: start; gap: .45rem; flex-basis: 100%; min-width: 0; }
 .profile-qq-command { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .profile-qq-command code { padding: .25rem .45rem; background: var(--inset); overflow-wrap: anywhere; }

@@ -1,9 +1,9 @@
-"""One-time proofs for private account binding and QQ group membership."""
+"""QQ 绑定：私聊用绑定码关联已有站点账号；群成员通过私聊收到的一次性链接关联站点账号。"""
 
 from datetime import datetime, timedelta, timezone
 import secrets
 
-from .accounts import AccountError, find_qq_account
+from .accounts import AccountError
 from .security import session_hash
 
 
@@ -66,55 +66,81 @@ def bind_account(database, app_id, openid, code):
             raise AccountError("该 QQ 或站点账号已绑定，现有绑定无法覆盖")
 
 
+GROUP_LINK_TTL = timedelta(minutes=10)
+NICKNAME_LIMIT = 64
+
+
 def group_account(database, app_id, group_openid, member_openid):
+    """群成员已关联的站点账号；没有关联时返回 None。"""
     row = database.execute("""
-        SELECT openid FROM qq_group_identities
-        WHERE bot_app_id = %s AND group_openid = %s AND member_openid = %s
+        SELECT users.id, users.username FROM qq_group_members JOIN users ON users.id = qq_group_members.user_id
+        WHERE qq_group_members.bot_app_id = %s AND qq_group_members.group_openid = %s
+            AND qq_group_members.member_openid = %s
     """, (app_id, group_openid, member_openid)).fetchone()
-    # Reuse a private binding when QQ supplies the same user OpenID for this bot.
-    # Groups with a different member OpenID use their explicitly verified association.
-    openid = row["openid"] if row else member_openid
-    return find_qq_account(database, app_id, openid)
+    return {"id": row["id"], "username": row["username"]} if row else None
 
 
-def issue_group_code(database, app_id, group_openid, member_openid):
-    code = new_code("G")
-    database.execute("DELETE FROM qq_group_codes WHERE expires_at <= now()")
+def clean_nickname(value) -> str:
+    if not isinstance(value, str):
+        return ""
+    return "".join(char for char in value if char.isprintable()).strip()[:NICKNAME_LIMIT]
+
+
+def issue_group_link(database, app_id, group_openid, member_openid, nickname=""):
+    """签发群身份关联令牌（10 分钟、单次使用），库里只存摘要；每个群成员同时只有一个有效令牌。
+
+    令牌只通过「群消息私聊回复」发给这条群消息的发送者，所以拿着它打开网页的就是这个群成员本人
+    （或本人转交的人）。
+    """
+    token = secrets.token_urlsafe(32)
+    database.execute("DELETE FROM qq_group_links WHERE expires_at <= now()")
     database.execute("""
-        INSERT INTO qq_group_codes (bot_app_id, group_openid, member_openid, request_hash, expires_at)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO qq_group_links (token_hash, bot_app_id, group_openid, member_openid, nickname, expires_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT (bot_app_id, group_openid, member_openid) DO UPDATE SET
-            request_hash = excluded.request_hash, expires_at = excluded.expires_at,
-            openid = NULL, confirmation_hash = NULL
-    """, (app_id, group_openid, member_openid, session_hash(code), expires()))
-    return code
+            token_hash = excluded.token_hash, nickname = excluded.nickname, expires_at = excluded.expires_at
+    """, (session_hash(token), app_id, group_openid, member_openid, clean_nickname(nickname),
+          datetime.now(timezone.utc) + GROUP_LINK_TTL))
+    return token
 
 
-def confirm_in_private(database, app_id, openid, code):
-    if not find_qq_account(database, app_id, openid):
-        raise AccountError("请先认证 QQ：已有站点账号可在「我的主页」获取绑定码；新用户私聊发「登录」即可注册并自动绑定。")
-    confirmation = new_code("C")
-    matched = database.execute("""
-        UPDATE qq_group_codes SET openid = %s, confirmation_hash = %s
-        WHERE bot_app_id = %s AND request_hash = %s AND expires_at > now()
-        RETURNING member_openid
-    """, (openid, session_hash(confirmation), app_id, session_hash(code))).fetchone()
-    if not matched:
-        raise AccountError("群验证码无效或已过期，请在群里重新请求昨日战报")
-    return confirmation
+def valid_token(token) -> bool:
+    return isinstance(token, str) and 0 < len(token) <= 128
 
 
-def confirm_in_group(database, app_id, group_openid, member_openid, code):
+def group_link_info(database, app_id, token):
+    """确认页展示用：群昵称与管理员配置的群号（没配置时为 None）。令牌无效返回 None。"""
+    if not valid_token(token):
+        return None
+    row = database.execute("""
+        SELECT links.nickname, groups.group_number FROM qq_group_links AS links
+        LEFT JOIN qq_feed_groups AS groups
+            ON groups.bot_app_id = links.bot_app_id AND groups.group_openid = links.group_openid
+        WHERE links.bot_app_id = %s AND links.token_hash = %s AND links.expires_at > now()
+    """, (app_id, session_hash(token))).fetchone()
+    return {"nickname": row["nickname"], "group_number": row["group_number"]} if row else None
+
+
+def confirm_group_link(database, app_id, token, user_id) -> None:
+    """核销令牌，把群成员关联到 user_id；已有关联时改为新账号（本人重新证明了对这个群身份的控制）。"""
+    if not valid_token(token):
+        raise AccountError("关联链接无效或已过期，请在群里重新 @机器人 获取")
     with database.transaction():
-        matched = database.execute("""
-            DELETE FROM qq_group_codes WHERE bot_app_id = %s AND group_openid = %s AND member_openid = %s
-                AND confirmation_hash = %s AND expires_at > now()
-            RETURNING openid
-        """, (app_id, group_openid, member_openid, session_hash(code))).fetchone()
-        if not matched:
-            raise AccountError("确认码无效或已过期，请用发起请求的 QQ 在原群重试")
+        link = database.execute("""
+            DELETE FROM qq_group_links WHERE bot_app_id = %s AND token_hash = %s AND expires_at > now()
+            RETURNING group_openid, member_openid
+        """, (app_id, session_hash(token))).fetchone()
+        if not link:
+            raise AccountError("关联链接无效或已过期，请在群里重新 @机器人 获取")
         database.execute("""
-            INSERT INTO qq_group_identities (bot_app_id, group_openid, member_openid, openid)
-            VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING
-        """, (app_id, group_openid, member_openid, matched["openid"]))
-        return group_account(database, app_id, group_openid, member_openid)
+            INSERT INTO qq_group_members (bot_app_id, group_openid, member_openid, user_id)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (bot_app_id, group_openid, member_openid) DO UPDATE SET user_id = excluded.user_id
+        """, (app_id, link["group_openid"], link["member_openid"], user_id))
+
+
+def unbind_group(database, app_id, group_openid, member_openid) -> bool:
+    return database.execute("""
+        DELETE FROM qq_group_members WHERE bot_app_id = %s AND group_openid = %s AND member_openid = %s
+        RETURNING user_id
+    """, (app_id, group_openid, member_openid)).fetchone() is not None

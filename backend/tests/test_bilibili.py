@@ -60,6 +60,9 @@ def database(tmp_path, monkeypatch):
     with connect() as db:
         admin = accounts.create_for_qq_openid(db, CONFIG.app_id, OPENID)
         db.execute("INSERT INTO admins (user_id) VALUES (%s)", (admin["id"],))
+        # 群里按群成员关联查账号（群消息私聊链接确认后写入）。
+        db.execute("INSERT INTO qq_group_members (bot_app_id, group_openid, member_openid, user_id) "
+                   "VALUES (%s, %s, %s, %s)", (CONFIG.app_id, GROUP, OPENID, admin["id"]))
     yield
 
 
